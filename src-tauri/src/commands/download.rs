@@ -44,6 +44,7 @@ pub async fn download_file(
     path: String,
     headers: Option<HashMap<String, String>>,
     resume: Option<bool>,
+    proxy: Option<String>,
 ) -> Result<DownloadFileResult, String> {
     let cancel = Arc::new(AtomicBool::new(false));
     {
@@ -58,6 +59,7 @@ pub async fn download_file(
         &path,
         headers,
         resume.unwrap_or(false),
+        proxy,
         cancel.clone(),
     )
     .await;
@@ -88,13 +90,18 @@ async fn download_inner(
     path: &str,
     headers: Option<HashMap<String, String>>,
     resume: bool,
+    proxy: Option<String>,
     cancel: Arc<AtomicBool>,
 ) -> Result<DownloadFileResult, String> {
-    let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .connect_timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let outbound = crate::commands::http_proxy::parse_outbound_proxy(proxy.as_deref())?;
+    let client = crate::commands::http_proxy::apply_async_proxy(
+        reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .connect_timeout(Duration::from_secs(30)),
+        outbound,
+    )
+    .build()
+    .map_err(|e| e.to_string())?;
 
     // 断点续传：以已有临时文件的实际大小为准
     let mut existing: u64 = 0;

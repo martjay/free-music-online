@@ -8,9 +8,9 @@ import systemUtil from '@infra/systemUtil/renderer';
 import { showModal } from '@renderer/mainWindow/components/ui/Modal/modalManager';
 import { Github, type LucideIcon } from 'lucide-react';
 
-const GITHUB_REPO = 'https://github.com/raclen/AnhePlayer';
-const GITHUB_AUTHOR = 'https://github.com/raclen';
-const GITHUB_ISSUES = 'https://github.com/raclen/AnhePlayer/issues';
+const GITHUB_REPO = 'https://github.com/martjay/free-music-online';
+const GITHUB_AUTHOR = 'https://github.com/martjay';
+const GITHUB_ISSUES = 'https://github.com/martjay/free-music-online/issues';
 const LICENSE_URL = `${GITHUB_REPO}/blob/master/LICENSE`;
 
 const SOCIAL_LINKS_DATA: {
@@ -79,7 +79,7 @@ export function AboutSection() {
                             text={OFFICIAL_SITE_URL}
                             url={OFFICIAL_SITE_URL}
                         />
-                        <LinkRow label="GitHub" text="AnhePlayer" url={GITHUB_REPO} />
+                        <LinkRow label="GitHub" text="Free Music Online" url={GITHUB_REPO} />
                         <LinkRow
                             label={t('settings.about.issues_link')}
                             text="GitHub Issues"

@@ -91,7 +91,7 @@ export function BackupSection() {
     const handleBackupToFile = useCallback(async () => {
         const dialogResult = await systemUtil.showSaveDialog({
             title: t('settings.backup.backup_music_sheet'),
-            defaultPath: `AnhePlayerBackup_${formatDate()}.json`,
+            defaultPath: `FreeMusicOnlineBackup_${formatDate()}.json`,
             filters: [
                 {
                     name: t('settings.backup.anhe_player_backup_file'),

@@ -6,7 +6,7 @@
  * 布局：
  *   标题  "xxx的搜索结果"（xxx 以品牌色显示）
  *   TabBar  音乐 | 专辑 | 作者 | 歌单
- *   Chips   当前 type 可用的插件列表
+ *   音源    先选脚本，再选平台
  *   Body    根据 type 渲染对应 ResultComponent
  *
  * 状态全部由 jotai store 管理，方便未来前进/后退恢复。
@@ -18,8 +18,8 @@ import { useParams } from 'react-router';
 import { useAtomValue, useSetAtom } from 'jotai/react';
 import { useSortedSearchablePlugins } from '@infra/pluginManager/renderer/hooks';
 import { PluginFeatureUnavailable } from '../../components/business/PluginFeatureUnavailable';
+import { PluginSourceNav } from '../../components/business/PluginSourceNav';
 import { TabBar } from '../../components/ui/TabBar';
-import { Chip } from '../../components/ui/Chip';
 import { MusicResult } from './components/MusicResult';
 import { AlbumResult } from './components/AlbumResult';
 import { ArtistResult } from './components/ArtistResult';
@@ -154,17 +154,13 @@ export default function SearchPage() {
                     {/* Tab Bar */}
                     <TabBar items={tabItems} activeKey={activeType} onChange={handleTabChange} />
 
-                    {/* Plugin Chips */}
-                    <div className="p-search__plugins">
-                        {availablePlugins.map((plugin) => (
-                            <Chip
-                                key={plugin.hash}
-                                label={plugin.platform}
-                                active={plugin.hash === activePluginHash}
-                                onClick={() => handlePluginChange(plugin.hash)}
-                            />
-                        ))}
-                    </div>
+                    {activePluginHash && (
+                        <PluginSourceNav
+                            plugins={availablePlugins}
+                            activeHash={activePluginHash}
+                            onChange={handlePluginChange}
+                        />
+                    )}
                 </div>
             </div>
 

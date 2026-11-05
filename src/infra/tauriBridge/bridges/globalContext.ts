@@ -9,7 +9,7 @@ const defaultContext = {
     appPath: {
         defaultDownloadPath: 'C:\\Users\\Administrator\\Downloads',
         temp: 'C:\\Users\\Administrator\\AppData\\Local\\Temp',
-        userData: 'C:\\Users\\Administrator\\AppData\\Roaming\\AnhePlayer',
+        userData: 'C:\\Users\\Administrator\\AppData\\Roaming\\Free Music Online',
         res: '',
     },
     platform: 'win32',

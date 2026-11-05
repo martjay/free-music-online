@@ -8,6 +8,78 @@ pub fn exit_app(app: AppHandle) {
     app.exit(0);
 }
 
+/// 一键更新的安装包暂存路径。
+#[tauri::command]
+pub fn app_update_installer_path(version: String) -> Result<String, String> {
+    let safe: String = version
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_'))
+        .collect();
+    if safe.is_empty() {
+        return Err("版本号无效".to_string());
+    }
+    let mut path = std::env::temp_dir();
+    path.push(format!("FreeMusicOnline-{safe}-setup.exe"));
+    Ok(path.to_string_lossy().to_string())
+}
+
+fn installer_is_exe(path: &std::path::Path) -> bool {
+    let mut file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(_) => return false,
+    };
+    let mut header = [0u8; 2];
+    std::io::Read::read_exact(&mut file, &mut header).is_ok() && &header == b"MZ"
+}
+
+#[tauri::command]
+pub fn app_update_installer_valid(installer_path: String) -> bool {
+    installer_is_exe(std::path::Path::new(&installer_path))
+}
+
+/// 退出当前程序后静默安装，再把新版本拉起来。
+#[tauri::command]
+pub fn apply_app_update(app: AppHandle, installer_path: String) -> Result<(), String> {
+    let installer = std::path::PathBuf::from(&installer_path);
+    if !installer_is_exe(&installer) {
+        return Err("安装包不存在".to_string());
+    }
+    let extension = installer
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if extension != "exe" {
+        return Err("只能安装 exe 安装包".to_string());
+    }
+    let current = std::env::current_exe().map_err(|err| err.to_string())?;
+    let script = format!(
+        "ping 127.0.0.1 -n 3 >nul & \"{}\" /S & start \"\" \"{}\"",
+        installer.display(),
+        current.display()
+    );
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("cmd")
+            .args(["/C", &script])
+            .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|err| err.to_string())?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = script;
+        return Err("仅支持在 Windows 上安装更新".to_string());
+    }
+
+    app.exit(0);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn minimize_window(window: WebviewWindow, skip_task_bar: Option<bool>) {
     let _ = window.minimize();
@@ -148,7 +220,7 @@ pub fn log_entry(entry: serde_json::Value) {
 pub fn get_cache_size() -> u64 {
     let candidates = [
         dirs::data_local_dir().map(|d| d.join("com.anhe.player")),
-        dirs::config_dir().map(|d| d.join("AnhePlayer").join("EBWebView")),
+        dirs::config_dir().map(|d| d.join(super::global_context::APP_DATA_DIR_NAME).join("EBWebView")),
     ];
     for candidate in candidates.into_iter().flatten() {
         if candidate.is_dir() {

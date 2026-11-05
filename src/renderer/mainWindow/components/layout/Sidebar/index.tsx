@@ -71,26 +71,31 @@ export default function Sidebar() {
         <aside className="l-sidebar">
             {/* ── 导航列表 ── */}
             <nav className="l-sidebar__nav" aria-label={t('app.nav_main')}>
-                <div className="l-sidebar__drag" data-tauri-drag-region>
-                    {pendingUpdate && (
-                        <button
-                            className="l-sidebar__update-trigger"
-                            type="button"
-                            title={t('app.new_version_found', { version: pendingUpdate.version })}
-                            aria-label={t('app.new_version_found', {
-                                version: pendingUpdate.version,
-                            })}
-                            onClick={handleUpdateClick}
-                        >
-                            <Badge variant="tint" colorScheme="warn">
-                                {t('app.update_badge')}
-                            </Badge>
-                        </button>
-                    )}
-                </div>
+                <div className="l-sidebar__drag" data-tauri-drag-region />
                 {/* 在线 */}
                 <div className="l-sidebar__group">
-                    <div className="l-sidebar__group-title">{t('app.nav_online')}</div>
+                    <div className="l-sidebar__online-row">
+                        <div className="l-sidebar__group-title l-sidebar__group-title--inline">
+                            {t('app.nav_online')}
+                        </div>
+                        {pendingUpdate && (
+                            <button
+                                className="l-sidebar__update-trigger"
+                                type="button"
+                                title={t('app.new_version_found', {
+                                    version: pendingUpdate.version,
+                                })}
+                                aria-label={t('app.new_version_found', {
+                                    version: pendingUpdate.version,
+                                })}
+                                onClick={handleUpdateClick}
+                            >
+                                <Badge variant="tint" colorScheme="warn">
+                                    {t('app.update_badge')}
+                                </Badge>
+                            </button>
+                        )}
+                    </div>
                     <NavItem
                         route={RoutePaths.Toplist}
                         icon={Trophy}

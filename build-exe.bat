@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-echo AnhePlayer release build
+echo Free Music Online release build
 echo.
 
 call :prepare

@@ -61,6 +61,10 @@
         "update_badge": "New",
         "skip_version": "Don't remind me for this version",
         "go_download": "Download",
+        "update_now": "Update now",
+        "update_downloading": "Downloading {{percent}}%",
+        "update_installing": "Download finished. Installing and restarting",
+        "update_failed": "Update failed. Try again, or download the installer manually",
         "download_link": "Download {{index}}",
         "read_more": "Read more"
     },
@@ -467,7 +471,7 @@
             "unsupported_backup_format": "Unsupported backup file format"
         },
         "about": {
-            "title": "About AnhePlayer",
+            "title": "About Free Music Online",
             "subtitle": "Version Info & Open Source License",
             "check_update_btn": "Check for Update",
             "check_update_failed": "Update check failed, please try again later",

@@ -5,5 +5,5 @@
         "桌面歌词支持置顶、锁定穿透与自由拖动缩放，位置与尺寸拖完即记，重启后原样恢复",
         "新增托盘菜单入口：可快速开关桌面歌词与锁定状态，主窗口最小化到托盘也能操作"
     ],
-    "download": ["https://anhe-player.loc.cc"]
+    "download": ["https://github.com/martjay/free-music-online/releases/latest"]
 }

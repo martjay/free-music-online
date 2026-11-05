@@ -6,7 +6,7 @@ use tauri::Emitter;
 
 fn get_config_file_path() -> PathBuf {
     let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("AnhePlayer");
+    path.push(super::global_context::APP_DATA_DIR_NAME);
     let _ = fs::create_dir_all(&path);
     path.push("app-config.json");
     path

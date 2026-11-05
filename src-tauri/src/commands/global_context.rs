@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// 用户数据目录名。插件、歌单和设置都放在这个目录下。
+pub const APP_DATA_DIR_NAME: &str = "Free Music Online";
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppPath {
     #[serde(rename = "defaultDownloadPath")]
@@ -30,7 +33,7 @@ pub fn global_context_get(app: tauri::AppHandle) -> GlobalContext {
         .to_string();
 
     let config_dir = dirs::config_dir()
-        .map(|p| p.join("AnhePlayer"))
+        .map(|p| p.join(APP_DATA_DIR_NAME))
         .unwrap_or_else(|| PathBuf::from("."))
         .to_string_lossy()
         .to_string();

@@ -59,6 +59,9 @@ pub fn run() {
             app_config_reset,
             // System Util
             exit_app,
+            app_update_installer_path,
+            app_update_installer_valid,
+            apply_app_update,
             minimize_window,
             show_main_window,
             toggle_maximize,
@@ -146,7 +149,7 @@ pub fn run() {
                 .menu(&menu)
                 // 左键单击恢复窗口，右键才弹出菜单
                 .show_menu_on_left_click(false)
-                .tooltip("AnhePlayer")
+                .tooltip("Free Music Online")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "tray-show" => restore_main_window(app),
                     // 只写配置，窗口由主窗口控制器统一驱动，避免双驱动

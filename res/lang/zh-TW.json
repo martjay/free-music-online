@@ -61,6 +61,10 @@
         "update_badge": "新版",
         "skip_version": "不再提示此版本",
         "go_download": "前往下載",
+        "update_now": "一鍵更新",
+        "update_downloading": "正在下載 {{percent}}%",
+        "update_installing": "下載完成，正在安裝並重新啟動",
+        "update_failed": "更新失敗，可以稍後再試，或前往下載頁面手動安裝",
         "download_link": "下載地址 {{index}}",
         "read_more": "閱讀更多"
     },
@@ -467,7 +471,7 @@
             "unsupported_backup_format": "不支援的備份文件格式"
         },
         "about": {
-            "title": "關於 AnhePlayer",
+            "title": "關於 Free Music Online",
             "subtitle": "版本資訊與開源協議",
             "check_update_btn": "檢查更新",
             "check_update_failed": "檢查更新失敗，請稍後重試",

@@ -31,4 +31,27 @@
         align-items: center;
         gap: var(--space-2);
     }
+
+    &__progress {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+        margin-top: var(--space-4);
+        color: var(--color-text-secondary);
+        font-size: var(--text-caption-size);
+    }
+
+    &__progress-track {
+        height: 6px;
+        overflow: hidden;
+        border-radius: var(--radius-pill);
+        background: var(--color-fill-neutral);
+    }
+
+    &__progress-bar {
+        height: 100%;
+        border-radius: inherit;
+        background: var(--color-fill-brand);
+        transition: width 160ms ease;
+    }
 }
