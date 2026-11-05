@@ -186,6 +186,19 @@
         }
     }
 
+    &__choice-text {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1;
+    }
+
+    &__choice-origin {
+        font-size: var(--text-caption-size);
+        line-height: var(--text-caption-leading);
+        color: var(--color-text-muted);
+    }
+
     // ── 弱化文字 ──
 
     &__muted-text {

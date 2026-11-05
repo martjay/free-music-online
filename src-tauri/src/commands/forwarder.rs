@@ -159,9 +159,21 @@ fn handle_request(request: tiny_http::Request, _app: AppHandle) {
         .and_then(|h| serde_json::from_str(h).ok())
         .unwrap_or_default();
 
-    let mut client_builder = reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .connect_timeout(Duration::from_secs(15));
+    let proxy = match crate::commands::http_proxy::parse_outbound_proxy(
+        params.get("proxy").map(String::as_str),
+    ) {
+        Ok(proxy) => proxy,
+        Err(err) => {
+            respond_plain(request, 400, &err);
+            return;
+        }
+    };
+    let mut client_builder = crate::commands::http_proxy::apply_blocking_proxy(
+        reqwest::blocking::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .connect_timeout(Duration::from_secs(15)),
+        proxy,
+    );
     if let Some((host, resolved_address)) = &public_resolution {
         client_builder = client_builder.redirect(reqwest::redirect::Policy::none());
         if let Some(address) = resolved_address {

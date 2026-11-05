@@ -1,4 +1,7 @@
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, LogicalSize, Manager, WebviewWindow};
+
+const MINIMODE_WIDTH: f64 = 408.0;
+const MINIMODE_HEIGHT: f64 = 148.0;
 
 #[tauri::command]
 pub fn exit_app(app: AppHandle) {
@@ -53,6 +56,7 @@ pub fn enter_minimode(app: AppHandle) {
         let _ = main.hide();
     }
     if let Some(mini) = app.get_webview_window("minimode") {
+        let _ = mini.set_size(LogicalSize::new(MINIMODE_WIDTH, MINIMODE_HEIGHT));
         let _ = mini.show();
         let _ = mini.set_focus();
     }

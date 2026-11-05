@@ -5,6 +5,7 @@ import Modal from '@renderer/mainWindow/components/ui/Modal';
 import { Button } from '@renderer/mainWindow/components/ui/Button';
 import pluginManager from '@infra/pluginManager/renderer';
 import { usePlugins, usePluginMeta } from '@infra/pluginManager/renderer/hooks';
+import { pluginPlatformLabel, pluginScriptLabel } from '@infra/pluginManager/common/pluginIdentity';
 import { cn } from '@common/cn';
 import './index.scss';
 
@@ -85,25 +86,38 @@ export default function PluginSourceRedirectModal({
                 </button>
 
                 {/* 候选插件列表 */}
-                {candidates.map((p) => (
-                    <button
-                        key={p.hash}
-                        type="button"
-                        className={cn(
-                            'plugin-modal__redirect-item',
-                            selected === p.platform && 'is-selected',
-                        )}
-                        onClick={() => setSelected(p.platform)}
-                    >
-                        <ArrowRightLeft size={14} className="plugin-modal__redirect-item-icon" />
-                        <span className="plugin-modal__redirect-item-name">{p.platform}</span>
-                        {p.version && (
-                            <span className="plugin-modal__redirect-item-version">
-                                v{p.version}
+                {candidates.map((p) => {
+                    const origin = pluginScriptLabel(p);
+                    return (
+                        <button
+                            key={p.hash}
+                            type="button"
+                            className={cn(
+                                'plugin-modal__redirect-item',
+                                selected === p.platform && 'is-selected',
+                            )}
+                            onClick={() => setSelected(p.platform)}
+                        >
+                            <ArrowRightLeft
+                                size={14}
+                                className="plugin-modal__redirect-item-icon"
+                            />
+                            <span className="plugin-modal__choice-text">
+                                <span className="plugin-modal__redirect-item-name">
+                                    {pluginPlatformLabel(p)}
+                                </span>
+                                {origin && (
+                                    <span className="plugin-modal__choice-origin">{origin}</span>
+                                )}
                             </span>
-                        )}
-                    </button>
-                ))}
+                            {p.version && (
+                                <span className="plugin-modal__redirect-item-version">
+                                    v{p.version}
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
 
                 {/* 无可用插件 */}
                 {candidates.length === 0 && (

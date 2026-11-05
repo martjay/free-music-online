@@ -1,8 +1,8 @@
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{RecvTimeoutError, Sender};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Window, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Window, WindowEvent};
 
 use super::app_config;
 
@@ -23,6 +23,13 @@ const DEFAULT_HEIGHT: f64 = 160.0;
 /// 首次显示时距工作区底部的偏移（逻辑像素），约在播放器底部歌词条的位置
 const DEFAULT_BOTTOM_OFFSET: f64 = 72.0;
 
+/// 锁定后整窗穿透，前端收不到鼠标。由系统光标轮询在停留后暂时取消穿透，
+/// 让悬浮解锁按钮能被点到。
+const HOVER_POLL: Duration = Duration::from_millis(80);
+const HOVER_REVEAL: Duration = Duration::from_millis(600);
+const HOVER_HIDE: Duration = Duration::from_millis(280);
+const LYRIC_HOVER_EVENT: &str = "lyric-hover";
+
 /// 窗口几何：位置用物理像素（跨屏精确），尺寸用逻辑像素（跨 DPI 视觉一致）
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Placement {
@@ -41,6 +48,10 @@ pub struct LyricWindowState {
     suppress_until: Mutex<Option<Instant>>,
     /// 防抖线程信号通道（setup 时初始化）
     saver_tx: Mutex<Option<Sender<()>>>,
+    /// 锁定悬浮监视线程的停止信号
+    hover_tx: Mutex<Option<Sender<()>>>,
+    /// 递增后旧监视线程退出时不再改穿透状态
+    hover_generation: Mutex<u64>,
 }
 
 impl Default for LyricWindowState {
@@ -50,6 +61,8 @@ impl Default for LyricWindowState {
             last_saved: Mutex::new(None),
             suppress_until: Mutex::new(None),
             saver_tx: Mutex::new(None),
+            hover_tx: Mutex::new(None),
+            hover_generation: Mutex::new(0),
         }
     }
 }
@@ -160,7 +173,7 @@ pub fn sync_lyric_window(
         // 隐藏前强制落盘，避免「拖完立刻关歌词」丢失最后位置
         persist_current(&app);
         // 清除穿透，避免下次未锁定时窗口仍然点不到
-        let _ = window.set_ignore_cursor_events(false);
+        stop_locked_hover(&app);
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
         }
@@ -173,7 +186,11 @@ pub fn sync_lyric_window(
     let _ = window.set_size(PhysicalSize::new(width, height));
     let _ = window.set_position(PhysicalPosition::new(x, y));
     let _ = window.set_always_on_top(always_on_top);
-    let _ = window.set_ignore_cursor_events(locked);
+    if locked {
+        start_locked_hover(&app);
+    } else {
+        stop_locked_hover(&app);
+    }
 
     // 最后才显示，且不抢键盘焦点
     if !window.is_visible().unwrap_or(false) {
@@ -275,7 +292,7 @@ fn default_placement(app: &AppHandle) -> Placement {
     }
 }
 
-fn read_placement(app: &AppHandle) -> Option<Placement> {
+fn read_placement(_app: &AppHandle) -> Option<Placement> {
     let config = app_config::read_config_value();
     let pos = config.get("private.lyricWindowPosition")?;
     let size = config.get("private.lyricWindowSize")?;
@@ -372,4 +389,126 @@ fn is_suppressed(app: &AppHandle) -> bool {
         .map(|until| Instant::now() < until)
         .unwrap_or(false);
     suppressed
+}
+
+// ─── 锁定后的悬浮解锁 ───
+
+fn bump_hover_generation(app: &AppHandle) -> u64 {
+    let state = app.state::<LyricWindowState>();
+    let mut generation = state.hover_generation.lock().unwrap();
+    *generation += 1;
+    let next = *generation;
+    drop(generation);
+    next
+}
+
+fn stop_hover_thread(app: &AppHandle) {
+    let state = app.state::<LyricWindowState>();
+    let tx = state.hover_tx.lock().unwrap().take();
+    drop(state);
+    if let Some(tx) = tx {
+        let _ = tx.send(());
+    }
+}
+
+/// 取消穿透并通知前端收起解锁按钮。
+fn stop_locked_hover(app: &AppHandle) {
+    bump_hover_generation(app);
+    stop_hover_thread(app);
+    if let Some(window) = app.get_webview_window(LYRIC_WINDOW_LABEL) {
+        let _ = window.set_ignore_cursor_events(false);
+    }
+    let _ = app.emit(LYRIC_HOVER_EVENT, false);
+}
+
+/// 锁定时启动光标轮询：停留后暂时取消穿透，移开后再穿透。
+fn start_locked_hover(app: &AppHandle) {
+    let generation = bump_hover_generation(app);
+    stop_hover_thread(app);
+
+    let Some(window) = app.get_webview_window(LYRIC_WINDOW_LABEL) else {
+        return;
+    };
+    let _ = window.set_ignore_cursor_events(true);
+    let _ = app.emit(LYRIC_HOVER_EVENT, false);
+
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let state = app.state::<LyricWindowState>();
+    *state.hover_tx.lock().unwrap() = Some(tx);
+    drop(state);
+
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        let mut inside_since: Option<Instant> = None;
+        let mut outside_since: Option<Instant> = None;
+        let mut interactive = false;
+
+        loop {
+            match rx.recv_timeout(HOVER_POLL) {
+                Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
+                Err(RecvTimeoutError::Timeout) => {}
+            }
+
+            let state = app_handle.state::<LyricWindowState>();
+            let still_current = *state.hover_generation.lock().unwrap() == generation;
+            drop(state);
+            if !still_current {
+                return;
+            }
+
+            let Some(window) = app_handle.get_webview_window(LYRIC_WINDOW_LABEL) else {
+                return;
+            };
+            if !window.is_visible().unwrap_or(false) {
+                continue;
+            }
+
+            let hovered = cursor_inside_window(&window);
+            let now = Instant::now();
+            if hovered {
+                outside_since = None;
+                if inside_since.is_none() {
+                    inside_since = Some(now);
+                }
+                let held = inside_since.map(|t| now.duration_since(t) >= HOVER_REVEAL).unwrap_or(false);
+                if held && !interactive {
+                    interactive = true;
+                    let _ = window.set_ignore_cursor_events(false);
+                    let _ = app_handle.emit(LYRIC_HOVER_EVENT, true);
+                }
+            } else {
+                inside_since = None;
+                if interactive {
+                    if outside_since.is_none() {
+                        outside_since = Some(now);
+                    }
+                    let left = outside_since
+                        .map(|t| now.duration_since(t) >= HOVER_HIDE)
+                        .unwrap_or(false);
+                    if left {
+                        interactive = false;
+                        outside_since = None;
+                        let _ = window.set_ignore_cursor_events(true);
+                        let _ = app_handle.emit(LYRIC_HOVER_EVENT, false);
+                    }
+                }
+            }
+        }
+    });
+}
+
+fn cursor_inside_window(window: &tauri::WebviewWindow) -> bool {
+    let Ok(cursor) = window.cursor_position() else {
+        return false;
+    };
+    let Ok(pos) = window.outer_position() else {
+        return false;
+    };
+    let Ok(size) = window.outer_size() else {
+        return false;
+    };
+    cursor.x >= pos.x as f64
+        && cursor.y >= pos.y as f64
+        && cursor.x < pos.x as f64 + size.width as f64
+        && cursor.y < pos.y as f64 + size.height as f64
 }

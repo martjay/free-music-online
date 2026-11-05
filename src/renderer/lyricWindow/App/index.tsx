@@ -2,14 +2,14 @@
 // App — 歌词窗口根组件
 // ============================================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { cn } from '@common/cn';
 import appSyncAuxiliary from '@infra/appSync/renderer/auxiliary';
-import systemUtil from '@infra/systemUtil/renderer';
+import { tauriInvoke, tauriListen } from '@infra/tauriBridge/ipc';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 
-import LyricToolbar from '../components/LyricToolbar';
+import LyricToolbar, { LockedToolbar } from '../components/LyricToolbar';
 import LyricText from '../components/LyricText';
 
 import './index.scss';
@@ -18,58 +18,58 @@ export default function App() {
     const [locked] = useConfigValue('lyric.lockLyric');
     const isLocked = locked ?? false;
 
-    // hover 状态管理
     const [showToolbar, setShowToolbar] = useState(false);
-    const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [lockedHover, setLockedHover] = useState(false);
 
-    const clearHoverTimer = useCallback(() => {
-        if (hoverTimerRef.current) {
-            clearTimeout(hoverTimerRef.current);
-            hoverTimerRef.current = null;
-        }
-    }, []);
-
-    const handleMouseOver = useCallback(() => {
+    // 锁定后整窗穿透，WebView 收不到鼠标。系统侧轮询光标，停留后暂时取消穿透。
+    useEffect(() => {
         if (!isLocked) {
-            setShowToolbar(true);
+            setLockedHover(false);
             return;
         }
-        // 锁定态：延迟显示解锁按钮
-        if (hoverTimerRef.current) return;
-        hoverTimerRef.current = setTimeout(() => {
-            setShowToolbar(true);
-            hoverTimerRef.current = null;
-        }, 600);
+        let unlisten: (() => void) | undefined;
+        let disposed = false;
+        void tauriListen<boolean>('lyric-hover', (inside) => {
+            if (!disposed) setLockedHover(!!inside);
+        }).then((stop) => {
+            if (disposed) void stop();
+            else unlisten = stop;
+        });
+        return () => {
+            disposed = true;
+            void unlisten?.();
+        };
+    }, [isLocked]);
+
+    const handleMouseOver = useCallback(() => {
+        if (!isLocked) setShowToolbar(true);
     }, [isLocked]);
 
     const handleMouseLeave = useCallback(() => {
-        clearHoverTimer();
-        setShowToolbar(false);
-    }, [clearHoverTimer]);
-
-    // document 级别的 mouseleave —— 透明窗口中比 React onMouseLeave 更可靠
-    useEffect(() => {
-        const onDocLeave = () => {
-            clearHoverTimer();
-            setShowToolbar(false);
-        };
-        document.addEventListener('mouseleave', onDocLeave);
-        return () => document.removeEventListener('mouseleave', onDocLeave);
-    }, [clearHoverTimer]);
-
-    // 锁定状态切换时重置 toolbar 显示
-    useEffect(() => {
-        setShowToolbar(false);
-        clearHoverTimer();
-    }, [isLocked, clearHoverTimer]);
-
-    // 锁定 = 整窗鼠标穿透。主窗口控制器已通过 sync_lyric_window 设置，
-    // 这里再做一次即时反馈与兜底（窗口隐藏期间 WebView 被节流时可能漏掉）。
-    useEffect(() => {
-        systemUtil.ignoreMouseEvent(isLocked);
+        if (!isLocked) setShowToolbar(false);
     }, [isLocked]);
 
-    // 订阅应用状态
+    useEffect(() => {
+        if (isLocked) return;
+        const onDocLeave = () => setShowToolbar(false);
+        document.addEventListener('mouseleave', onDocLeave);
+        return () => document.removeEventListener('mouseleave', onDocLeave);
+    }, [isLocked]);
+
+    useEffect(() => {
+        setShowToolbar(false);
+    }, [isLocked]);
+
+    const handlePointerDown = useCallback(
+        (event: React.PointerEvent) => {
+            if (isLocked || event.button !== 0) return;
+            const target = event.target;
+            if (!(target instanceof Element) || target.closest('button')) return;
+            void tauriInvoke('plugin:window|start_dragging');
+        },
+        [isLocked],
+    );
+
     useEffect(() => {
         appSyncAuxiliary.subscribeAppState([
             'musicItem',
@@ -85,13 +85,17 @@ export default function App() {
             className={cn(
                 'l-lyric-shell',
                 isLocked ? 'is-locked' : 'is-unlocked',
-                showToolbar && 'is-hovered',
+                (isLocked ? lockedHover : showToolbar) && 'is-hovered',
             )}
             onMouseOver={handleMouseOver}
             onMouseLeave={handleMouseLeave}
+            onPointerDown={handlePointerDown}
         >
-            {/* 锁定态整窗穿透，工具栏点不到，因此直接不渲染 */}
-            {!isLocked && <LyricToolbar visible={showToolbar} />}
+            {isLocked ? (
+                <LockedToolbar visible={lockedHover} />
+            ) : (
+                <LyricToolbar visible={showToolbar} />
+            )}
             <LyricText />
         </div>
     );

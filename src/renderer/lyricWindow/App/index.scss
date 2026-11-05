@@ -28,7 +28,12 @@ body[data-window='lyric'] {
     border-radius: var(--radius-card);
     transition: background var(--duration-normal) var(--ease-standard);
 
-    &.is-unlocked.is-hovered {
+    &.is-unlocked {
+        cursor: grab;
+    }
+
+    &.is-unlocked.is-hovered,
+    &.is-locked.is-hovered {
         background: var(--lyric-bg-hover);
     }
 }

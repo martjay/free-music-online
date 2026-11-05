@@ -5,7 +5,7 @@
     "identifier": "com.anhe.player",
     "build": {
         "beforeDevCommand": "pnpm dev:tauri-prepare",
-        "devUrl": "http://localhost:5173",
+        "devUrl": "http://localhost:47321",
         "beforeBuildCommand": "pnpm build:tauri-prepare",
         "frontendDist": "../dist"
     },
@@ -59,13 +59,21 @@
                 "label": "minimode",
                 "title": "Anhe Mini",
                 "url": "/minimodeWindow.html",
-                "width": 320,
-                "height": 480,
+                "width": 408,
+                "height": 148,
+                "minWidth": 408,
+                "minHeight": 148,
+                "maxWidth": 408,
+                "maxHeight": 148,
                 "decorations": false,
                 "transparent": true,
+                "backgroundColor": "#00000000",
+                "shadow": false,
                 "alwaysOnTop": true,
                 "visible": false,
-                "resizable": false
+                "resizable": false,
+                "maximizable": false,
+                "skipTaskbar": false
             }
         ]
     },

@@ -43,6 +43,7 @@
 }
 
 .song-table__header-cell {
+    position: relative;
     padding: var(--space-3) var(--space-4); // 12px 16px
     font-weight: var(--font-weight-normal);
     font-size: var(--text-caption-size);
@@ -169,6 +170,34 @@
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: inherit; // 继承行高，由 rowHeight 自适应
+
+    &.is-copyable {
+        cursor: pointer;
+    }
+}
+
+.song-table__resize {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    touch-action: none;
+
+    &::after {
+        content: '';
+        position: absolute;
+        top: 25%;
+        bottom: 25%;
+        right: 3px;
+        width: 1px;
+        background: transparent;
+    }
+
+    &:hover::after {
+        background: var(--color-border-focus);
+    }
 }
 
 // ── 来源 badge ──

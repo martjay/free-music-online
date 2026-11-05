@@ -1,0 +1,25 @@
+.plugin-source-nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: 0;
+    max-width: 100%;
+
+    &__platforms {
+        border-bottom: none;
+        padding-bottom: 4px;
+
+        .tab-bar__tab {
+            padding: 4px 12px;
+            border-radius: var(--radius-pill);
+            background: var(--color-fill-subtle);
+            font-size: var(--text-caption-size);
+        }
+
+        .tab-bar__tab.is-active {
+            color: var(--color-text-brand);
+            background: var(--color-fill-brand-muted);
+            box-shadow: none;
+        }
+    }
+}

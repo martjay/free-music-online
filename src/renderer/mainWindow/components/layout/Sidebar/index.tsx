@@ -34,8 +34,6 @@ import LocalSheetNavItem from './LocalSheetNavItem';
 import StarredSheetNavItem from './StarredSheetNavItem';
 import './index.scss';
 
-const BRAND_NAME = 'Anhe';
-
 // 底部工具按钮: icon + route + i18n key
 const FOOTER_TOOLS: { key: RoutePath; icon: LucideIcon; titleKey: string }[] = [
     { key: RoutePaths.PluginManager, icon: Blocks, titleKey: 'plugin.plugin_management' },
@@ -71,33 +69,25 @@ export default function Sidebar() {
 
     return (
         <aside className="l-sidebar">
-            {/* ── Logo ── */}
-            <div
-                className="l-sidebar__logo"
-                aria-label={BRAND_NAME}
-                title={BRAND_NAME}
-                data-tauri-drag-region
-            >
-                <span className="l-sidebar__logo-text" data-tauri-drag-region>
-                    {BRAND_NAME}
-                </span>
-                {pendingUpdate && (
-                    <button
-                        className="l-sidebar__update-trigger"
-                        type="button"
-                        title={t('app.new_version_found', { version: pendingUpdate.version })}
-                        aria-label={t('app.new_version_found', { version: pendingUpdate.version })}
-                        onClick={handleUpdateClick}
-                    >
-                        <Badge variant="tint" colorScheme="warn">
-                            {t('app.update_badge')}
-                        </Badge>
-                    </button>
-                )}
-            </div>
-
             {/* ── 导航列表 ── */}
             <nav className="l-sidebar__nav" aria-label={t('app.nav_main')}>
+                <div className="l-sidebar__drag" data-tauri-drag-region>
+                    {pendingUpdate && (
+                        <button
+                            className="l-sidebar__update-trigger"
+                            type="button"
+                            title={t('app.new_version_found', { version: pendingUpdate.version })}
+                            aria-label={t('app.new_version_found', {
+                                version: pendingUpdate.version,
+                            })}
+                            onClick={handleUpdateClick}
+                        >
+                            <Badge variant="tint" colorScheme="warn">
+                                {t('app.update_badge')}
+                            </Badge>
+                        </button>
+                    )}
+                </div>
                 {/* 在线 */}
                 <div className="l-sidebar__group">
                     <div className="l-sidebar__group-title">{t('app.nav_online')}</div>

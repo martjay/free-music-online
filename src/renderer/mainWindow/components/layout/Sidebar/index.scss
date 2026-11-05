@@ -12,28 +12,7 @@
     backdrop-filter: blur(var(--blur-md));
     border-right: 1px solid var(--color-border-default);
     z-index: var(--z-sidebar);
-    padding: var(--space-6) 0 var(--space-6) var(--space-4);
-
-    // ── Logo ──
-
-    &__logo {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--space-2);
-        padding: 0 var(--space-4) 0 var(--space-3);
-        margin-bottom: var(--space-8);
-        cursor: pointer;
-    }
-
-    &__logo-text {
-        color: var(--color-text-brand);
-        font-size: var(--text-title-size);
-        font-weight: var(--font-weight-bold);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+    padding: 0 0 var(--space-6) var(--space-4);
 
     &__update-trigger {
         display: inline-flex;
@@ -62,6 +41,15 @@
         overflow-y: auto;
         overflow-x: hidden;
         padding-right: var(--space-2);
+    }
+
+    // 跟列表一起滚走，避免停在顶部挡住导航
+    &__drag {
+        display: flex;
+        align-items: center;
+        height: var(--space-6);
+        flex-shrink: 0;
+        padding: 0 var(--space-3);
     }
 
     &__group {

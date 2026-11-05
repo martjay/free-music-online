@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::Manager;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppPath {

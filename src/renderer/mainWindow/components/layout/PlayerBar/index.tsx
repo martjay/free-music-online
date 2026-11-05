@@ -3,7 +3,16 @@
 // ============================================================================
 
 import { useEffect } from 'react';
-import { SkipBack, SkipForward, Play, Pause, ListMusic, Maximize2, Shuffle } from 'lucide-react';
+import {
+    SkipBack,
+    SkipForward,
+    Play,
+    Pause,
+    ListMusic,
+    Maximize2,
+    Shuffle,
+    CircleCheckBig,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { DesktopLyric } from '@renderer/common/icons';
 import { cn } from '@common/cn';
@@ -14,6 +23,7 @@ import appConfig from '@infra/appConfig/renderer';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import { FavoriteButton } from '../../business/FavoriteButton';
 import { DownloadButton } from '../../business/DownloadButton';
+import { useMusicDownloaded } from '@infra/downloadManager/renderer';
 import {
     useCurrentMusic,
     usePlayerState,
@@ -54,6 +64,7 @@ export default function PlayerBar() {
 
     const [enableDesktopLyric] = useConfigValue('lyric.enableDesktopLyric');
 
+    const downloaded = useMusicDownloaded(currentMusic);
     const isPlaying = playerState === PlayerState.Playing;
     const isRadio = isRadioBrowserMedia(currentMusic);
     const hasMusic = currentMusic != null && !isRadio;
@@ -127,7 +138,15 @@ export default function PlayerBar() {
                                                 }
                                             >
                                                 {sourceFallback && <Shuffle size={11} />}
-                                                {isLive ? t('radio.live') : displayPlatform}
+                                                {isLive
+                                                    ? t('radio.live')
+                                                    : sourceFallback
+                                                      ? t('playback.source_fallback_short', {
+                                                            original:
+                                                                playbackSource?.originalPlatform,
+                                                            platform: displayPlatform,
+                                                        })
+                                                      : displayPlatform}
                                             </span>
                                         </>
                                     )}
@@ -136,7 +155,19 @@ export default function PlayerBar() {
                                 <div className="l-player-bar__actions">
                                     <FavoriteButton musicItem={currentMusic} size="sm" />
                                     {!isLive && (
-                                        <DownloadButton musicItem={currentMusic} size="sm" />
+                                        <DownloadButton
+                                            musicItem={currentMusic}
+                                            size="sm"
+                                            selectQuality
+                                        />
+                                    )}
+                                    {downloaded && (
+                                        <span
+                                            className="l-player-bar__downloaded"
+                                            title={t('common.downloaded')}
+                                        >
+                                            <CircleCheckBig size={14} />
+                                        </span>
                                     )}
                                     <div className="l-player-bar__divider" />
                                     <TimeDisplay />

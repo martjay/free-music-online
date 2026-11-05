@@ -313,21 +313,37 @@
     &__color-picker {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         gap: var(--space-2);
+        max-width: 280px;
     }
 
     &__color-input {
         width: var(--size-control-lg);
         height: var(--size-control-md);
+        flex-shrink: 0;
+        padding: 0;
         border-radius: var(--radius-control);
         background: var(--color-fill-subtle);
         border: 1px solid var(--color-border-default);
         cursor: pointer;
+
+        &::-webkit-color-swatch-wrapper {
+            padding: 2px;
+        }
+
+        &::-webkit-color-swatch {
+            border: none;
+            border-radius: var(--radius-control);
+        }
     }
 
     &__color-swatches {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         gap: var(--space-2);
     }
 
@@ -336,6 +352,7 @@
 
         width: var(--space-6);
         height: var(--space-6);
+        flex-shrink: 0;
         border-radius: var(--radius-pill);
         border: 1px solid var(--color-border-focus);
         transition: border-color var(--duration-normal);

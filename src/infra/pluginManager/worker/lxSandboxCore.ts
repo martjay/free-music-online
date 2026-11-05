@@ -363,7 +363,8 @@ type IParsedSheetLink = {
 };
 
 function readPluginHeader(code: string): Record<string, string> {
-    const match = code.match(/\/\*\*([\s\S]*?)\*\//);
+    // 洛雪音源用 /*! ... */，也兼容 /** ... */
+    const match = code.match(/\/\*[!*]([\s\S]*?)\*\//);
     if (!match) return {};
 
     const meta: Record<string, string> = {};
@@ -2187,34 +2188,419 @@ const LX_ARTIST_WORKS_GETTERS: Record<string, ILxArtistWorksGetter> = {
     wy: getNeteaseArtistWorks,
 };
 
+/** 酷我没有可用的榜单目录接口，使用仍能拉到歌曲的固定榜单。 */
+const KUWO_CHARTS: Array<{ id: string; title: string }> = [
+    { id: '16', title: '热歌榜' },
+    { id: '17', title: '新歌榜' },
+    { id: '93', title: '飙升榜' },
+    { id: '26', title: '经典怀旧榜' },
+    { id: '64', title: '热评榜' },
+    { id: '158', title: '抖音榜' },
+    { id: '187', title: '流行榜' },
+    { id: '176', title: '古风榜' },
+];
+
+const PLAYLIST_TAGS = [
+    '华语',
+    '流行',
+    '摇滚',
+    '民谣',
+    '电子',
+    '轻音乐',
+    '古风',
+    '粤语',
+    '影视',
+    '经典',
+];
+
+const KUWO_HEADERS = { Referer: 'https://www.kuwo.cn/', 'User-Agent': BROWSER_USER_AGENT };
+const MIGU_HEADERS = { Referer: 'https://music.migu.cn/', 'User-Agent': MOBILE_USER_AGENT };
+
+function mapKuwoChartSong(item: any, platform: string): IMusic.IMusicItem {
+    return mapKuwoSongInfo(
+        {
+            ...item,
+            SONGNAME: item.SONGNAME ?? item.name ?? item.FSONGMNAME,
+            ARTIST: item.ARTIST ?? item.artist ?? item.FARTIST,
+            ALBUM: item.ALBUM ?? item.album ?? item.FALBUM,
+            DURATION: item.DURATION ?? item.duration ?? item.song_duration,
+            DC_TARGETID: item.DC_TARGETID ?? item.id,
+            MUSICRID: item.MUSICRID ?? (item.id ? `MUSIC_${item.id}` : undefined),
+        },
+        platform,
+    );
+}
+
+function mapKuwoSheetItem(item: any, platform: string): IMusic.IMusicSheetItem {
+    return {
+        id: String(item.playlistid ?? item.id ?? item.DC_TARGETID ?? ''),
+        platform,
+        title: cleanSearchText(item.name ?? item.title),
+        artwork: item.pic ?? item.hts_pic,
+        description: cleanSearchText(item.intro ?? item.info),
+        worksNum: Number(item.songnum ?? item.num) || undefined,
+        playCount: Number(item.playcnt ?? item.playnum) || undefined,
+        artist: cleanSearchText(item.nickname ?? item.uname),
+        raw: item,
+    };
+}
+
+function mapMiguSongInfo(item: any, platform: string): IMusic.IMusicItem {
+    const id = String(item.copyrightId ?? item.contentId ?? item.songId ?? item.id ?? '');
+    const artist =
+        typeof item.singer === 'string'
+            ? cleanSearchText(item.singer)
+            : normalizeArtistNames(item.singers);
+    return {
+        id,
+        platform,
+        title: cleanSearchText(item.songName ?? item.name),
+        artist,
+        album: cleanSearchText(item.album ?? item.albums?.[0]?.name),
+        artwork: pickMiguArtwork(item.albumImgs ?? item.imgItems),
+        raw: item,
+        songId: item.songId ?? item.id,
+        songmid: id,
+        contentId: item.contentId,
+        copyrightId: item.copyrightId,
+        lrc: item.lrcUrl ?? item.lyricUrl,
+    };
+}
+
+function mapMiguSheetItem(item: any, platform: string): IMusic.IMusicSheetItem {
+    return {
+        id: String(item.id ?? item.columnId ?? item.musicListId ?? ''),
+        platform,
+        title: cleanSearchText(item.name ?? item.columnTitle),
+        artwork: item.musicListPicUrl ?? item.columnPic,
+        description: cleanSearchText(item.summary ?? item.intro),
+        worksNum: Number(item.musicNum) || undefined,
+        playCount: Number(item.playNum) || undefined,
+        raw: item,
+    };
+}
+
+async function fetchKuwoBang(chartId: string, page: number): Promise<any> {
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const resp = await axios.get('http://kbangserver.kuwo.cn/ksong.s', {
+        params: {
+            from: 'pc',
+            fmt: 'json',
+            type: 'bang',
+            data: 'content',
+            id: chartId,
+            pn: currentPage - 1,
+            rn: ONLINE_PLAYLIST_PAGE_SIZE,
+        },
+        headers: KUWO_HEADERS,
+        timeout: 15000,
+        responseType: 'json',
+    });
+    return resp.data ?? {};
+}
+
+async function getKuwoTopLists(platform: string): Promise<IMusic.IMusicSheetGroupItem[]> {
+    const charts = await Promise.all(
+        KUWO_CHARTS.map(async (chart) => {
+            try {
+                const data = await fetchKuwoBang(chart.id, 1);
+                return mapKuwoSheetItem(
+                    {
+                        id: chart.id,
+                        name: cleanSearchText(data.name) || chart.title,
+                        pic: data.pic ?? data.v9_pic2,
+                        info: data.info,
+                        songnum: data.num,
+                    },
+                    platform,
+                );
+            } catch {
+                return mapKuwoSheetItem({ id: chart.id, name: chart.title }, platform);
+            }
+        }),
+    );
+    return charts.length ? [{ title: '酷我音乐', data: charts }] : [];
+}
+
+async function getKuwoTopListDetail(
+    topListItem: IMusic.IMusicSheetItem,
+    page: number,
+    platform: string,
+): Promise<ILxTopListInfoResult> {
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const data = await fetchKuwoBang(String(topListItem.raw?.id ?? topListItem.id), currentPage);
+    const list = Array.isArray(data.musiclist) ? data.musiclist : [];
+    const total = Number(data.num ?? 0);
+    return {
+        topListItem: {
+            ...topListItem,
+            title: cleanSearchText(data.name) || topListItem.title,
+            artwork: data.pic ?? data.v9_pic2 ?? topListItem.artwork,
+            description: cleanSearchText(data.info ?? topListItem.description),
+        },
+        musicList: list.map((item: any) => mapKuwoChartSong(item, platform)),
+        isEnd:
+            list.length < ONLINE_PLAYLIST_PAGE_SIZE ||
+            (total > 0 && currentPage * ONLINE_PLAYLIST_PAGE_SIZE >= total),
+    };
+}
+
+async function getKuwoRecommendSheetTags(): Promise<ILxRecommendSheetTagsResult> {
+    const data = PLAYLIST_TAGS.map((title) => mapRecommendTag(title, title));
+    return { pinned: data.slice(0, 8), data: [{ title: '分类', data }] };
+}
+
+async function getKuwoRecommendSheetsByTag(
+    tag: IMedia.IUnique,
+    page: number,
+    platform: string,
+): Promise<ILxPaginationResponse<IMusic.IMusicSheetItem>> {
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const keyword = cleanSearchText(tag?.title ?? tag?.id) || '热门';
+    const resp = await axios.get('https://search.kuwo.cn/r.s', {
+        params: {
+            client: 'kt',
+            all: keyword,
+            pn: currentPage - 1,
+            rn: ONLINE_PLAYLIST_PAGE_SIZE,
+            ft: 'playlist',
+            encoding: 'utf8',
+            rformat: 'json',
+            mobi: 1,
+            vipver: 1,
+        },
+        headers: KUWO_HEADERS,
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const list = Array.isArray(resp.data?.abslist) ? resp.data.abslist : [];
+    const total = Number(resp.data?.TOTAL ?? 0);
+    return {
+        data: list.map((item: any) => mapKuwoSheetItem(item, platform)),
+        isEnd:
+            list.length < ONLINE_PLAYLIST_PAGE_SIZE ||
+            (total > 0 && currentPage * ONLINE_PLAYLIST_PAGE_SIZE >= total),
+    };
+}
+
+async function getKuwoMusicSheetInfo(
+    sheetItem: IMusic.IMusicSheetItem,
+    page: number,
+    platform: string,
+): Promise<ILxSheetInfoResult | null> {
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const resp = await axios.get('http://nplserver.kuwo.cn/pl.svc', {
+        params: {
+            op: 'getlistinfo',
+            pid: sheetItem.raw?.playlistid ?? sheetItem.id,
+            pn: currentPage - 1,
+            rn: ONLINE_PLAYLIST_PAGE_SIZE,
+            encode: 'utf8',
+            keyset: 'pl2012',
+            identity: 'kuwo',
+            pcmp4: 1,
+            vipver: 'MUSIC_8.7.3.0_BCS28',
+            newver: 1,
+        },
+        headers: KUWO_HEADERS,
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const data = resp.data ?? {};
+    if (data.result === 'fail') return null;
+    const list = Array.isArray(data.musiclist) ? data.musiclist : [];
+    const total = Number(data.total ?? data.songnum ?? 0);
+    return {
+        sheetItem: {
+            ...sheetItem,
+            title: cleanSearchText(data.title) || sheetItem.title,
+            artwork: data.pic || sheetItem.artwork,
+            description: cleanSearchText(data.info ?? sheetItem.description),
+        },
+        musicList: list.map((item: any) => mapKuwoChartSong(item, platform)),
+        isEnd:
+            list.length < ONLINE_PLAYLIST_PAGE_SIZE ||
+            (total > 0 && currentPage * ONLINE_PLAYLIST_PAGE_SIZE >= total),
+    };
+}
+
+async function fetchMiguColumn(columnId: string, start: number, count: number): Promise<any> {
+    const resp = await axios.get(
+        'https://app.c.nf.migu.cn/MIGUM2.0/v1.0/content/querycontentbyId.do',
+        {
+            params: { columnId, start, count },
+            headers: MIGU_HEADERS,
+            timeout: 15000,
+            responseType: 'json',
+        },
+    );
+    return resp.data?.columnInfo ?? {};
+}
+
+async function getMiguTopLists(platform: string): Promise<IMusic.IMusicSheetGroupItem[]> {
+    const column = await fetchMiguColumn('15031292', 1, 30);
+    const contents = Array.isArray(column.contents) ? column.contents : [];
+    const data = contents
+        .map((item: any) => item.objectInfo ?? item)
+        .filter(
+            (item: any) =>
+                item?.columnId &&
+                item?.columnTitle &&
+                !/分类|营销|活动/.test(String(item.columnTitle)),
+        )
+        .map((item: any) => mapMiguSheetItem(item, platform));
+    return data.length ? [{ title: '咪咕音乐', data }] : [];
+}
+
+async function getMiguTopListDetail(
+    topListItem: IMusic.IMusicSheetItem,
+    page: number,
+    platform: string,
+): Promise<ILxTopListInfoResult> {
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const start = (currentPage - 1) * ONLINE_PLAYLIST_PAGE_SIZE + 1;
+    const column = await fetchMiguColumn(
+        String(topListItem.raw?.columnId ?? topListItem.id),
+        start,
+        ONLINE_PLAYLIST_PAGE_SIZE,
+    );
+    const contents = Array.isArray(column.contents) ? column.contents : [];
+    const musicList = contents
+        .map((item: any) => item.objectInfo ?? item)
+        .filter((item: any) => item?.songName || item?.copyrightId)
+        .map((item: any) => mapMiguSongInfo(item, platform));
+    const total = Number(column.contentsCount ?? 0);
+    return {
+        topListItem,
+        musicList,
+        isEnd:
+            musicList.length < ONLINE_PLAYLIST_PAGE_SIZE ||
+            (total > 0 && start + musicList.length - 1 >= total),
+    };
+}
+
+async function getMiguRecommendSheetTags(): Promise<ILxRecommendSheetTagsResult> {
+    const data = PLAYLIST_TAGS.map((title) => mapRecommendTag(title, title));
+    return { pinned: data.slice(0, 8), data: [{ title: '分类', data }] };
+}
+
+async function searchMiguPlaylists(
+    keyword: string,
+    page: number,
+): Promise<{ list: any[]; total: number }> {
+    const resp = await axios.get(
+        'https://pd.musicapp.migu.cn/MIGUM2.0/v1.0/content/search_all.do',
+        {
+            params: {
+                text: keyword,
+                pageNo: page,
+                pageSize: ONLINE_PLAYLIST_PAGE_SIZE,
+                searchSwitch: JSON.stringify({
+                    song: 0,
+                    album: 0,
+                    singer: 0,
+                    tagSong: 0,
+                    mvSong: 0,
+                    songlist: 1,
+                    bestShow: 0,
+                }),
+            },
+            headers: MIGU_HEADERS,
+            timeout: 15000,
+            responseType: 'json',
+        },
+    );
+    const result = resp.data?.songListResultData ?? {};
+    return {
+        list: Array.isArray(result.result) ? result.result : [],
+        total: Number(result.totalCount ?? 0),
+    };
+}
+
+async function getMiguRecommendSheetsByTag(
+    tag: IMedia.IUnique,
+    page: number,
+    platform: string,
+): Promise<ILxPaginationResponse<IMusic.IMusicSheetItem>> {
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const keyword = cleanSearchText(tag?.title ?? tag?.id) || '华语';
+    const { list, total } = await searchMiguPlaylists(keyword, currentPage);
+    return {
+        data: list.map((item: any) => mapMiguSheetItem(item, platform)),
+        isEnd:
+            list.length < ONLINE_PLAYLIST_PAGE_SIZE ||
+            (total > 0 && currentPage * ONLINE_PLAYLIST_PAGE_SIZE >= total),
+    };
+}
+
+async function getMiguMusicSheetInfo(
+    sheetItem: IMusic.IMusicSheetItem,
+    page: number,
+    platform: string,
+): Promise<ILxSheetInfoResult | null> {
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const resp = await axios.get(
+        'https://app.c.nf.migu.cn/MIGUM2.0/v1.0/user/queryMusicListSongs.do',
+        {
+            params: {
+                musicListId: sheetItem.raw?.id ?? sheetItem.id,
+                pageNo: currentPage,
+                pageSize: ONLINE_PLAYLIST_PAGE_SIZE,
+            },
+            headers: MIGU_HEADERS,
+            timeout: 15000,
+            responseType: 'json',
+        },
+    );
+    const list = Array.isArray(resp.data?.list) ? resp.data.list : [];
+    const total = Number(resp.data?.totalCount ?? 0);
+    return {
+        sheetItem,
+        musicList: list.map((item: any) => mapMiguSongInfo(item, platform)),
+        isEnd:
+            list.length < ONLINE_PLAYLIST_PAGE_SIZE ||
+            (total > 0 && currentPage * ONLINE_PLAYLIST_PAGE_SIZE >= total),
+    };
+}
+
 const LX_TOP_LIST_GETTERS: Record<string, ILxTopListsGetter> = {
     tx: getTencentTopLists,
     kg: getKugouTopLists,
     wy: getNeteaseTopLists,
+    kw: getKuwoTopLists,
+    mg: getMiguTopLists,
 };
 
 const LX_TOP_LIST_DETAIL_GETTERS: Record<string, ILxTopListDetailGetter> = {
     tx: getTencentTopListDetail,
     kg: getKugouTopListDetail,
     wy: getNeteaseTopListDetail,
+    kw: getKuwoTopListDetail,
+    mg: getMiguTopListDetail,
 };
 
 const LX_RECOMMEND_TAG_GETTERS: Record<string, ILxRecommendTagsGetter> = {
     tx: getTencentRecommendSheetTags,
     kg: getKugouRecommendSheetTags,
     wy: getNeteaseRecommendSheetTags,
+    kw: getKuwoRecommendSheetTags,
+    mg: getMiguRecommendSheetTags,
 };
 
 const LX_RECOMMEND_SHEET_GETTERS: Record<string, ILxRecommendSheetsGetter> = {
     tx: getTencentRecommendSheetsByTag,
     kg: getKugouRecommendSheetsByTag,
     wy: getNeteaseRecommendSheetsByTag,
+    kw: getKuwoRecommendSheetsByTag,
+    mg: getMiguRecommendSheetsByTag,
 };
 
 const LX_MUSIC_SHEET_INFO_GETTERS: Record<string, ILxMusicSheetInfoGetter> = {
     tx: fetchTencentPlaylistInfo,
     kg: fetchKugouPlaylistInfo,
     wy: getNeteaseMusicSheetInfo,
+    kw: getKuwoMusicSheetInfo,
+    mg: getMiguMusicSheetInfo,
 };
 
 /**
@@ -2392,11 +2778,21 @@ export async function executeLxPluginCode(
             if (source?.type && source.type !== 'music') continue;
             if (source?.actions && !source.actions.includes('musicUrl')) continue;
 
-            const platform = source.name ?? `${meta.name ?? '洛雪音源'}-${sourceKey}`;
+            const platformLabel = source.name ?? `${meta.name ?? '洛雪音源'}-${sourceKey}`;
+            // 展示名各家脚本都会用「QQ音乐」。platform 带上脚本名，安装和取流才不会互相覆盖。
+            const scriptShort = (meta.name ?? '').replace(/\s*[（(].*$/, '').trim();
+            const distinguisher = scriptShort || hash.slice(0, 6);
+            const platform =
+                distinguisher !== platformLabel
+                    ? `${platformLabel} · ${distinguisher}`
+                    : platformLabel;
             const sourceSearchers = LX_MEDIA_SEARCHERS[sourceKey] ?? {};
             const supportedSearchType = Object.keys(sourceSearchers) as IMedia.SupportMediaType[];
             const instance: IPlugin.IPluginInstance = {
                 platform,
+                platformLabel,
+                scriptName: meta.name,
+                sourceKey,
                 version: meta.version,
                 author: meta.author,
                 description: meta.description,

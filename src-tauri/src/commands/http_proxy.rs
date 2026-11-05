@@ -7,6 +7,142 @@ pub struct HttpOptions {
     pub method: Option<String>,
     pub headers: Option<HashMap<String, String>>,
     pub body: Option<serde_json::Value>,
+    /// 电台代理：`system` 系统代理，`direct` 直连，或其他为自定义代理 URL。
+    /// 不传时保持原来的环境变量代理行为。
+    #[serde(default)]
+    pub proxy: Option<String>,
+}
+
+pub(crate) enum OutboundProxy {
+    Unspecified,
+    Direct,
+    Explicit(reqwest::Proxy),
+}
+
+/// 把电台页的代理选择应用到 reqwest。系统代理优先读 Windows 的 Internet 设置。
+pub fn parse_outbound_proxy(spec: Option<&str>) -> Result<OutboundProxy, String> {
+    let Some(spec) = spec.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(OutboundProxy::Unspecified);
+    };
+    if spec == "direct" {
+        return Ok(OutboundProxy::Direct);
+    }
+    if spec == "system" {
+        return match detect_system_proxy() {
+            Some(url) => Ok(OutboundProxy::Explicit(
+                reqwest::Proxy::all(url).map_err(|err| err.to_string())?,
+            )),
+            None => Ok(OutboundProxy::Unspecified),
+        };
+    }
+    let url = normalize_proxy_url(spec)?;
+    Ok(OutboundProxy::Explicit(
+        reqwest::Proxy::all(url).map_err(|err| err.to_string())?,
+    ))
+}
+
+pub fn apply_async_proxy(
+    builder: reqwest::ClientBuilder,
+    proxy: OutboundProxy,
+) -> reqwest::ClientBuilder {
+    match proxy {
+        OutboundProxy::Unspecified => builder,
+        OutboundProxy::Direct => builder.no_proxy(),
+        OutboundProxy::Explicit(proxy) => builder.proxy(proxy),
+    }
+}
+
+pub fn apply_blocking_proxy(
+    builder: reqwest::blocking::ClientBuilder,
+    proxy: OutboundProxy,
+) -> reqwest::blocking::ClientBuilder {
+    match proxy {
+        OutboundProxy::Unspecified => builder,
+        OutboundProxy::Direct => builder.no_proxy(),
+        OutboundProxy::Explicit(proxy) => builder.proxy(proxy),
+    }
+}
+
+fn normalize_proxy_url(raw: &str) -> Result<String, String> {
+    let text = raw.trim();
+    if text.is_empty() || text.contains(char::is_whitespace) {
+        return Err("代理地址无效".to_string());
+    }
+    let with_scheme = if text.contains("://") {
+        text.to_string()
+    } else {
+        format!("http://{text}")
+    };
+    let url = reqwest::Url::parse(&with_scheme).map_err(|_| "代理地址无效".to_string())?;
+    if !matches!(url.scheme(), "http" | "https" | "socks5" | "socks5h") || url.port().is_none() {
+        return Err("代理地址无效".to_string());
+    }
+    Ok(url.to_string())
+}
+
+fn detect_system_proxy() -> Option<String> {
+    #[cfg(windows)]
+    {
+        windows_system_proxy()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn windows_system_proxy() -> Option<String> {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+
+    let settings = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Internet Settings")
+        .ok()?;
+    let enabled: u32 = settings.get_value("ProxyEnable").unwrap_or(0);
+    if enabled == 0 {
+        return None;
+    }
+    let server: String = settings.get_value("ProxyServer").ok()?;
+    parse_windows_proxy_server(&server)
+}
+
+fn parse_windows_proxy_server(server: &str) -> Option<String> {
+    let server = server.trim();
+    if server.is_empty() {
+        return None;
+    }
+    if !server.contains('=') {
+        return normalize_proxy_url(server).ok();
+    }
+    let mut https = None;
+    let mut http = None;
+    let mut socks = None;
+    for part in server.split(';') {
+        let Some((key, value)) = part.split_once('=') else {
+            continue;
+        };
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+        match key.trim().to_ascii_lowercase().as_str() {
+            "https" => https = Some(value.to_string()),
+            "http" => http = Some(value.to_string()),
+            "socks" => socks = Some(value.to_string()),
+            _ => {}
+        }
+    }
+    if let Some(value) = https.or(http) {
+        return normalize_proxy_url(&value).ok();
+    }
+    let socks = socks?;
+    let raw = if socks.contains("://") {
+        socks
+    } else {
+        format!("socks5://{socks}")
+    };
+    normalize_proxy_url(&raw).ok()
 }
 
 #[derive(Debug, Serialize)]
@@ -22,10 +158,13 @@ pub async fn http_request(
     url: String,
     options: Option<HttpOptions>,
 ) -> Result<HttpResponsePayload, String> {
-    let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .build()
-        .map_err(|e| e.to_string())?;
+    let proxy = parse_outbound_proxy(options.as_ref().and_then(|item| item.proxy.as_deref()))?;
+    let client = apply_async_proxy(
+        reqwest::Client::builder().danger_accept_invalid_certs(true),
+        proxy,
+    )
+    .build()
+    .map_err(|e| e.to_string())?;
 
     let method_str = options
         .as_ref()

@@ -23,6 +23,7 @@ import {
 import { CONTEXT_BRIDGE_KEY as META_KEY } from '@infra/mediaMeta/common/constant';
 import { CONTEXT_BRIDGE_KEY as SHEET_KEY } from '@infra/musicSheet/common/constant';
 import { CONTEXT_BRIDGE_KEY as APP_CONFIG_KEY } from '@infra/appConfig/common/constant';
+import { findPluginForPlatform } from '@infra/pluginManager/common/pluginIdentity';
 import { methodNormalizers } from '@infra/pluginManager/main/normalizer';
 import {
     getMediaSourceAdapter,
@@ -105,6 +106,22 @@ async function computeHash(text: string): Promise<string> {
         }
         return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).repeat(2);
     }
+}
+
+/**
+ * 同一脚本里的同一平台。sourceKey 优先；旧数据没有它时，用短平台名比较。
+ * 不能拿完整 platform 比：不同脚本都会叫「QQ音乐」，加上脚本名后新旧格式也不相同。
+ */
+function sameScriptSource(
+    current: Pick<IPlugin.IPluginDelegate, 'platform' | 'platformLabel' | 'sourceKey'>,
+    next: Pick<IPlugin.IPluginDelegate, 'platform' | 'platformLabel' | 'sourceKey'>,
+): boolean {
+    if (current.sourceKey && next.sourceKey) {
+        return current.sourceKey === next.sourceKey;
+    }
+    const currentLabel = (current.platformLabel || current.platform).split(' · ')[0];
+    const nextLabel = (next.platformLabel || next.platform).split(' · ')[0];
+    return currentLabel === nextLabel;
 }
 
 /** 从插件实例提取序列化安全的 delegate（extractPluginDelegate 的同步等价物） */
@@ -262,6 +279,7 @@ class TauriPluginManagerService {
         this.builtinPlugins.set(instance.platform, instance);
 
         const delegate = buildBuiltinDelegate(instance, hash);
+        delegate.sourceHash = hash;
         const loaded: ILoadedPlugin = {
             hash,
             sourceHash: hash,
@@ -337,6 +355,7 @@ class TauriPluginManagerService {
                 const delegate = {
                     ...(raw as any),
                     hash,
+                    sourceHash,
                     path: filePath,
                 } as IPlugin.IPluginDelegate;
                 return {
@@ -490,31 +509,28 @@ class TauriPluginManagerService {
             return { success: false, message: 'Failed to parse plugin' };
         }
 
-        // 检查是否有同平台的旧版插件
-        const existingEntries = this.findPluginsByPlatforms(
-            loadedPlugins.map((loaded) => loaded.delegate.platform),
-        );
-        if (existingEntries.length > 0) {
-            if (existingEntries.some((entry) => this.isBuiltinPlugin(entry))) {
-                loadedPlugins[0].host?.terminate();
-                await fsRemove(filePath);
-                return { success: false, message: 'Plugin already installed' };
-            }
-
-            // 版本比较：仅在新版本更高时安装（可通过配置跳过）
+        // 只替换同一份脚本（文件头 @name 相同）。平台展示名各家都会用，不能拿来判断是不是同一个插件。
+        const scriptName = loadedPlugins[0].delegate.scriptName?.trim();
+        const sameScript = scriptName
+            ? [...this.plugins.values()].filter(
+                  (item) =>
+                      item.delegate.scriptName?.trim() === scriptName &&
+                      !this.isBuiltinPlugin(item),
+              )
+            : [];
+        if (sameScript.length > 0) {
             const skipVersionCheck =
                 (await this.getConfigByKey('plugin.notCheckPluginVersion')) ?? false;
             if (!skipVersionCheck) {
-                for (const existingEntry of existingEntries) {
-                    const nextEntry = loadedPlugins.find(
-                        (loaded) => loaded.delegate.platform === existingEntry.delegate.platform,
+                for (const existingEntry of sameScript) {
+                    const nextEntry = loadedPlugins.find((loaded) =>
+                        sameScriptSource(existingEntry.delegate, loaded.delegate),
                     );
                     if (
                         existingEntry.delegate.version &&
                         nextEntry?.delegate.version &&
                         compare(existingEntry.delegate.version, nextEntry.delegate.version, '>')
                     ) {
-                        // 回滚：删除刚写入的文件
                         loadedPlugins[0].host?.terminate();
                         await fsRemove(filePath);
                         return {
@@ -525,8 +541,7 @@ class TauriPluginManagerService {
                 }
             }
 
-            // 删除旧插件文件
-            for (const group of this.groupPluginsBySource(existingEntries)) {
+            for (const group of this.groupPluginsBySource(sameScript)) {
                 await this.removePluginFile(group[0]);
                 for (const loaded of group) {
                     this.plugins.delete(loaded.hash);
@@ -607,8 +622,8 @@ class TauriPluginManagerService {
                 (await this.getConfigByKey('plugin.notCheckPluginVersion')) ?? false;
             if (!skipVersionCheck) {
                 for (const current of sourceGroup) {
-                    const next = testPlugins.find(
-                        (it) => it.delegate.platform === current.delegate.platform,
+                    const next = testPlugins.find((it) =>
+                        sameScriptSource(current.delegate, it.delegate),
                     );
                     if (
                         current.delegate.version &&
@@ -635,8 +650,8 @@ class TauriPluginManagerService {
 
             // 迁移 meta 到新 hash，保留排序与用户变量
             for (const next of testPlugins) {
-                const previous = sourceGroup.find(
-                    (current) => current.delegate.platform === next.delegate.platform,
+                const previous = sourceGroup.find((current) =>
+                    sameScriptSource(current.delegate, next.delegate),
                 );
                 if (previous?.hash && this.pluginMeta[previous.hash]) {
                     this.pluginMeta[next.hash] = this.pluginMeta[previous.hash];
@@ -791,14 +806,14 @@ class TauriPluginManagerService {
         };
     }
 
-    /** 通过 platform 查找插件 */
+    /** 通过 platform 查找插件。短名只有一份脚本时才回退，避免两家「QQ音乐」串台。 */
     private findPluginByPlatform(platform: string): ILoadedPlugin | undefined {
-        for (const loaded of this.plugins.values()) {
-            if (loaded.delegate.platform === platform) {
-                return loaded;
-            }
-        }
-        return undefined;
+        const entries = [...this.plugins.values()];
+        const matched = findPluginForPlatform(
+            entries.map((item) => item.delegate),
+            platform,
+        );
+        return matched ? entries.find((item) => item.delegate === matched) : undefined;
     }
 
     /**

@@ -21,16 +21,51 @@ import {
     usePluginAvailability,
 } from '@infra/pluginManager/renderer/hooks';
 import { sortByPluginOrder } from '@infra/pluginManager/common/sortByOrder';
+import {
+    pluginGroupKey,
+    pluginPlatformLabel,
+    pluginScriptLabel,
+} from '@infra/pluginManager/common/pluginIdentity';
 import { StatusPlaceholder } from '@renderer/mainWindow/components/ui/StatusPlaceholder';
 import { RequestStatus, LOCAL_PLUGIN_HASH } from '@common/constant';
 import PluginItem from './PluginItem';
+import PluginGroup, { type PluginGroupData } from './PluginGroup';
+
+function buildGroups(plugins: IPlugin.IPluginDelegate[]): PluginGroupData[] {
+    const groups: PluginGroupData[] = [];
+    const indexByKey = new Map<string, number>();
+
+    for (const plugin of plugins) {
+        const key = pluginGroupKey(plugin);
+        const existing = indexByKey.get(key);
+        if (existing == null) {
+            indexByKey.set(key, groups.length);
+            groups.push({
+                id: key,
+                scriptName: plugin.scriptName?.trim() || plugin.platform,
+                plugins: [plugin],
+                platforms: [pluginPlatformLabel(plugin)],
+            });
+        } else {
+            groups[existing].plugins.push(plugin);
+            groups[existing].platforms.push(pluginPlatformLabel(plugin));
+        }
+    }
+
+    return groups;
+}
+
+/** 多平台，或脚本名和平台名不同，才显示组标题 */
+function isScriptGroup(group: PluginGroupData): boolean {
+    if (group.plugins.length > 1) return true;
+    return pluginScriptLabel(group.plugins[0]) != null;
+}
 
 /**
  * PluginList — 可拖拽排序的插件列表
  *
- * 使用 @dnd-kit + SortableContext 实现拖拽排序，
- * 拖拽结束后通过 pluginManager.setPluginMeta 持久化排序。
- * 内置插件（LOCAL_PLUGIN_HASH）不显示在列表中。
+ * 同一脚本的多个平台收成一组。组的位置取组内最靠前的一项，
+ * 拖动组标题时整组一起移动。
  */
 export default function PluginList() {
     const { t } = useTranslation();
@@ -38,40 +73,39 @@ export default function PluginList() {
     const meta = usePluginMeta();
     const availability = usePluginAvailability();
 
-    // 过滤内置插件 + 按 meta.order 排序
     const sortedPlugins = useMemo(() => {
         const filtered = plugins.filter((p) => p.hash !== LOCAL_PLUGIN_HASH);
         return sortByPluginOrder(filtered, meta);
     }, [plugins, meta]);
 
-    const sortedIds = useMemo(() => sortedPlugins.map((p) => p.hash), [sortedPlugins]);
+    const groups = useMemo(() => buildGroups(sortedPlugins), [sortedPlugins]);
 
-    // ── DnD 传感器 ──
+    const sortableIds = useMemo(
+        () => groups.map((group) => (isScriptGroup(group) ? group.id : group.plugins[0].hash)),
+        [groups],
+    );
+
     const sensors = useSensors(useSensor(PointerSensor));
 
-    // ── 拖拽结束 ──
     const handleDragEnd = useCallback(
         (event: DragEndEvent) => {
             const { active, over } = event;
             if (!over || active.id === over.id) return;
 
-            const oldIndex = sortedPlugins.findIndex((p) => p.hash === active.id);
-            const newIndex = sortedPlugins.findIndex((p) => p.hash === over.id);
+            const oldIndex = sortableIds.indexOf(String(active.id));
+            const newIndex = sortableIds.indexOf(String(over.id));
             if (oldIndex === -1 || newIndex === -1) return;
 
-            // 计算新顺序
-            const reordered = arrayMove(sortedPlugins, oldIndex, newIndex);
-
-            // 为所有插件分配确定性 order（解决首次拖拽时无 order 的插件乱序问题）
-            const updates = reordered.map((p, i) => ({
-                hash: p.hash,
-                meta: { order: i },
+            const reordered = arrayMove(groups, oldIndex, newIndex).flatMap(
+                (group) => group.plugins,
+            );
+            const updates = reordered.map((plugin, index) => ({
+                hash: plugin.hash,
+                meta: { order: index },
             }));
-
-            // 批量更新：先同步刷新 atom（UI 即时响应），再异步持久化
             pluginManager.batchSetPluginMeta(updates);
         },
-        [sortedPlugins],
+        [groups, sortableIds],
     );
 
     const handleToggleEnabled = useCallback((hash: string, enabled: boolean) => {
@@ -96,20 +130,31 @@ export default function PluginList() {
             modifiers={DND_MODIFIERS}
             onDragEnd={handleDragEnd}
         >
-            <SortableContext items={sortedIds} strategy={verticalListSortingStrategy}>
+            <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
                 <div className="p-plugin-manager__list">
-                    {sortedPlugins.map((plugin) => (
-                        <PluginItem
-                            key={plugin.hash}
-                            plugin={plugin}
-                            enabled={meta[plugin.hash]?.enabled !== false}
-                            availability={availability[plugin.hash]}
-                            sourceRedirectPlatform={
-                                meta[plugin.hash]?.sourceRedirectPlatform ?? null
-                            }
-                            onToggleEnabled={handleToggleEnabled}
-                        />
-                    ))}
+                    {groups.map((group) =>
+                        isScriptGroup(group) ? (
+                            <PluginGroup
+                                key={group.id}
+                                group={group}
+                                meta={meta}
+                                availability={availability}
+                                onToggleEnabled={handleToggleEnabled}
+                            />
+                        ) : (
+                            <PluginItem
+                                key={group.plugins[0].hash}
+                                plugin={group.plugins[0]}
+                                enabled={meta[group.plugins[0].hash]?.enabled !== false}
+                                availability={availability[group.plugins[0].hash]}
+                                sourceRedirectPlatform={
+                                    meta[group.plugins[0].hash]?.sourceRedirectPlatform ?? null
+                                }
+                                groupPlatforms={group.platforms}
+                                onToggleEnabled={handleToggleEnabled}
+                            />
+                        ),
+                    )}
                 </div>
             </SortableContext>
         </DndContext>

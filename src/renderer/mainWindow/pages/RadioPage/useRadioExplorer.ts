@@ -8,6 +8,7 @@ import {
     type IRadioBrowserFacets,
     type IRadioStationFilters,
 } from '@infra/radioBrowser/renderer';
+import { useRadioProxy } from '@infra/radioBrowser/proxy';
 
 const EMPTY_FACETS: IRadioBrowserFacets = { countries: [], languages: [], tags: [] };
 
@@ -20,6 +21,8 @@ export function useRadioExplorer(filters: IRadioStationFilters) {
     const filtersRef = useRef(filters);
     filtersRef.current = filters;
     const filterKey = JSON.stringify(filters);
+    const proxy = useRadioProxy();
+    const proxyKey = `${proxy.mode}\0${proxy.customUrl}`;
 
     const loadStations = useCallback(async (forceGeneration?: number) => {
         const generation = forceGeneration ?? ++generationRef.current;
@@ -39,7 +42,7 @@ export function useRadioExplorer(filters: IRadioStationFilters) {
     useEffect(() => {
         const generation = ++generationRef.current;
         loadStations(generation);
-    }, [filterKey, loadStations]);
+    }, [filterKey, proxyKey, loadStations]);
 
     const loadFacets = useCallback(async (force = false) => {
         setFacetsStatus(RequestStatus.Pending);
@@ -53,8 +56,8 @@ export function useRadioExplorer(filters: IRadioStationFilters) {
     }, []);
 
     useEffect(() => {
-        loadFacets();
-    }, [loadFacets]);
+        loadFacets(proxyKey !== 'system\0');
+    }, [loadFacets, proxyKey]);
 
     return {
         stations,
@@ -70,6 +73,8 @@ export function useRadioSearch(query: string, enabled: boolean) {
     const [results, setResults] = useState<IRadioBrowserMusicItem[]>([]);
     const [status, setStatus] = useState<RequestStatus>(RequestStatus.Idle);
     const generationRef = useRef(0);
+    const proxy = useRadioProxy();
+    const proxyKey = `${proxy.mode}\0${proxy.customUrl}`;
 
     useEffect(() => {
         const normalized = query.trim();
@@ -95,7 +100,7 @@ export function useRadioSearch(query: string, enabled: boolean) {
         }, 260);
 
         return () => clearTimeout(timer);
-    }, [enabled, query]);
+    }, [enabled, query, proxyKey]);
 
     return { results, status };
 }

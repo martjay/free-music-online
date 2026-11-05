@@ -1,53 +1,48 @@
-// ============================================================================
-// MiniMode — 迷你模式窗口样式
-// ============================================================================
-//
-// 设计稿还原（像素级）：
-//   容器: 420×120, rounded-[20px], glass(bg-popover, blur-xl, border-default, shadow-xl)
-//         px-16, flex, items-center, gap-16
-//   封面: 72×72, rounded-2xl(16px), bg fill-subtle, border, shadow, overflow hidden
-//   信息区: flex-1, min-w-0
-//     标题: text-sm(14px), font-semibold, text-primary, truncate
-//     副标题: text-xs(12px), text-secondary, truncate, mt-1(4px)
-//     进度条: mt-3(12px), h-6px, rounded-full, track fill-neutral, fill brand/80
-//   控制区: flex-col, items-end, gap-12
-//     播放行: flex, items-center, gap-4
-//       prev/next: 32×32, rounded-pill, text-secondary, hover: text-primary bg fill-subtle-hover
-//       play: 36×36, rounded-pill, bg brand, color on-brand, shadow-sm
-//     工具行: flex, items-center, gap-8, text-secondary
-//       btn: 32×32, rounded-pill, hover: bg fill-subtle-hover
+// 迷你播放器：不透明卡片，圆角以外才透出桌面。
+
+body[data-window='minimode'],
+body[data-window='minimode'] #root {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: transparent;
+    overflow: hidden;
+}
+
+body[data-window='minimode'] #root {
+    box-sizing: border-box;
+    padding: 3px;
+}
 
 .l-minimode {
-    width: 420px;
-    height: 120px;
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
     gap: var(--space-4);
-    padding: 0 var(--space-4);
-
-    // 背景
-    background-color: var(--color-bg-popover);
+    position: relative;
+    padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
+    overflow: hidden;
+    box-sizing: border-box;
+    background-color: var(--color-bg-modal);
     border: 1px solid var(--color-border-default);
-    border-radius: var(--radius-modal);
-    box-shadow: var(--shadow-xl);
-
+    border-radius: var(--radius-panel);
     user-select: none;
+    cursor: grab;
 
-    // ── 封面 ──
+    &:active {
+        cursor: grabbing;
+    }
 
     &__artwork {
-        // 重置 button 默认样式
-        background: none;
-        padding: 0;
-
         position: relative;
-        width: 72px;
-        height: 72px;
+        width: 68px;
+        height: 68px;
         flex-shrink: 0;
-        border-radius: var(--radius-panel);
-        background-color: var(--color-fill-subtle);
-        border: 1px solid var(--color-border-default);
-        box-shadow: var(--shadow-sm);
+        padding: 0;
+        border: none;
+        border-radius: var(--radius-control);
+        background-color: var(--color-bg-placeholder);
         overflow: hidden;
         cursor: pointer;
     }
@@ -57,9 +52,9 @@
         height: 100%;
         object-fit: cover;
         display: block;
+        pointer-events: none;
     }
 
-    // hover 覆盖层：半透明遮罩 + 展开图标
     &__artwork-overlay {
         position: absolute;
         inset: 0;
@@ -77,11 +72,13 @@
         opacity: 1;
     }
 
-    // ── 歌曲信息 ──
-
-    &__info {
+    &__main {
         flex: 1;
         min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: var(--space-1-5);
     }
 
     &__title {
@@ -91,7 +88,7 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        min-height: 1lh;
+        line-height: 1.3;
     }
 
     &__subtitle {
@@ -100,13 +97,12 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        margin-top: var(--space-1);
-        min-height: 1lh;
+        line-height: 1.3;
     }
 
     &__progress {
-        margin-top: var(--space-3);
-        height: 6px;
+        height: 4px;
+        margin-top: var(--space-1);
         border-radius: var(--radius-pill);
         background-color: var(--color-fill-neutral);
         overflow: hidden;
@@ -115,57 +111,88 @@
     &__progress-fill {
         height: 100%;
         border-radius: var(--radius-pill);
-        background-color: color-mix(in srgb, var(--color-fill-brand) 80%, transparent);
-        transition: width var(--duration-normal) linear;
+        background-color: var(--color-fill-brand);
     }
 
-    // ── 控制区域 ──
-
-    &__controls {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: var(--space-3);
-    }
-
-    &__playback {
+    &__tools {
         display: flex;
         align-items: center;
-        gap: var(--space-2);
+        gap: var(--space-1);
+        margin-top: var(--space-1);
     }
 
-    // ── 播放控制按钮（通用） ──
-
+    &__tool,
+    &__expand,
     &__ctrl-btn {
-        // 重置 button 默认样式
         border: none;
         background: transparent;
         padding: 0;
-
-        width: 32px;
-        height: 32px;
-        border-radius: var(--radius-pill);
         display: flex;
         align-items: center;
         justify-content: center;
         color: var(--color-text-secondary);
         cursor: pointer;
-        transition:
-            color var(--duration-fast) var(--ease-standard),
-            background-color var(--duration-fast) var(--ease-standard);
+        border-radius: var(--radius-pill);
 
         &:hover {
             color: var(--color-text-primary);
             background-color: var(--color-fill-subtle-hover);
         }
+    }
 
-        // ── 播放/暂停按钮 ──
+    &__tool,
+    &__expand {
+        width: 28px;
+        height: 28px;
+    }
+
+    &__tool.is-favorite {
+        color: var(--color-favorite);
+    }
+
+    &__tool.is-active,
+    &__tool.is-busy {
+        color: var(--color-fill-brand);
+    }
+
+    &__tool.is-done {
+        color: var(--color-status-success-text);
+    }
+
+    &__tool.is-error {
+        color: var(--color-status-danger-text);
+    }
+
+    &__side {
+        position: relative;
+        display: flex;
+        align-items: center;
+        align-self: stretch;
+        flex-shrink: 0;
+        padding-top: var(--space-6);
+    }
+
+    &__expand {
+        position: absolute;
+        top: 0;
+        right: 0;
+    }
+
+    &__playback {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+    }
+
+    &__ctrl-btn {
+        width: 32px;
+        height: 32px;
+
         &--play {
-            width: 36px;
-            height: 36px;
+            width: 40px;
+            height: 40px;
             background-color: var(--color-fill-brand);
             color: var(--color-text-on-brand);
-            box-shadow: var(--shadow-sm);
 
             &:hover {
                 background-color: var(--color-fill-brand-hover);
@@ -173,46 +200,45 @@
             }
         }
     }
+}
 
-    // ── 工具按钮 ──
+.l-minimode__qualities {
+    position: absolute;
+    left: var(--space-3);
+    right: var(--space-3);
+    bottom: var(--space-2);
+    display: flex;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    background-color: var(--color-bg-placeholder);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-control);
+}
 
-    &__utility {
-        display: flex;
-        align-items: center;
-        gap: var(--space-1-5);
+.l-minimode__quality {
+    flex: 1;
+    min-width: 0;
+    height: 28px;
+    padding: 0 var(--space-1);
+    border: none;
+    border-radius: var(--radius-badge);
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: var(--text-overline-size);
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover {
+        background-color: var(--color-fill-subtle-hover);
     }
+}
 
-    &__util-btn {
-        // 重置 button 默认样式
-        border: none;
-        background: transparent;
-        padding: 0;
+.l-minimode .is-spin {
+    animation: minimode-spin 0.8s linear infinite;
+}
 
-        width: 26px;
-        height: 26px;
-        border-radius: var(--radius-pill);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--color-text-secondary);
-        cursor: pointer;
-        transition:
-            color var(--duration-fast) var(--ease-standard),
-            background-color var(--duration-fast) var(--ease-standard);
-
-        &:hover {
-            background-color: var(--color-fill-subtle-hover);
-            color: var(--color-text-primary);
-        }
-
-        // 收藏激活态（红色心）
-        &.is-favorite {
-            color: var(--color-favorite);
-        }
-
-        // 其他激活态（桌面歌词开启 / 循环模式）
-        &.is-active {
-            color: var(--color-fill-brand);
-        }
+@keyframes minimode-spin {
+    to {
+        transform: rotate(360deg);
     }
 }

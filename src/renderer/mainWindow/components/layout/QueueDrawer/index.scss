@@ -168,11 +168,13 @@
             display: none;
         }
         .l-queue-drawer__item-play {
-            display: block;
+            display: inline-flex;
         }
     }
 
-    // ── Hover: 显示删除按钮 ──
+    // ── Hover: 显示下载和删除按钮 ──
+    &:hover .l-queue-drawer__item-download,
+    &:focus-within .l-queue-drawer__item-download,
     &:hover .l-queue-drawer__item-remove {
         opacity: 1;
     }
@@ -207,8 +209,19 @@
 
 .l-queue-drawer__item-play {
     display: none;
+    width: 20px;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
     color: var(--color-text-secondary);
-    fill: currentColor;
+    cursor: pointer;
+
+    svg {
+        fill: currentColor;
+    }
 }
 
 // ── Equalizer animation ──
@@ -301,6 +314,19 @@
     line-height: 1.4;
     flex-shrink: 0;
     white-space: nowrap;
+}
+
+.download-btn.l-queue-drawer__item-download {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    opacity: 0;
+
+    &.is-open,
+    &.is-downloading,
+    &.is-error {
+        opacity: 1;
+    }
 }
 
 // ── Remove button ──

@@ -8,13 +8,17 @@
 
 [English](./README_EN.md) | 简体中文
 
-[![License](https://img.shields.io/github/license/raclen/AnhePlayer?style=flat&color=blue)](./LICENSE)
-[![Version](https://img.shields.io/github/package-json/v/raclen/AnhePlayer?style=flat&color=orange)](./package.json)
-[![Release](https://img.shields.io/github/v/release/raclen/AnhePlayer?style=flat&color=green)](https://github.com/raclen/AnhePlayer/releases)
-[![Downloads](https://img.shields.io/github/downloads/raclen/AnhePlayer/total?style=flat&color=brightgreen)](https://github.com/raclen/AnhePlayer/releases)
-[![Stars](https://img.shields.io/github/stars/raclen/AnhePlayer?style=flat&color=yellow)](https://github.com/raclen/AnhePlayer/stargazers)
+[![License](https://img.shields.io/github/license/martjay/free-music-online?style=flat&color=blue)](./LICENSE)
+[![Version](https://img.shields.io/github/package-json/v/martjay/free-music-online?style=flat&color=orange)](./package.json)
+[![Stars](https://img.shields.io/github/stars/martjay/free-music-online?style=flat&color=yellow)](https://github.com/martjay/free-music-online/stargazers)
 
 </div>
+
+## 来源
+
+这个仓库是在 [AnhePlayer](https://github.com/raclen/AnhePlayer) 上继续修改和优化的版本，不是另起炉灶的新播放器。原项目由 [raclen](https://github.com/raclen) 维护，本仓库保留它的功能、代码结构和 [AGPL-3.0-only](./LICENSE) 许可证。
+
+后续改动集中在实际使用体验，包括插件音源、播放换源、歌词、下载列表、迷你播放器和电台。使用、修改或再发布时，需要同时保留原项目的许可和署名。
 
 ## 简介
 
@@ -26,7 +30,7 @@ AnhePlayer 是一款专为 Windows 设计的现代化桌面音乐播放器，基
 
 ## 下载
 
-请前往 [GitHub Releases](https://github.com/raclen/AnhePlayer/releases) 下载最新版本。
+本仓库的安装包发布在 [GitHub Releases](https://github.com/martjay/free-music-online/releases)。原版发布页仍是 [AnhePlayer Releases](https://github.com/raclen/AnhePlayer/releases)。
 
 当前仅支持 **Windows (10 / 11)** 系统：
 
@@ -124,8 +128,8 @@ my-theme/
 ### 快速开始
 
 ```bash
-git clone https://github.com/raclen/AnhePlayer.git
-cd AnhePlayer
+git clone https://github.com/martjay/free-music-online.git
+cd free-music-online
 pnpm install
 
 # 启动 Tauri v2 开发环境
@@ -153,7 +157,7 @@ pnpm tauri:dev
 
 ## Star 趋势
 
-[![Star History Chart](https://api.star-history.com/svg?repos=raclen/AnhePlayer&type=Date)](https://star-history.com/#raclen/AnhePlayer&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=martjay/free-music-online&type=Date)](https://star-history.com/#martjay/free-music-online&Date)
 
 ## 许可证
 

@@ -98,5 +98,15 @@ dist-deb/
 nvm-setup.exe
 changqing_chajian.js
 src-tauri/target/
+src-tauri/gen/
 /temp
+
+# 本地编辑器、代理会话和系统杂项
+.cursor/
+.specstory/
+.cursorindexingignore
+.idea/
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 

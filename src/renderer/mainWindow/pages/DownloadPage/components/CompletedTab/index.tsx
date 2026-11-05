@@ -22,6 +22,12 @@ import { StatusPlaceholder } from '../../../../components/ui/StatusPlaceholder';
 import { showContextMenu } from '../../../../components/ui/ContextMenu/contextMenuManager';
 import './index.scss';
 
+const COMPLETED_COLUMN_WIDTHS = {
+    title: '22%',
+    artist: '16%',
+    album: '30%',
+};
+
 /**
  * CompletedTab — 已完成 Tab
  *
@@ -150,6 +156,9 @@ export function CompletedTab() {
                     data={filteredList}
                     requestStatus={requestStatus}
                     onRetry={handleRetry}
+                    columnLayoutKey="download-completed-columns:v1"
+                    defaultColumnWidths={COMPLETED_COLUMN_WIDTHS}
+                    inspectText
                     statusColumn={(item) => (
                         <>
                             <FavoriteButton musicItem={item} size="sm" />

@@ -32,6 +32,8 @@ import { isSameMedia } from '@common/mediaKey';
 import formatDuration from '@common/formatDuration';
 import appConfig from '@infra/appConfig/renderer';
 import trackPlayer from '../../../core/trackPlayer';
+import { showToast } from '../../ui/Toast';
+import { useColumnWidths } from '@renderer/common/hooks/useColumnWidths';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -127,6 +129,15 @@ export interface SongTableProps {
     /** 需要隐藏的列（标题列不可隐藏） */
     hideColumns?: HideableColumn[];
 
+    /**
+     * 传入后标题、歌手、专辑、来源可以拖右边缘改列宽，宽度记在本地。
+     */
+    columnLayoutKey?: string;
+    /** 还没拖过时的列宽。数字是像素，字符串是百分比。 */
+    defaultColumnWidths?: Record<string, number | string>;
+    /** 悬停显示被截断的全文，单击复制该格文字 */
+    inspectText?: boolean;
+
     /** 外部滚动容器元素（不传则自动查找 .l-app-shell__content 或回退到 window） */
     scrollParent?: HTMLElement;
     /** 额外 className */
@@ -143,6 +154,10 @@ interface InternalColumn {
     width?: number | string;
     align?: 'left' | 'center' | 'right';
     cellClassName?: string;
+    /** 可拖动列宽 */
+    resizable?: boolean;
+    /** 悬停与单击复制用的全文 */
+    textOf?: (item: IMusic.IMusicItemBase) => string;
     render: (item: IMusic.IMusicItemBase, index: number) => ReactNode;
 }
 
@@ -307,10 +322,15 @@ export function SongTable({
     statusColumnWidth = 72,
     showActiveIndicator = true,
     hideColumns = appConfig.getConfigByKey('normal.musicListHideColumns'),
+    columnLayoutKey,
+    defaultColumnWidths,
+    inspectText = false,
     scrollParent: externalScrollParent,
     className,
 }: SongTableProps) {
     const { t } = useTranslation();
+    const { widths: savedWidths, onResizeStart } = useColumnWidths(columnLayoutKey ?? '');
+    const copyTimerRef = useRef<number | null>(null);
     const currentMusic = useCurrentMusic();
     const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
     const virtuosoRef = useRef<TableVirtuosoHandle>(null);
@@ -390,7 +410,10 @@ export function SongTable({
         cols.push({
             id: 'title',
             header: t('media.title'),
+            width: defaultColumnWidths?.title,
             cellClassName: 'song-table__cell--title',
+            resizable: true,
+            textOf: (item) => item.title ?? '',
             render: (item) => item.title,
         });
 
@@ -398,7 +421,9 @@ export function SongTable({
             cols.push({
                 id: 'artist',
                 header: t('media.artist'),
-                width: '18%',
+                width: defaultColumnWidths?.artist ?? '18%',
+                resizable: true,
+                textOf: (item) => item.artist ?? '',
                 render: (item) => item.artist,
             });
         }
@@ -407,7 +432,9 @@ export function SongTable({
             cols.push({
                 id: 'album',
                 header: t('media.album'),
-                width: '16%',
+                width: defaultColumnWidths?.album ?? '16%',
+                resizable: true,
+                textOf: (item) => item.album ?? '',
                 render: (item) => item.album ?? '',
             });
         }
@@ -419,6 +446,7 @@ export function SongTable({
                 width: 80,
                 align: 'right',
                 cellClassName: 'song-table__cell--duration',
+                resizable: true,
                 render: (item) => formatDuration(item.duration),
             });
         }
@@ -427,7 +455,9 @@ export function SongTable({
             cols.push({
                 id: 'platform',
                 header: t('media.platform'),
-                width: 88,
+                width: defaultColumnWidths?.platform ?? 88,
+                resizable: true,
+                textOf: (item) => item.platform ?? '',
                 render: (item) => (
                     <span className="song-table__platform-badge">{item.platform}</span>
                 ),
@@ -435,7 +465,7 @@ export function SongTable({
         }
 
         return cols;
-    }, [hideSet, t]);
+    }, [hideSet, t, defaultColumnWidths]);
 
     // ── colgroup（控制列宽） ──
     const colGroup = useMemo(
@@ -444,24 +474,25 @@ export function SongTable({
                 {hasStatusColumn && (
                     <col key="__status" style={{ width: `${statusColumnWidth}px` }} />
                 )}
-                {columns.map((col) => (
-                    <col
-                        key={col.id}
-                        style={
-                            col.width != null
-                                ? {
-                                      width:
-                                          typeof col.width === 'number'
-                                              ? `${col.width}px`
-                                              : col.width,
-                                  }
-                                : undefined
-                        }
-                    />
-                ))}
+                {columns.map((col) => {
+                    const width = savedWidths[col.id] ?? col.width;
+                    return (
+                        <col
+                            key={col.id}
+                            data-col={col.id}
+                            style={
+                                width != null
+                                    ? {
+                                          width: typeof width === 'number' ? `${width}px` : width,
+                                      }
+                                    : undefined
+                            }
+                        />
+                    );
+                })}
             </colgroup>
         ),
-        [columns, hasStatusColumn, statusColumnWidth],
+        [columns, hasStatusColumn, statusColumnWidth, savedWidths],
     );
 
     // ── 外部回调 ref（避免 useCallback 依赖外部函数引用） ──
@@ -646,11 +677,17 @@ export function SongTable({
                         )}
                     >
                         {col.header}
+                        {columnLayoutKey && col.resizable && (
+                            <span
+                                className="song-table__resize"
+                                onMouseDown={(event) => onResizeStart(event, col.id)}
+                            />
+                        )}
                     </th>
                 ))}
             </tr>
         ),
-        [columns, hasStatusColumn, statusColumnHeader],
+        [columns, hasStatusColumn, statusColumnHeader, columnLayoutKey, onResizeStart],
     );
 
     // ── Virtuoso: 单元格内容 ──
@@ -664,21 +701,56 @@ export function SongTable({
                         </div>
                     </td>
                 )}
-                {columns.map((col) => (
-                    <td
-                        key={col.id}
-                        className={cn(
-                            'song-table__cell',
-                            col.align && `song-table__cell--${col.align}`,
-                            col.cellClassName,
-                        )}
-                    >
-                        <div className="song-table__cell-content">{col.render(item, index)}</div>
-                    </td>
-                ))}
+                {columns.map((col) => {
+                    const fullText = inspectText ? (col.textOf?.(item) ?? '').trim() : '';
+                    return (
+                        <td
+                            key={col.id}
+                            className={cn(
+                                'song-table__cell',
+                                col.align && `song-table__cell--${col.align}`,
+                                col.cellClassName,
+                            )}
+                        >
+                            <div
+                                className={cn(
+                                    'song-table__cell-content',
+                                    fullText && 'is-copyable',
+                                )}
+                                title={fullText || undefined}
+                                onClick={
+                                    fullText
+                                        ? (event) => {
+                                              event.stopPropagation();
+                                              const text = fullText;
+                                              if (copyTimerRef.current != null) {
+                                                  window.clearTimeout(copyTimerRef.current);
+                                              }
+                                              copyTimerRef.current = window.setTimeout(() => {
+                                                  copyTimerRef.current = null;
+                                                  void navigator.clipboard.writeText(text).then(
+                                                      () => showToast(t('common.copied')),
+                                                      () => showToast(t('common.copied')),
+                                                  );
+                                              }, 220);
+                                          }
+                                        : undefined
+                                }
+                                onDoubleClick={() => {
+                                    if (copyTimerRef.current != null) {
+                                        window.clearTimeout(copyTimerRef.current);
+                                        copyTimerRef.current = null;
+                                    }
+                                }}
+                            >
+                                {col.render(item, index)}
+                            </div>
+                        </td>
+                    );
+                })}
             </>
         ),
-        [columns],
+        [columns, inspectText, t],
     );
 
     // ── Virtuoso: components（仅依赖稳定值，ref 读取最新状态） ──

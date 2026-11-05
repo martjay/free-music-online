@@ -171,7 +171,6 @@ async fn download_inner(
 
     let mut last_emit = Instant::now();
     let mut last_bytes = downloaded;
-    let mut speed = 0f64;
 
     loop {
         if cancel.load(Ordering::Relaxed) {
@@ -199,7 +198,7 @@ async fn download_inner(
                 let now = Instant::now();
                 let elapsed = now.duration_since(last_emit).as_secs_f64();
                 if elapsed >= 0.5 {
-                    speed = (downloaded.saturating_sub(last_bytes)) as f64 / elapsed;
+                    let speed = (downloaded.saturating_sub(last_bytes)) as f64 / elapsed;
                     last_bytes = downloaded;
                     last_emit = now;
                     let _ = app.emit(

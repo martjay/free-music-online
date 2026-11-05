@@ -27,7 +27,7 @@
         height: var(--size-player-h);
         display: flex;
         align-items: center;
-        padding: 0 var(--space-4);
+        padding: 0 var(--space-8) 0 var(--space-4);
         gap: var(--space-4);
 
         // 背景 + 模糊放到伪元素，避免 backdrop-filter 创建层叠上下文
@@ -122,6 +122,12 @@
         display: flex;
         align-items: center;
         gap: var(--space-1-5);
+        flex-shrink: 0;
+    }
+
+    &__downloaded {
+        display: inline-flex;
+        color: var(--color-status-success-text);
         flex-shrink: 0;
     }
 

@@ -103,7 +103,7 @@ export function MusicSheetHeader({
         <div className={cn('music-sheet-header', className)}>
             {/* ── 封面 ── */}
             <div className="music-sheet-header__cover">
-                <Artwork src={artwork} size="lg" rounded="md" fallback={placeholderIcon} />
+                <Artwork src={artwork} size="md" rounded="md" fallback={placeholderIcon} />
                 {!hideSourceBadge && platform && (
                     <span className="music-sheet-header__source-badge">{platform}</span>
                 )}

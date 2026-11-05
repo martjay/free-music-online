@@ -39,10 +39,13 @@ export default function LocalSheetNavItem({ sheet, pathname, navigate }: LocalSh
         [isFavorite, sheet.id, sheet.title],
     );
 
+    const label = isFavorite ? t('media.default_favorite_sheet_name') : sheet.title;
+
     return (
         <button
             className={`l-sidebar__nav-item${pathname === sheetPath ? ' is-active' : ''}`}
             type="button"
+            title={label}
             onClick={handleClick}
             onContextMenu={handleContextMenu}
         >
@@ -50,9 +53,7 @@ export default function LocalSheetNavItem({ sheet, pathname, navigate }: LocalSh
                 size={16}
                 className={`l-sidebar__nav-icon${isFavorite ? '' : ' l-sidebar__nav-icon--muted'}`}
             />
-            <span className="l-sidebar__nav-label">
-                {isFavorite ? t('media.default_favorite_sheet_name') : sheet.title}
-            </span>
+            <span className="l-sidebar__nav-label">{label}</span>
         </button>
     );
 }

@@ -8,13 +8,17 @@ A modern, lightweight desktop music player tailored for Windows with LX sound so
 
 English | [简体中文](./README.md)
 
-[![License](https://img.shields.io/github/license/raclen/AnhePlayer?style=flat&color=blue)](./LICENSE)
-[![Version](https://img.shields.io/github/package-json/v/raclen/AnhePlayer?style=flat&color=orange)](./package.json)
-[![Release](https://img.shields.io/github/v/release/raclen/AnhePlayer?style=flat&color=green)](https://github.com/raclen/AnhePlayer/releases)
-[![Downloads](https://img.shields.io/github/downloads/raclen/AnhePlayer/total?style=flat&color=brightgreen)](https://github.com/raclen/AnhePlayer/releases)
-[![Stars](https://img.shields.io/github/stars/raclen/AnhePlayer?style=flat&color=yellow)](https://github.com/raclen/AnhePlayer/stargazers)
+[![License](https://img.shields.io/github/license/martjay/free-music-online?style=flat&color=blue)](./LICENSE)
+[![Version](https://img.shields.io/github/package-json/v/martjay/free-music-online?style=flat&color=orange)](./package.json)
+[![Stars](https://img.shields.io/github/stars/martjay/free-music-online?style=flat&color=yellow)](https://github.com/martjay/free-music-online/stargazers)
 
 </div>
+
+## Origin
+
+This repository is a modified and optimized continuation of [AnhePlayer](https://github.com/raclen/AnhePlayer), not a player written from scratch. The original project is maintained by [raclen](https://github.com/raclen). The app structure, features, and [AGPL-3.0-only](./LICENSE) license are kept.
+
+Later changes focus on day-to-day use: plugin sources, playback fallback, lyrics, downloads, the mini player, and radio. Reuse and redistribution must keep the original license and attribution.
 
 ## Overview
 
@@ -26,7 +30,7 @@ The modern refactor features an isolated **Web Worker LX sound source sandbox** 
 
 ## Download
 
-Download the latest release from [GitHub Releases](https://github.com/raclen/AnhePlayer/releases).
+Installers for this repository are published on [GitHub Releases](https://github.com/martjay/free-music-online/releases). The original releases remain at [AnhePlayer Releases](https://github.com/raclen/AnhePlayer/releases).
 
 Currently supports **Windows (10 / 11)**:
 
@@ -118,8 +122,8 @@ Curated themes currently available in the marketplace:
 ### Quick Start
 
 ```bash
-git clone https://github.com/raclen/AnhePlayer.git
-cd AnhePlayer
+git clone https://github.com/martjay/free-music-online.git
+cd free-music-online
 pnpm install
 
 # Start the Tauri v2 development environment
@@ -148,7 +152,7 @@ Issues and pull requests are welcome. Please read the [Contributing Guide](./CON
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=raclen/AnhePlayer&type=Date)](https://star-history.com/#raclen/AnhePlayer&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=martjay/free-music-online&type=Date)](https://star-history.com/#martjay/free-music-online&Date)
 
 ## License
 

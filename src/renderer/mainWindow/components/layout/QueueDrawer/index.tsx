@@ -25,6 +25,7 @@ import { queueDrawerOpenAtom, closeQueueDrawer } from './queueDrawerState';
 import './index.scss';
 import { showContextMenu } from '../../ui/ContextMenu/contextMenuManager';
 import { PLAY_QUEUE_SHEET_ID } from '@infra/musicSheet/common/constant';
+import { DownloadButton } from '../../business/DownloadButton';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -55,6 +56,13 @@ const QueueItemRow = React.memo(function QueueItemRow({
 }: QueueItemRowProps) {
     const { t } = useTranslation();
     const handleDoubleClick = useCallback(() => onPlay(index), [onPlay, index]);
+    const handlePlayClick = useCallback(
+        (e: React.MouseEvent) => {
+            e.stopPropagation();
+            onPlay(index);
+        },
+        [onPlay, index],
+    );
 
     const handleContextMenu = useCallback(
         (e: React.MouseEvent) => {
@@ -110,7 +118,15 @@ const QueueItemRow = React.memo(function QueueItemRow({
                 ) : (
                     <>
                         <span className="l-queue-drawer__item-num">{index + 1}</span>
-                        <Play size={12} className="l-queue-drawer__item-play" />
+                        <button
+                            type="button"
+                            className="l-queue-drawer__item-play"
+                            title={t('playback.play')}
+                            aria-label={t('playback.play')}
+                            onClick={handlePlayClick}
+                        >
+                            <Play size={12} />
+                        </button>
                     </>
                 )}
             </div>
@@ -125,6 +141,15 @@ const QueueItemRow = React.memo(function QueueItemRow({
                     </span>
                 </div>
             </div>
+
+            {!isRadioBrowserMedia(item) && (
+                <DownloadButton
+                    musicItem={item}
+                    size="sm"
+                    selectQuality
+                    className="l-queue-drawer__item-download"
+                />
+            )}
 
             {/* Remove button */}
             <button

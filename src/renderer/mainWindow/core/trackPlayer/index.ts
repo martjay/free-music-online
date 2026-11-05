@@ -7,7 +7,7 @@
 import type { IMusicItemSlim } from '@appTypes/infra/musicSheet';
 import type { IAppState } from '@appTypes/infra/appSync';
 import { PlayerState, RepeatMode, QUALITY_KEYS } from '@common/constant';
-import { isSameMedia } from '@common/mediaKey';
+import { compositeKey, isSameMedia } from '@common/mediaKey';
 import musicItemToSlim from '@common/musicItemToSlim';
 import delay from '@common/delay';
 import throttle from '@common/throttle';
@@ -33,6 +33,11 @@ import { type IAudioController, createAudioController } from './audioController'
 import PlayQueue from './playQueue';
 import LyricManager from './lyricManager';
 import type { IPlayOptions, IResolvedMediaSource } from './types';
+
+interface IAlternativeSourceHit {
+    result: IPlugin.IMediaSourceResult;
+    musicItem: IMusic.IMusicItem;
+}
 import {
     store,
     currentMusicAtom,
@@ -63,10 +68,27 @@ function setupAppSyncBridge(): void {
             : musicSheet.isFavoriteMusic(music);
     };
 
+    const getDownloadStatus = (): IAppState['downloadStatus'] => {
+        const music = store.get(currentMusicAtom);
+        if (!music || isRadioBrowserMedia(music)) return null;
+        const active = downloadManager.getActiveTaskStatus(
+            compositeKey(music.platform, String(music.id)),
+        );
+        if (active) return active;
+        return downloadManager.isDownloaded(music) ? 'completed' : null;
+    };
+
+    const pushDownloadStatus = () => {
+        appSync.syncAppState({ downloadStatus: getDownloadStatus() });
+    };
+    downloadManager.subscribeActiveTaskChange(pushDownloadStatus);
+    downloadManager.subscribeDownloadChange(pushDownloadStatus);
+
     store.sub(currentMusicAtom, () => {
         appSync.syncAppState({
             musicItem: store.get(currentMusicAtom),
             isFavorite: getIsFavorite(),
+            downloadStatus: getDownloadStatus(),
         });
     });
     store.sub(playerStateAtom, () => {
@@ -118,6 +140,7 @@ function setupAppSyncBridge(): void {
         currentLrc: store.get(currentLyricAtom)?.currentLrc ?? null,
         fullLyric: store.get(currentLyricAtom)?.parser?.getLyricItems() ?? null,
         isFavorite: getIsFavorite(),
+        downloadStatus: getDownloadStatus(),
     });
 
     // 初始同步：store.sub 仅监听后续变化，此处补推一次当前状态
@@ -143,6 +166,20 @@ class TrackPlayer {
     private readonly MAX_CONSECUTIVE_ERRORS = 3;
     private sourceRetryMusicKey = '';
     private sourceRetryTriedHashes = new Set<string>();
+    /** 最近播放失败的音源，短时间内切歌不再等待它。 */
+    private sourceUnhealthyUntil = new Map<string, number>();
+    private sourceFailureAnnounced = new Set<string>();
+    private preferredFallbackHash = '';
+    private playbackAttempt = 0;
+    private activeSourceKey = '';
+    private activeSourceHash = '';
+    private pendingAlternative: Promise<IAlternativeSourceHit | null> | null = null;
+    private ignorePlayErrorUntil = 0;
+    private handlingPlayError = false;
+    private static readonly SOURCE_UNHEALTHY_MS = 8 * 60 * 1000;
+    private static readonly SOURCE_RESOLVE_TIMEOUT_MS = 5000;
+    private static readonly SOURCE_SLOW_TIMEOUT_MS = 12000;
+    private static readonly PLAYBACK_START_TIMEOUT_MS = 5000;
 
     // ─── 启动恢复 ───
 
@@ -302,14 +339,33 @@ class TrackPlayer {
             const musicItem: IMusic.IMusicItem = fullItem ?? (targetSlim as IMusic.IMusicItem);
 
             const isLive = isRadioBrowserMedia(musicItem);
+            const attempt = ++this.playbackAttempt;
+            this.pendingAlternative = null;
 
             // 电台使用受控直连源，普通歌曲优先使用已下载的本地文件。
             const quality = store.get(qualityAtom);
             const localSource = isLive ? null : await this.tryLocalSource(musicItem);
-            const result = localSource ?? (await this.resolveMediaSource(musicItem, quality));
+            if (!this.isCurrentMusic(targetSlim) || attempt !== this.playbackAttempt) return;
+
+            let result = localSource;
+            let playbackItem = musicItem;
+            let fallbackFrom: string | undefined;
+            let notifyFallback = false;
+            if (!result && !isLive) {
+                const resolved = await this.resolvePlayableSource(musicItem, quality, attempt);
+                if (!this.isCurrentMusic(targetSlim) || attempt !== this.playbackAttempt) return;
+                if (resolved) {
+                    result = resolved.result;
+                    playbackItem = resolved.musicItem;
+                    fallbackFrom = resolved.fallbackFrom;
+                    notifyFallback = resolved.notify;
+                }
+            } else if (!result) {
+                result = await this.resolveMediaSource(musicItem, quality);
+                if (!this.isCurrentMusic(targetSlim) || attempt !== this.playbackAttempt) return;
+            }
 
             if (!result?.url) throw new Error('No media source');
-            if (!this.isCurrentMusic(targetSlim)) return; // 切歌了
 
             // 直播固定 1× 播放，但不覆盖用户保存的歌曲倍速。
             this.audioController.setSpeed(isLive ? 1 : store.get(speedAtom));
@@ -317,9 +373,11 @@ class TrackPlayer {
                 store.set(qualityAtom, result.quality);
                 syncKV.set('player.currentQuality', result.quality);
             }
-            this.audioController.setTrackSource(result, musicItem);
-            this.markPlaybackSource(musicItem.platform);
+            this.audioController.setTrackSource(result, playbackItem);
+            this.rememberActiveSource(playbackItem);
+            this.markPlaybackSource(playbackItem.platform, fallbackFrom, notifyFallback);
             this.audioController.play();
+            if (!isLive) this.armPlaybackStartWatch(targetSlim, attempt);
             this.consecutiveErrors = 0;
             this.resetSourceRetryState();
 
@@ -589,6 +647,9 @@ class TrackPlayer {
     private bindAudioEvents(): void {
         this.audioController.on('stateChange', (state) => {
             store.set(playerStateAtom, state);
+            if (state === PlayerState.Playing) {
+                this.markSourceHealthy(this.activeSourceKey, this.activeSourceHash);
+            }
             if (state === PlayerState.Paused) {
                 syncKV.set('player.currentProgress', store.get(progressAtom).currentTime);
             }
@@ -677,8 +738,20 @@ class TrackPlayer {
     // ─── 错误处理 ───
 
     private async handlePlayError(musicItem: IMusicItemSlim | null, _error?: any): Promise<void> {
+        if (Date.now() < this.ignorePlayErrorUntil) return;
+        if (musicItem && !this.isCurrentMusic(musicItem)) return;
+        if (this.handlingPlayError) return;
+        this.handlingPlayError = true;
         this.resetProgress();
 
+        try {
+            await this.recoverFromPlayError(musicItem);
+        } finally {
+            this.handlingPlayError = false;
+        }
+    }
+
+    private async recoverFromPlayError(musicItem: IMusicItemSlim | null): Promise<void> {
         if (isRadioBrowserMedia(musicItem)) {
             this.audioController.reset();
             store.set(playerStateAtom, PlayerState.Paused);
@@ -687,6 +760,8 @@ class TrackPlayer {
             showToast(i18n.t('radio.play_failed'), { type: 'warn' });
             return;
         }
+
+        this.markSourceUnhealthy(this.activeSourceKey);
 
         this.consecutiveErrors++;
 
@@ -732,53 +807,255 @@ class TrackPlayer {
         const sourceMusic = await this.getPlayableMusicItem(musicItem);
         if (!this.isCurrentMusic(musicItem)) return false;
 
-        this.ensureSourceRetryState(musicItem);
-
-        const currentHash = pluginManager.getPluginByPlatform(sourceMusic.platform)?.hash;
-        if (currentHash) {
-            this.sourceRetryTriedHashes.add(currentHash);
-        }
-
-        const candidates = pluginManager
-            .getSortedSupportedPlugin('getMediaSource')
-            .filter((plugin) => !this.sourceRetryTriedHashes.has(plugin.hash));
-
-        if (candidates.length === 0) return false;
-
         store.set(playerStateAtom, PlayerState.Buffering);
+        const prefetch = this.pendingAlternative;
+        this.pendingAlternative = null;
+        const alt = prefetch
+            ? await prefetch
+            : await this.findAlternativeSource(sourceMusic, this.playbackAttempt);
+        const attempt = ++this.playbackAttempt;
+        if (!alt || !this.isCurrentMusic(musicItem)) return false;
 
-        for (const plugin of candidates) {
-            this.sourceRetryTriedHashes.add(plugin.hash);
+        const resolvedQuality = alt.result.quality ?? 'standard';
+        store.set(qualityAtom, resolvedQuality);
+        syncKV.set('player.currentQuality', resolvedQuality);
+        this.audioController.setTrackSource(alt.result, alt.musicItem);
+        this.ignorePlayErrorUntil = Date.now() + 800;
+        this.rememberActiveSource(alt.musicItem);
+        this.markPlaybackSource(
+            alt.musicItem.platform,
+            sourceMusic.platform,
+            this.consumeFallbackNotice(this.sourceIdentity(sourceMusic).key),
+        );
+        this.audioController.play();
+        this.armPlaybackStartWatch(musicItem, attempt);
+        this.consecutiveErrors = 0;
+        return true;
+    }
 
-            const candidateMusic = await this.resolveAlternativeMusicItem(sourceMusic, plugin);
-            if (!candidateMusic || !this.isCurrentMusic(musicItem)) continue;
-
-            try {
-                const quality: IMusic.IQualityKey = 'standard';
-                const result = await pluginManager.adapters.getMediaSource({
-                    hash: plugin.hash,
-                    musicItem: candidateMusic,
-                    quality,
-                    qualityOrder: QUALITY_KEYS,
-                    qualityFallbackOrder: this.getQualityFallbackOrder(),
-                });
-
-                if (!result?.url || !this.isCurrentMusic(musicItem)) continue;
-
-                const resolvedQuality = result.quality ?? quality;
-                store.set(qualityAtom, resolvedQuality);
-                syncKV.set('player.currentQuality', resolvedQuality);
-                this.audioController.setTrackSource(result, candidateMusic);
-                this.markPlaybackSource(candidateMusic.platform, sourceMusic.platform);
-                this.audioController.play();
-                this.consecutiveErrors = 0;
-                return true;
-            } catch {
-                // 单个音源失败时继续尝试下一个已启用音源。
-            }
+    /**
+     * 原平台最近失败过就直接换源；否则最多等几秒，同时提前查找可用音源。
+     * 同一个平台失败后的 8 分钟内，后续歌曲不再重复等待。
+     */
+    private async resolvePlayableSource(
+        musicItem: IMusic.IMusicItem,
+        quality: IMusic.IQualityKey,
+        attempt: number,
+    ): Promise<{
+        result: IPlugin.IMediaSourceResult;
+        musicItem: IMusic.IMusicItem;
+        fallbackFrom?: string;
+        notify: boolean;
+    } | null> {
+        const identity = this.sourceIdentity(musicItem);
+        if (this.isSourceUnhealthy(identity.key)) {
+            const alt = await this.findAlternativeSource(musicItem, attempt);
+            if (!alt || attempt !== this.playbackAttempt) return null;
+            return {
+                result: alt.result,
+                musicItem: alt.musicItem,
+                fallbackFrom: musicItem.platform,
+                notify: this.consumeFallbackNotice(identity.key),
+            };
         }
 
-        return false;
+        const alternatives = this.fallbackPlugins(musicItem);
+        const timeout =
+            alternatives.length > 0
+                ? TrackPlayer.SOURCE_RESOLVE_TIMEOUT_MS
+                : TrackPlayer.SOURCE_SLOW_TIMEOUT_MS;
+        let earlyFallback: Promise<IAlternativeSourceHit | null> | null = null;
+        const earlyTimer =
+            alternatives.length > 0
+                ? window.setTimeout(() => {
+                      if (attempt === this.playbackAttempt) {
+                          earlyFallback = this.findAlternativeSource(musicItem, attempt);
+                      }
+                  }, 1000)
+                : 0;
+        const original = await this.withTimeout(
+            this.resolveMediaSource(musicItem, quality),
+            timeout,
+        );
+        window.clearTimeout(earlyTimer);
+        if (attempt !== this.playbackAttempt) return null;
+        if (original?.url) {
+            this.pendingAlternative = earlyFallback;
+            return { result: original, musicItem, notify: false };
+        }
+
+        this.markSourceUnhealthy(identity.key);
+        const alt = earlyFallback
+            ? await earlyFallback
+            : await this.findAlternativeSource(musicItem, attempt);
+        if (!alt || attempt !== this.playbackAttempt) return null;
+        return {
+            result: alt.result,
+            musicItem: alt.musicItem,
+            fallbackFrom: musicItem.platform,
+            notify: this.consumeFallbackNotice(identity.key),
+        };
+    }
+
+    private async findAlternativeSource(
+        sourceMusic: IMusic.IMusicItem,
+        attempt: number,
+    ): Promise<IAlternativeSourceHit | null> {
+        const plugins = this.fallbackPlugins(sourceMusic);
+        if (plugins.length === 0 || attempt !== this.playbackAttempt) return null;
+
+        const preferred = plugins[0]?.hash === this.preferredFallbackHash ? plugins[0] : undefined;
+        if (preferred) {
+            const hit = await this.withTimeout(
+                this.resolvePluginSource(sourceMusic, preferred),
+                6000,
+            );
+            if (attempt !== this.playbackAttempt) return null;
+            if (hit) return hit;
+        }
+
+        const rest = plugins.filter((plugin) => plugin.hash !== preferred?.hash).slice(0, 3);
+        return this.racePluginSources(sourceMusic, rest, attempt);
+    }
+
+    private fallbackPlugins(musicItem: IMusic.IMusicItem): IPlugin.IPluginDelegate[] {
+        const originalHash = this.sourceIdentity(musicItem).hash;
+        const plugins = pluginManager
+            .getSortedSupportedPlugin('getMediaSource')
+            .filter(
+                (plugin) => plugin.hash !== originalHash && !this.isSourceUnhealthy(plugin.hash),
+            );
+        if (!this.preferredFallbackHash) return plugins;
+        return [...plugins].sort((a, b) => {
+            if (a.hash === this.preferredFallbackHash) return -1;
+            if (b.hash === this.preferredFallbackHash) return 1;
+            return 0;
+        });
+    }
+
+    private racePluginSources(
+        sourceMusic: IMusic.IMusicItem,
+        plugins: IPlugin.IPluginDelegate[],
+        attempt: number,
+    ): Promise<IAlternativeSourceHit | null> {
+        if (plugins.length === 0 || attempt !== this.playbackAttempt) return Promise.resolve(null);
+        return new Promise((resolve) => {
+            let pending = plugins.length;
+            let settled = false;
+            const finish = (hit: IAlternativeSourceHit | null) => {
+                if (settled) return;
+                settled = true;
+                resolve(hit);
+            };
+            for (const plugin of plugins) {
+                this.withTimeout(this.resolvePluginSource(sourceMusic, plugin), 6000).then(
+                    (hit) => {
+                        if (attempt !== this.playbackAttempt) {
+                            finish(null);
+                            return;
+                        }
+                        if (hit) {
+                            finish(hit);
+                            return;
+                        }
+                        pending -= 1;
+                        if (pending === 0) finish(null);
+                    },
+                );
+            }
+        });
+    }
+
+    private async resolvePluginSource(
+        sourceMusic: IMusic.IMusicItem,
+        plugin: IPlugin.IPluginDelegate,
+    ): Promise<IAlternativeSourceHit | null> {
+        const candidateMusic = await this.resolveAlternativeMusicItem(sourceMusic, plugin);
+        if (!candidateMusic) return null;
+        const result = await pluginManager.adapters.getMediaSource({
+            hash: plugin.hash,
+            musicItem: candidateMusic,
+            quality: 'standard',
+            qualityOrder: ['standard', 'low'],
+            qualityFallbackOrder: 'lower',
+        });
+        if (!result?.url) return null;
+        return { result, musicItem: candidateMusic };
+    }
+
+    private sourceIdentity(musicItem: { platform: string }): { key: string; hash: string } {
+        const hash = pluginManager.getPluginByPlatform(musicItem.platform)?.hash ?? '';
+        return { key: hash || musicItem.platform, hash };
+    }
+
+    private isSourceUnhealthy(key: string): boolean {
+        if (!key) return false;
+        const until = this.sourceUnhealthyUntil.get(key) ?? 0;
+        if (until <= Date.now()) {
+            if (until) {
+                this.sourceUnhealthyUntil.delete(key);
+                this.sourceFailureAnnounced.delete(key);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private markSourceUnhealthy(key: string): void {
+        if (!key) return;
+        this.sourceUnhealthyUntil.set(key, Date.now() + TrackPlayer.SOURCE_UNHEALTHY_MS);
+        if (this.preferredFallbackHash === key) this.preferredFallbackHash = '';
+    }
+
+    private markSourceHealthy(key: string, hash: string): void {
+        if (!key) return;
+        this.sourceUnhealthyUntil.delete(key);
+        this.sourceFailureAnnounced.delete(key);
+        if (hash) this.preferredFallbackHash = hash;
+    }
+
+    private consumeFallbackNotice(key: string): boolean {
+        if (!key || this.sourceFailureAnnounced.has(key)) return false;
+        this.sourceFailureAnnounced.add(key);
+        return true;
+    }
+
+    private rememberActiveSource(musicItem: IMusic.IMusicItem): void {
+        const identity = this.sourceIdentity(musicItem);
+        this.activeSourceKey = identity.key;
+        this.activeSourceHash = identity.hash;
+    }
+
+    private armPlaybackStartWatch(musicItem: IMusicItemSlim, attempt: number): void {
+        window.setTimeout(() => {
+            if (attempt !== this.playbackAttempt || !this.isCurrentMusic(musicItem)) return;
+            if (
+                store.get(playerStateAtom) === PlayerState.Playing ||
+                store.get(progressAtom).currentTime > 0
+            ) {
+                this.markSourceHealthy(this.activeSourceKey, this.activeSourceHash);
+                return;
+            }
+            this.handlePlayError(musicItem).catch((err) => {
+                console.error('[TrackPlayer] playback start watch failed:', err);
+            });
+        }, TrackPlayer.PLAYBACK_START_TIMEOUT_MS);
+    }
+
+    private withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+        return new Promise((resolve) => {
+            const timer = window.setTimeout(() => resolve(null), ms);
+            promise.then(
+                (value) => {
+                    window.clearTimeout(timer);
+                    resolve(value);
+                },
+                () => {
+                    window.clearTimeout(timer);
+                    resolve(null);
+                },
+            );
+        });
     }
 
     private async getPlayableMusicItem(musicItem: IMusicItemSlim): Promise<IMusic.IMusicItem> {
@@ -919,14 +1196,6 @@ class TrackPlayer {
             .replace(/[\s"'`~!@#$%^*_+=|\\:;,.，。！？?、/<>《》“”‘’{}【】()[\]-]/g, '');
     }
 
-    private ensureSourceRetryState(musicItem: IMedia.IMediaBase): void {
-        const retryKey = `${musicItem.platform}:${musicItem.id}`;
-        if (this.sourceRetryMusicKey !== retryKey) {
-            this.sourceRetryMusicKey = retryKey;
-            this.sourceRetryTriedHashes.clear();
-        }
-    }
-
     private resetSourceRetryState(): void {
         this.sourceRetryMusicKey = '';
         this.sourceRetryTriedHashes.clear();
@@ -936,10 +1205,10 @@ class TrackPlayer {
      * 记录实际播放来源，供播放栏展示。
      * 自动换源时额外弹出提示，避免用户误以为播放的是原平台歌曲。
      */
-    private markPlaybackSource(platform: string, originalPlatform?: string): void {
+    private markPlaybackSource(platform: string, originalPlatform?: string, notify = true): void {
         const fallback = !!originalPlatform && originalPlatform !== platform;
         store.set(playbackSourceAtom, { platform, fallback, originalPlatform });
-        if (fallback) {
+        if (fallback && notify) {
             showToast(
                 i18n.t('playback.source_fallback_toast', {
                     original: originalPlatform,

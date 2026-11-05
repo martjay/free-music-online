@@ -15,30 +15,47 @@
 }
 
 .p-download__header-cell {
+    position: relative;
     font-weight: var(--font-weight-normal);
     color: var(--color-text-secondary);
     padding: var(--space-3) var(--space-4);
 
-    &--artist {
-        width: 18%;
-    }
-
-    &--album {
-        width: 16%;
-    }
-
-    &--size {
-        width: 120px;
-    }
-
-    &--status {
-        width: 160px;
-    }
-
     &--actions {
-        width: 100px;
         text-align: right;
     }
+}
+
+.p-download__resize {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    touch-action: none;
+
+    &::after {
+        content: '';
+        position: absolute;
+        top: 25%;
+        bottom: 25%;
+        right: 3px;
+        width: 1px;
+        background: transparent;
+    }
+
+    &:hover::after {
+        background: var(--color-border-focus);
+    }
+}
+
+.p-download__copy {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
 }
 
 // ── 行 ──

@@ -1,4 +1,10 @@
-import { useCallback, useRef, useEffect, type ReactNode } from 'react';
+import {
+    useCallback,
+    useRef,
+    useEffect,
+    type ReactNode,
+    type WheelEvent as ReactWheelEvent,
+} from 'react';
 import { cn } from '@common/cn';
 import './index.scss';
 
@@ -52,6 +58,7 @@ export interface TabBarProps {
  */
 export function TabBar({ items, activeKey, onChange, mode = 'wrap', className }: TabBarProps) {
     const containerRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
     const activeTabRef = useRef<HTMLButtonElement>(null);
     const indicatorRef = useRef<HTMLSpanElement>(null);
 
@@ -85,11 +92,11 @@ export function TabBar({ items, activeKey, onChange, mode = 'wrap', className }:
         return () => ro.disconnect();
     }, [updateIndicator]);
 
-    // scroll 模式下，滚动激活 tab 到可见区域（仅滚动自身容器，不冒泡到外层）
+    // scroll 模式下，把当前标签滚进列表可视区域
     useEffect(() => {
-        if (mode !== 'scroll' || !activeTabRef.current || !containerRef.current) return;
+        if (mode !== 'scroll' || !activeTabRef.current || !listRef.current) return;
 
-        const container = containerRef.current;
+        const container = listRef.current;
         const tab = activeTabRef.current;
         const tabLeft = tab.offsetLeft;
         const tabRight = tabLeft + tab.offsetWidth;
@@ -101,13 +108,24 @@ export function TabBar({ items, activeKey, onChange, mode = 'wrap', className }:
         } else if (tabRight > scrollLeft + viewWidth) {
             container.scrollTo({ left: tabRight - viewWidth, behavior: 'smooth' });
         }
-    }, [activeKey, mode]);
+    }, [activeKey, mode, items]);
+
+    const handleWheel = useCallback(
+        (event: ReactWheelEvent<HTMLDivElement>) => {
+            const list = listRef.current;
+            if (mode !== 'scroll' || !list || list.scrollWidth <= list.clientWidth) return;
+            if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+            list.scrollLeft += event.deltaY;
+            event.preventDefault();
+        },
+        [mode],
+    );
 
     const wrapperClassNames = cn('tab-bar', `tab-bar--${mode}`, className);
 
     return (
         <div ref={containerRef} className={wrapperClassNames}>
-            <div className="tab-bar__list">
+            <div ref={listRef} className="tab-bar__list" onWheel={handleWheel}>
                 {items.map((item) => {
                     const isActive = item.key === activeKey;
                     const tabClassNames = cn(

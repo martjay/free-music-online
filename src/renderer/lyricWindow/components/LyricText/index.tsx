@@ -145,9 +145,14 @@ export default memo(function LyricText() {
         <div
             ref={containerRef}
             className={cn('lyric-text', needsScroll && 'is-scrollable')}
-            data-tauri-drag-region="deep"
+            data-tauri-drag-region
         >
-            <div ref={contentRef} className="lyric-text__content" style={contentStyle}>
+            <div
+                ref={contentRef}
+                className="lyric-text__content"
+                style={contentStyle}
+                data-tauri-drag-region
+            >
                 {displayText}
             </div>
         </div>

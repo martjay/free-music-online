@@ -18,6 +18,7 @@ import type {
 import { QUALITY_KEYS } from '@common/constant';
 import { tauriInvoke } from '@infra/tauriBridge/ipc';
 import { CONTEXT_BRIDGE_KEY } from '../common/constant';
+import { findPluginForPlatform } from '../common/pluginIdentity';
 import { sortByPluginOrder } from '../common/sortByOrder';
 import { store, pluginsAtom, pluginMetaAtom, pluginAvailabilityAtom } from './store';
 import type { IPluginAvailabilityResult } from './store';
@@ -196,7 +197,7 @@ function getPluginByHash(hash: string): IPlugin.IPluginDelegate | undefined {
 
 /** 通过 platform 获取单个插件 */
 function getPluginByPlatform(platform: string): IPlugin.IPluginDelegate | undefined {
-    return store.get(pluginsAtom).find((p) => p.platform === platform);
+    return findPluginForPlatform(store.get(pluginsAtom), platform);
 }
 
 /**
@@ -275,16 +276,17 @@ function isSupportFeatureMethod(
 ): boolean {
     if (!platform) return false;
     return (
-        store
-            .get(pluginsAtom)
-            .find((p) => p.platform === platform)
-            ?.supportedMethod?.includes(featureMethod) ?? false
+        findPluginForPlatform(store.get(pluginsAtom), platform)?.supportedMethod?.includes(
+            featureMethod,
+        ) ?? false
     );
 }
 
 /** 获取插件的 primaryKey 定义 */
 function getPluginPrimaryKey(pluginItem: { platform?: string }): string[] {
-    return store.get(pluginsAtom).find((p) => p.platform === pluginItem.platform)?.primaryKey ?? [];
+    return (
+        findPluginForPlatform(store.get(pluginsAtom), pluginItem.platform ?? '')?.primaryKey ?? []
+    );
 }
 
 // ─── Adapters ───
@@ -339,6 +341,18 @@ export interface IPluginCheckSummary {
     available: number;
     unavailable: number;
     unsupported: number;
+    /** 因平台已关闭而跳过的数量 */
+    skipped: number;
+}
+
+export interface IPluginCheckOptions {
+    /**
+     * 为 true 时检测已关闭的平台。
+     * 批量检测保持默认，单行手动检测传 true。
+     */
+    includeDisabled?: boolean;
+    /** 已完成数 / 实际检测数（不含跳过） */
+    onProgress?: (done: number, total: number) => void;
 }
 
 /** 给 Promise 加超时，避免远端接口挂起导致检测一直转圈 */
@@ -487,7 +501,7 @@ async function checkSinglePlugin(hash: string): Promise<IPluginAvailabilityResul
                 // 搜索失败时回退固定测试歌曲
             }
         }
-        musicItem = musicItem ?? TEST_MUSIC[plugin.platform] ?? null;
+        musicItem = musicItem ?? fallbackTestMusic(plugin);
         if (!musicItem) {
             return { state: 'unsupported', checkedAt: Date.now() };
         }
@@ -518,22 +532,54 @@ async function checkSinglePlugin(hash: string): Promise<IPluginAvailabilityResul
     }
 }
 
+/** 搜索失败时按洛雪音源键取固定测试曲，并把平台名改成当前行的展示名 */
+function fallbackTestMusic(plugin: IPlugin.IPluginDelegate): IMusic.IMusicItem | null {
+    const key = plugin.sourceKey || plugin.platform;
+    const fixture = TEST_MUSIC[key];
+    if (!fixture) return null;
+    return { ...fixture, platform: plugin.platform };
+}
+
 /**
  * 批量检测音源可用性。
- * 检测过程中实时写入 pluginAvailabilityAtom，UI 可展示「检测中」。
+ * 已关闭的平台默认跳过，不会被标成「检测中」。
+ * 检测过程中实时写入 pluginAvailabilityAtom。
  */
-async function checkPluginsAvailability(hashes: string[]): Promise<IPluginCheckSummary> {
-    const summary: IPluginCheckSummary = { available: 0, unavailable: 0, unsupported: 0 };
-
-    // 先整体置为检测中
-    const initial = { ...store.get(pluginAvailabilityAtom) };
+async function checkPluginsAvailability(
+    hashes: string[],
+    options?: IPluginCheckOptions,
+): Promise<IPluginCheckSummary> {
+    const meta = store.get(pluginMetaAtom);
+    const active: string[] = [];
+    let skipped = 0;
     for (const hash of hashes) {
+        if (!options?.includeDisabled && meta[hash]?.enabled === false) {
+            skipped++;
+        } else {
+            active.push(hash);
+        }
+    }
+
+    const summary: IPluginCheckSummary = {
+        available: 0,
+        unavailable: 0,
+        unsupported: 0,
+        skipped,
+    };
+
+    options?.onProgress?.(0, active.length);
+    if (active.length === 0) return summary;
+
+    // 只把即将检测的平台标成检测中，关闭的行保持原状态
+    const initial = { ...store.get(pluginAvailabilityAtom) };
+    for (const hash of active) {
         initial[hash] = { state: 'checking' };
     }
     store.set(pluginAvailabilityAtom, initial);
 
     // 简单的并发池，避免一次性发起过多网络请求
-    const queue = [...hashes];
+    const queue = [...active];
+    let done = 0;
     const workers = Array.from({ length: Math.min(CHECK_CONCURRENCY, queue.length) }, async () => {
         while (queue.length > 0) {
             const hash = queue.shift()!;
@@ -546,6 +592,9 @@ async function checkPluginsAvailability(hashes: string[]): Promise<IPluginCheckS
             if (result.state === 'available') summary.available++;
             else if (result.state === 'unsupported') summary.unsupported++;
             else summary.unavailable++;
+
+            done++;
+            options?.onProgress?.(done, active.length);
         }
     });
     await Promise.all(workers);

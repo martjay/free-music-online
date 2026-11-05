@@ -1,9 +1,16 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useLayoutEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { RequestStatus } from '@common/constant';
 import { MediaGrid } from '../../components/ui/MediaGrid';
 import { StatusPlaceholder } from '../../components/ui/StatusPlaceholder';
+import {
+    RECOMMEND_SHEETS_VIEW,
+    readContentScroll,
+    readListView,
+    setContentScroll,
+    writeListView,
+} from '../../core/listViewMemory';
 import { musicSheetRoute } from '../../routes';
 import { TagFilter, DEFAULT_TAG } from './TagFilter';
 import { useRecommendTags } from './useRecommendTags';
@@ -21,30 +28,49 @@ interface RecommendSheetsBodyProps {
 export function RecommendSheetsBody({ pluginHash }: RecommendSheetsBodyProps) {
     const { t } = useTranslation();
     const { tags, status: tagsStatus } = useRecommendTags(pluginHash);
-    const [selectedTag, setSelectedTag] = useState<IMedia.IUnique>(DEFAULT_TAG);
+    const [selectedTag, setSelectedTag] = useState<IMedia.IUnique>(() => {
+        const saved = readListView(RECOMMEND_SHEETS_VIEW);
+        return saved?.pluginHash === pluginHash && saved.tag ? saved.tag : DEFAULT_TAG;
+    });
     const navigate = useNavigate();
-
-    // 插件切换时重置标签选择
-    useEffect(() => {
-        setSelectedTag(DEFAULT_TAG);
-    }, [pluginHash]);
+    const restoredRef = useRef(false);
 
     const { sheets, requestStatus, isEnd, loadMore, retry } = useRecommendSheets(
         pluginHash,
         selectedTag,
     );
 
-    const handleTagChange = useCallback((tag: IMedia.IUnique) => {
-        setSelectedTag(tag);
-    }, []);
+    useLayoutEffect(() => {
+        if (restoredRef.current) return;
+        if (tagsStatus === RequestStatus.Pending && !tags) return;
+        if (sheets.length === 0) return;
+        const saved = readListView(RECOMMEND_SHEETS_VIEW);
+        if (!saved || saved.pluginHash !== pluginHash) return;
+        restoredRef.current = true;
+        setContentScroll(saved.scrollTop);
+    }, [pluginHash, sheets.length, tags, tagsStatus]);
+
+    const handleTagChange = useCallback(
+        (tag: IMedia.IUnique) => {
+            setSelectedTag(tag);
+            writeListView(RECOMMEND_SHEETS_VIEW, { pluginHash, tag, scrollTop: 0 });
+            setContentScroll(0);
+        },
+        [pluginHash],
+    );
 
     const handleItemClick = useCallback(
         (item: IMusic.IMusicSheetItem) => {
+            writeListView(RECOMMEND_SHEETS_VIEW, {
+                pluginHash,
+                tag: selectedTag,
+                scrollTop: readContentScroll(),
+            });
             navigate(musicSheetRoute(item.platform, item.id), {
                 state: { sheetItem: item },
             });
         },
-        [navigate],
+        [navigate, pluginHash, selectedTag],
     );
 
     // 标签加载中
@@ -57,6 +83,7 @@ export function RecommendSheetsBody({ pluginHash }: RecommendSheetsBodyProps) {
             <TagFilter tags={tags} selectedTag={selectedTag} onTagChange={handleTagChange} />
 
             <MediaGrid
+                className="p-recommend-sheets__grid"
                 data={sheets}
                 requestStatus={requestStatus}
                 onRetry={retry}

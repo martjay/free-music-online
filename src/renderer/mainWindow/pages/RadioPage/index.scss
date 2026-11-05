@@ -229,6 +229,86 @@
 
 .p-radio-explorer__icon-btn {
     width: 36px;
+
+    &.is-active {
+        border-color: #38d6a2;
+        color: #07100f;
+        background: #38d6a2;
+    }
+}
+
+.p-radio-explorer__proxy-mask {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    pointer-events: auto;
+}
+
+.p-radio-explorer__proxy-dialog {
+    display: flex;
+    width: min(420px, calc(100vw - 48px));
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 16px;
+    background: rgba(12, 24, 22, 0.96);
+    color: #ffffff;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+    user-select: text;
+
+    p,
+    small {
+        margin: 0;
+        color: rgba(255, 255, 255, 0.68);
+        font-size: 12px;
+        line-height: 1.5;
+    }
+
+    small {
+        color: #f87171;
+    }
+
+    input {
+        height: 36px;
+        padding: 0 12px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.28);
+        color: #ffffff;
+        user-select: text;
+
+        &[aria-invalid='true'] {
+            border-color: #f87171;
+        }
+    }
+}
+
+.p-radio-explorer__proxy-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+
+    button {
+        height: 32px;
+        padding: 0 14px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        background: transparent;
+        color: #ffffff;
+        cursor: pointer;
+    }
+
+    button[type='submit'] {
+        border-color: #38d6a2;
+        background: #38d6a2;
+        color: #07100f;
+        font-weight: 700;
+    }
 }
 
 .p-radio-explorer__saved-btn {

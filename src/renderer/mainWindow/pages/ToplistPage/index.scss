@@ -15,17 +15,12 @@
 
 .p-toplist {
     padding-top: var(--space-4);
-
-    &__title {
-        font-size: var(--text-title-size);
-        font-weight: var(--font-weight-bold);
-        color: var(--color-text-primary);
-        line-height: var(--text-title-leading);
-    }
+    min-width: 0;
 
     &__tabs {
-        margin-top: var(--space-4);
         margin-bottom: var(--space-6);
+        min-width: 0;
+        max-width: 100%;
     }
 
     // ── 内容区 ──
@@ -59,9 +54,8 @@
         cursor: pointer;
 
         display: flex;
-        flex-direction: column;
-        gap: var(--space-3);
-        padding: var(--space-4);
+        align-items: center;
+        padding: var(--space-3) var(--space-4);
         border-radius: var(--radius-card);
         background-color: var(--color-bg-surface);
         border: 1px solid var(--color-border-subtle);
@@ -116,11 +110,5 @@
         overflow: hidden;
         text-overflow: ellipsis;
         min-width: 0;
-    }
-
-    &__card-preview {
-        font-size: var(--text-caption-size);
-        color: var(--color-text-muted);
-        padding-top: var(--space-1);
     }
 }

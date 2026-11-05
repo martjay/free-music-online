@@ -49,6 +49,8 @@
         "minimize": "Minimize",
         "maximize": "Maximize",
         "minimode": "Mini Mode",
+        "pin_window": "Pin on top",
+        "unpin_window": "Unpin",
         "enter_minimode": "Enter Mini Mode",
         "exit_minimode": "Exit Mini Mode",
         "nav_online": "Online",
@@ -89,6 +91,7 @@
         "create_failed": "Failed to create playlist",
         "recommend": "Popular Playlists",
         "delete_sheet": "Delete",
+        "delete_sheet_confirm": "Delete playlist \"{{name}}\"? Songs are removed from this playlist only. Local files stay.",
         "rename_sheet": "Rename",
         "unstar": "Unstar",
         "rename_failed": "Rename failed",
@@ -136,7 +139,8 @@
         "collapse_player_detail": "Collapse player details",
         "play_all": "Play All",
         "source_fallback_hint": "The original source \"{{original}}\" is unavailable. Switched to \"{{platform}}\"; playback may differ from the original track.",
-        "source_fallback_toast": "\"{{original}}\" is unavailable. Switched to \"{{platform}}\"; playback may differ from the original track."
+        "source_fallback_toast": "\"{{original}}\" is unavailable. Switched to \"{{platform}}\"; playback may differ from the original track.",
+        "source_fallback_short": "{{original}} → {{platform}}"
     },
     "lyric": {
         "search": "Search Lyrics",
@@ -184,6 +188,7 @@
         "album": "Album",
         "platform": "Source",
         "duration": "Duration",
+        "copy_song": "Copy song",
         "type_music": "Music",
         "type_album": "Album",
         "type_artist": "Artist",
@@ -248,7 +253,14 @@
         "select_target_sheet": "Select target sheet",
         "import_to_sheet_success": "Imported {{count}} track(s) to \"{{sheet}}\"",
         "version_label": "v{{version}}",
-        "plugin_count": "{{count}} plugins",
+        "plugin_count": "{{plugins}} plugins, {{platforms}} platforms",
+        "platform_count": "{{count}} platforms",
+        "collapse_sources": "Collapse sources",
+        "expand_sources": "Expand sources",
+        "toggle_hint": "When off, this platform is left out of search, automatic source switching, and bulk checks. Tracks that already belong to it can still play and download.",
+        "check_platform": "Check this platform",
+        "source_check_progress": "Checking {{done}}/{{total}}",
+        "confirm_uninstall_script": "Uninstall \"{{script}}\"? These platforms will be removed together: {{platforms}}",
         "source_redirect": "Source Redirect",
         "source_redirect_setting": "Source Redirect Setting",
         "source_redirect_description": "When enabled, media source resolution for this plugin will be delegated to the target plugin",
@@ -262,7 +274,7 @@
         "source_checking": "Checking",
         "source_unchecked": "Not checked",
         "source_unsupported": "Unsupported",
-        "source_check_summary": "Check complete: {{available}} available, {{unavailable}} unavailable, {{unsupported}} unsupported"
+        "source_check_summary": "Check complete: {{available}} available, {{unavailable}} unavailable, {{unsupported}} unsupported, {{skipped}} skipped"
     },
     "download": {
         "title": "Download Management",
@@ -292,6 +304,7 @@
         "remove_record": "Remove Download Record",
         "failed_retry": "Download failed, click to retry",
         "already_downloaded": "This song is already downloaded",
+        "choose_quality": "Choose quality",
         "already_in_queue": "This song is already in the download queue",
         "cannot_get_source": "Unable to get download link",
         "complete_failed": "Completion failed: {{reason}}"
@@ -389,7 +402,7 @@
             "always_on_top_label": "Desktop lyrics on top",
             "always_on_top_desc": "Lyrics window always stays in front",
             "lock_label": "Lock desktop lyrics",
-            "lock_desc": "Lyrics window cannot be dragged when locked",
+            "lock_desc": "While locked, clicks pass through. Hover briefly to unlock",
             "font_label": "Lyrics font",
             "font_desc": "Font used for desktop lyrics",
             "font_default": "Default",

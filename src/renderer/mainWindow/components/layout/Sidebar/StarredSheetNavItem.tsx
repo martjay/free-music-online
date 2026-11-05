@@ -35,22 +35,29 @@ export default function StarredSheetNavItem({
     const handleContextMenu = useCallback(
         (e: MouseEvent) => {
             e.preventDefault();
-            showContextMenu('StarredSheetMenu', { x: e.clientX, y: e.clientY }, {
-                sheetItem: { platform: item.platform, id: item.id },
-            });
+            showContextMenu(
+                'StarredSheetMenu',
+                { x: e.clientX, y: e.clientY },
+                {
+                    sheetItem: { platform: item.platform, id: item.id },
+                },
+            );
         },
         [item.platform, item.id],
     );
+
+    const label = item.title ?? fullItem.title;
 
     return (
         <button
             className={`l-sidebar__nav-item${pathname === sheetPath ? ' is-active' : ''}`}
             type="button"
+            title={label}
             onClick={handleClick}
             onContextMenu={handleContextMenu}
         >
             <ListMusic size={16} className="l-sidebar__nav-icon l-sidebar__nav-icon--muted" />
-            <span className="l-sidebar__nav-label">{item.title ?? fullItem.title}</span>
+            <span className="l-sidebar__nav-label">{label}</span>
         </button>
     );
 }

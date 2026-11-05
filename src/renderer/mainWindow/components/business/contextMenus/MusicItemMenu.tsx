@@ -19,6 +19,7 @@ import {
     Fingerprint,
     User,
     Disc3,
+    Copy,
     ListEnd,
     ListPlus,
     ListX,
@@ -95,6 +96,17 @@ export function MusicItemMenu(ctx: MusicItemMenuContext): ContextMenuEntry[] {
         }
 
         entries.push({ type: 'separator' });
+
+        const songTitle = singleItem.title?.trim() || i18n.t('media.unknown_title');
+        const songArtist = singleItem.artist?.trim();
+        entries.push({
+            id: 'copy-song',
+            icon: <Copy />,
+            label: i18n.t('media.copy_song'),
+            onClick: () => {
+                copyToClipboard(songArtist ? `${songTitle} - ${songArtist}` : songTitle);
+            },
+        });
     }
 
     // 直播电台只保留队列相关操作，避免误触收藏、下载或歌曲元数据功能。

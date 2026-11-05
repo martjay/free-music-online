@@ -67,8 +67,14 @@ declare namespace IPlugin {
     }
 
     interface IPluginDefine {
-        /** 来源名 */
+        /** 来源名（展示用，如「QQ音乐」） */
         platform: string;
+        /** 脚本显示名（洛雪文件头 @name）。同一脚本拆出的多个平台共享。 */
+        scriptName?: string;
+        /** 短平台名，如 QQ音乐。platform 会带上脚本名，避免不同脚本撞名。 */
+        platformLabel?: string;
+        /** 洛雪音源键，如 tx / wy。检测回退曲按它查找，与展示名 platform 不同。 */
+        sourceKey?: string;
         /** 匹配的版本号 */
         appVersion?: string;
         /** 插件版本 */
@@ -167,5 +173,7 @@ declare namespace IPlugin {
         supportedMethod: string[];
         hash: string;
         path: string;
+        /** 源文件代码哈希。同一脚本拆出的多个平台共享。 */
+        sourceHash?: string;
     };
 }

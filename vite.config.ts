@@ -10,6 +10,13 @@ export default defineConfig(({ mode }) => ({
         __DEV__: JSON.stringify(mode !== 'production'),
     },
     plugins: [react()],
+    css: {
+        preprocessorOptions: {
+            scss: {
+                api: 'modern-compiler',
+            },
+        },
+    },
     resolve: {
         alias: {
             '@renderer': path.resolve(__dirname, 'src/renderer'),
@@ -20,8 +27,12 @@ export default defineConfig(({ mode }) => ({
         },
     },
     server: {
-        port: 5173,
+        port: 47321,
         strictPort: true,
+        watch: {
+            // Cargo 编译时会锁住 src-tauri/target 里的 dll。监视这些文件会在 Windows 上触发 EBUSY 并让 Vite 退出。
+            ignored: ['**/src-tauri/**'],
+        },
     },
     build: {
         outDir: 'dist',

@@ -5,18 +5,9 @@ import { SettingsCard } from '../components/SettingsCard';
 import { SettingRow } from '../components/SettingRow';
 import { Toggle } from '@renderer/mainWindow/components/ui/Toggle';
 import { Select, type SelectOption } from '@renderer/mainWindow/components/ui/Select';
+import { LYRIC_COLOR_SWATCHES } from '@renderer/common/lyricColors';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import appConfig from '@infra/appConfig/renderer';
-
-const COLOR_SWATCHES = [
-    '#ffffff',
-    '#34d399',
-    '#a78bfa',
-    '#f472b6',
-    '#60a5fa',
-    '#facc15',
-    '#f97316',
-];
 
 const FONT_SIZE_MIN = 12;
 const FONT_SIZE_MAX = 80;
@@ -248,7 +239,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (color: str
                 className="p-setting__color-input"
             />
             <div className="p-setting__color-swatches">
-                {COLOR_SWATCHES.map((color) => (
+                {LYRIC_COLOR_SWATCHES.map((color) => (
                     <button
                         type="button"
                         key={color}

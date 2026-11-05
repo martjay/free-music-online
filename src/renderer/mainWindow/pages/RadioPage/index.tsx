@@ -25,6 +25,7 @@ import {
     Volume1,
     Volume2,
     VolumeX,
+    Waypoints,
     X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +38,7 @@ import {
     type IRadioBrowserMusicItem,
 } from '@common/radioBrowser';
 import type { IRadioStationFilters } from '@infra/radioBrowser/renderer';
+import { applyCustomRadioProxy, setRadioProxyMode, useRadioProxy } from '@infra/radioBrowser/proxy';
 import systemUtil from '@infra/systemUtil/renderer';
 import appConfig from '@infra/appConfig/renderer';
 import musicSheet, { useRadioFavorites, useRadioIsFavorite } from '@infra/musicSheet/renderer';
@@ -122,6 +124,10 @@ export default function RadioPage() {
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [hoveredKey, setHoveredKey] = useState<string | null>(null);
     const [injectedStation, setInjectedStation] = useState<IRadioBrowserMusicItem | null>(null);
+    const radioProxy = useRadioProxy();
+    const [proxyDialogOpen, setProxyDialogOpen] = useState(false);
+    const [proxyDraft, setProxyDraft] = useState('');
+    const [proxyError, setProxyError] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [favoritesOpen, setFavoritesOpen] = useState(false);
@@ -131,6 +137,15 @@ export default function RadioPage() {
     const [tuningState, setTuningState] = useState<TuningState>('idle');
     const [webglLost, setWebglLost] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(() => !!document.fullscreenElement);
+
+    const proxyReplayReadyRef = useRef(false);
+    useEffect(() => {
+        if (!proxyReplayReadyRef.current) {
+            proxyReplayReadyRef.current = true;
+            return;
+        }
+        radioAudioPlayer.replayCurrent();
+    }, [radioProxy.mode, radioProxy.customUrl]);
     const [tuningOverlay, setTuningOverlay] = useState<{
         genre: string;
         stationName: string;
@@ -606,6 +621,38 @@ export default function RadioPage() {
 
                 <div className="p-radio-explorer__top-right">
                     <div className="p-radio-explorer__tools">
+                        <button
+                            className={`p-radio-explorer__icon-btn ${radioProxy.mode === 'direct' ? '' : 'is-active'}`}
+                            type="button"
+                            title={
+                                radioProxy.mode === 'direct'
+                                    ? t('radio.proxy_direct')
+                                    : radioProxy.mode === 'custom'
+                                      ? t('radio.proxy_custom')
+                                      : t('radio.proxy_system')
+                            }
+                            aria-label={
+                                radioProxy.mode === 'direct'
+                                    ? t('radio.proxy_direct')
+                                    : radioProxy.mode === 'custom'
+                                      ? t('radio.proxy_custom')
+                                      : t('radio.proxy_system')
+                            }
+                            aria-pressed={radioProxy.mode !== 'direct'}
+                            onClick={() => {
+                                setRadioProxyMode(
+                                    radioProxy.mode === 'direct' ? 'system' : 'direct',
+                                );
+                            }}
+                            onContextMenu={(event) => {
+                                event.preventDefault();
+                                setProxyDraft(radioProxy.customUrl);
+                                setProxyError(false);
+                                setProxyDialogOpen(true);
+                            }}
+                        >
+                            <Waypoints size={16} />
+                        </button>
                         <button
                             className={`p-radio-explorer__icon-btn ${searchOpen ? 'is-active' : ''}`}
                             type="button"
@@ -1126,6 +1173,50 @@ export default function RadioPage() {
             <div className="p-radio-explorer__attribution">
                 {t('radio.attribution_prefix')} <A href={RADIO_BROWSER_WEBSITE}>Radio Browser</A>
             </div>
+            {proxyDialogOpen ? (
+                <div
+                    className="p-radio-explorer__proxy-mask"
+                    onMouseDown={() => setProxyDialogOpen(false)}
+                >
+                    <form
+                        className="p-radio-explorer__proxy-dialog"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            const applied = applyCustomRadioProxy(proxyDraft);
+                            setProxyError(!applied);
+                            if (applied) setProxyDialogOpen(false);
+                        }}
+                    >
+                        <strong>{t('radio.proxy_dialog_title')}</strong>
+                        <p>{t('radio.proxy_dialog_hint')}</p>
+                        <input
+                            value={proxyDraft}
+                            autoFocus
+                            spellCheck={false}
+                            placeholder="127.0.0.1:7890"
+                            aria-invalid={proxyError}
+                            onChange={(event) => {
+                                setProxyDraft(event.target.value);
+                                setProxyError(false);
+                            }}
+                        />
+                        {proxyError ? <small>{t('radio.proxy_invalid')}</small> : null}
+                        <div className="p-radio-explorer__proxy-actions">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setRadioProxyMode('system');
+                                    setProxyDialogOpen(false);
+                                }}
+                            >
+                                {t('radio.proxy_use_system')}
+                            </button>
+                            <button type="submit">{t('radio.proxy_apply')}</button>
+                        </div>
+                    </form>
+                </div>
+            ) : null}
         </div>
     );
 }

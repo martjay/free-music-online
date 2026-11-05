@@ -12,6 +12,7 @@ import { atom, getDefaultStore, useAtomValue, type PrimitiveAtom } from 'jotai';
 import type { IRadioBrowserMusicItem } from '@common/radioBrowser';
 import { isSafeRadioRemoteUrl } from '@common/radioBrowser';
 import requestForwarder from '@infra/requestForwarder/renderer';
+import { getRadioProxySpec } from '@infra/radioBrowser/proxy';
 import trackPlayer from '@renderer/mainWindow/core/trackPlayer';
 import { playerStateAtom, store as musicStore } from '@renderer/mainWindow/core/trackPlayer/store';
 import { PlayerState } from '@common/constant';
@@ -129,9 +130,7 @@ class RadioAudioPlayer {
             return;
         }
 
-        const finalUrl = requestForwarder.isProxyRequired(rawUrl)
-            ? requestForwarder.buildProxyUrl(rawUrl, undefined, true)
-            : rawUrl;
+        const finalUrl = proxiedRadioUrl(rawUrl);
 
         this.audio.src = finalUrl;
         try {
@@ -211,6 +210,13 @@ class RadioAudioPlayer {
         }
     }
 
+    replayCurrent(): void {
+        const station = store.get(radioCurrentStationAtom);
+        const playback = store.get(radioPlaybackStateAtom);
+        if (!station || (playback !== 'playing' && playback !== 'buffering')) return;
+        void this.play(station);
+    }
+
     private isHls(url: string, station?: IRadioBrowserMusicItem): boolean {
         if (station?.radioBrowser?.isHls === true) return true;
         try {
@@ -219,6 +225,15 @@ class RadioAudioPlayer {
             return url.includes('.m3u8');
         }
     }
+}
+
+function proxiedRadioUrl(rawUrl: string): string {
+    const forwarded = requestForwarder.isProxyRequired(rawUrl)
+        ? requestForwarder.buildProxyUrl(rawUrl, undefined, true)
+        : rawUrl;
+    if (!forwarded.startsWith('http://127.0.0.1:')) return forwarded;
+    const joiner = forwarded.includes('?') ? '&' : '?';
+    return `${forwarded}${joiner}proxy=${encodeURIComponent(getRadioProxySpec())}`;
 }
 
 export const radioAudioPlayer = new RadioAudioPlayer();

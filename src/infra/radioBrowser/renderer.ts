@@ -1,4 +1,5 @@
 import { tauriInvoke } from '@infra/tauriBridge/ipc';
+import { getRadioProxySpec } from './proxy';
 import {
     RADIO_BROWSER_PLATFORM,
     type IRadioBrowserMusicItem,
@@ -214,6 +215,7 @@ async function requestFromBase<T>(baseUrl: string, path: string): Promise<T> {
                 url,
                 options: {
                     method: 'GET',
+                    proxy: getRadioProxySpec(),
                     headers: {
                         Accept: 'application/json',
                         'User-Agent': `AnhePlayer/${version} (+https://github.com/raclen/AnhePlayer)`,
@@ -228,8 +230,9 @@ async function requestFromBase<T>(baseUrl: string, path: string): Promise<T> {
         ) {
             throw new RadioBrowserRequestError('Invalid Radio Browser response');
         }
-    } catch {
-        // Remote origin 调试或 Rust 网络不可用时，回退到支持 CORS 的官方接口。
+    } catch (error) {
+        // 直连和自定义代理不能再交给 WebView，否则会重新走系统代理。
+        if (getRadioProxySpec() !== 'system') throw error;
         response = await withTimeout(
             fetch(url, { headers: { Accept: 'application/json' } }).then(async (result) => ({
                 statusCode: result.status,
@@ -411,6 +414,7 @@ function explorationCacheKey(filters: IRadioStationFilters, limit: number): stri
         bitrateMin: filters.bitrateMin ?? null,
         bitrateMax: filters.bitrateMax ?? null,
         limit,
+        proxy: getRadioProxySpec(),
     });
 }
 
@@ -582,8 +586,14 @@ async function loadFacets(): Promise<IRadioBrowserFacets> {
     };
 }
 
+let facetsProxySpec = '';
+
 export function getFacets(force = false): Promise<IRadioBrowserFacets> {
-    if (force) facetsPromise = null;
+    const proxySpec = getRadioProxySpec();
+    if (force || proxySpec !== facetsProxySpec) {
+        facetsPromise = null;
+        facetsProxySpec = proxySpec;
+    }
     if (!facetsPromise) {
         facetsPromise = loadFacets()
             .then((result) => {

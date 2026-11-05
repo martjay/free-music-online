@@ -13,17 +13,17 @@
 
 .p-recommend-sheets {
     padding-top: var(--space-4);
-
-    &__title {
-        font-size: var(--text-title-size);
-        font-weight: var(--font-weight-bold);
-        color: var(--color-text-primary);
-        line-height: var(--text-title-leading);
-    }
+    min-width: 0;
 
     &__tabs {
-        margin-top: var(--space-4);
         margin-bottom: var(--space-6);
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    &__grid .media-grid__grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: var(--space-3);
     }
 
     &__body {

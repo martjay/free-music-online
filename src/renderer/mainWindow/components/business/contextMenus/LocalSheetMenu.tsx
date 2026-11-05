@@ -38,7 +38,7 @@ export function LocalSheetMenu(ctx: LocalSheetMenuContext): ContextMenuEntry[] {
             onClick() {
                 showModal('ConfirmModal', {
                     title: i18n.t('playlist.delete_sheet'),
-                    message: `${i18n.t('playlist.delete_sheet')}: ${sheetTitle}?`,
+                    message: i18n.t('playlist.delete_sheet_confirm', { name: sheetTitle }),
                     confirmDanger: true,
                     onConfirm: () => musicSheet.removeSheet(sheetId),
                 });

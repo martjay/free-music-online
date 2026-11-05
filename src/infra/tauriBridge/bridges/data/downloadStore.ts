@@ -17,6 +17,11 @@ import sanitizeFileName from '@common/sanitizeFileName';
 import delay from '@common/delay';
 import { safeParse, safeStringify } from '@common/safeSerialize';
 import { CONTEXT_BRIDGE_KEY as PLUGIN_KEY } from '@infra/pluginManager/common/constant';
+import {
+    findPluginForPlatform,
+    pluginsForSourceKey,
+} from '@infra/pluginManager/common/pluginIdentity';
+import neteaseAccount from '@infra/neteaseAccount/renderer';
 import { CONTEXT_BRIDGE_KEY as APP_CONFIG_KEY } from '@infra/appConfig/common/constant';
 import type {
     IDownloadProgress,
@@ -318,18 +323,62 @@ class DownloadStore {
         musicItem: IMusic.IMusicItem,
         quality: IMusic.IQualityKey,
     ): Promise<IGetMediaSourceResult | null> {
+        // 和播放同一条路：网易云歌曲先用已登录账号的官方地址
+        if (musicItem.platform === 'wy' && /^\d+$/.test(String(musicItem.id))) {
+            try {
+                const official = await neteaseAccount.getMusicUrl(String(musicItem.id), quality);
+                if (official?.url) {
+                    return {
+                        url: official.url,
+                        quality: official.quality,
+                        headers: official.headers,
+                    };
+                }
+            } catch {
+                // 官方地址失败时再交给插件
+            }
+        }
+
         const pluginMod = (window as any)[PLUGIN_KEY];
         if (!pluginMod) throw new Error('插件系统不可用');
-        const plugins = (await pluginMod.getAllPlugins()) as IPlugin.IPluginDelegate[];
-        const plugin = plugins.find((p) => p.platform === musicItem.platform);
-        if (!plugin) throw new Error(`未找到平台插件：${musicItem.platform}`);
-        return (await pluginMod.getMediaSource({
-            hash: plugin.hash,
-            musicItem,
-            quality,
-            qualityOrder: QUALITY_KEYS,
-            qualityFallbackOrder: this.config['download.whenQualityMissing'] ?? 'lower',
-        })) as IGetMediaSourceResult | null;
+        const [plugins, meta] = (await Promise.all([
+            pluginMod.getAllPlugins(),
+            pluginMod.getAllPluginMeta?.() ?? {},
+        ])) as [IPlugin.IPluginDelegate[], Record<string, { enabled?: boolean }>];
+        const enabled = plugins.filter(
+            (plugin) =>
+                plugin.supportedMethod?.includes('getMediaSource') &&
+                meta?.[plugin.hash]?.enabled !== false,
+        );
+        // 歌曲上常是 wy/tx 这种音源键，插件展示名已经带上脚本名
+        const exact = findPluginForPlatform(enabled, musicItem.platform);
+        const candidates = exact ? [exact] : pluginsForSourceKey(enabled, musicItem.platform);
+        if (candidates.length === 0) {
+            const disabled = pluginsForSourceKey(plugins, musicItem.platform);
+            if (disabled.length > 0) {
+                throw new Error(`平台插件已关闭：${musicItem.platform}`);
+            }
+            throw new Error(`未找到平台插件：${musicItem.platform}`);
+        }
+
+        const qualityFallbackOrder = this.config['download.whenQualityMissing'] ?? 'lower';
+        let lastError = '';
+        for (const plugin of candidates) {
+            try {
+                const source = (await pluginMod.getMediaSource({
+                    hash: plugin.hash,
+                    musicItem,
+                    quality,
+                    qualityOrder: QUALITY_KEYS,
+                    qualityFallbackOrder,
+                })) as IGetMediaSourceResult | null;
+                if (source?.url) return source;
+            } catch (err: any) {
+                lastError = err?.message ?? String(err);
+            }
+        }
+        if (lastError) throw new Error(lastError);
+        return null;
     }
 
     /**

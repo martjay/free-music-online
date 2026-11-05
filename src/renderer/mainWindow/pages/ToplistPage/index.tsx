@@ -11,50 +11,65 @@
  * 无可用插件时展示 PluginFeatureUnavailable。
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSortedSupportedPlugins } from '@infra/pluginManager/renderer/hooks';
 import { PluginFeatureUnavailable } from '../../components/business/PluginFeatureUnavailable';
-import { TabBar } from '../../components/ui/TabBar';
+import { PluginSourceNav } from '../../components/business/PluginSourceNav';
+import {
+    TOPLIST_VIEW,
+    readListView,
+    setContentScroll,
+    writeListView,
+} from '../../core/listViewMemory';
 import { ToplistBody } from './ToplistBody';
 import './index.scss';
 
 export default function ToplistPage() {
     const { t } = useTranslation();
     const availablePlugins = useSortedSupportedPlugins('getTopLists');
-    const [activeHash, setActiveHash] = useState('');
+    const [activeHash, setActiveHash] = useState(
+        () => readListView(TOPLIST_VIEW)?.pluginHash ?? '',
+    );
 
     // 确保 activeHash 有效
     const currentHash = useMemo(() => {
         if (activeHash && availablePlugins.some((p) => p.hash === activeHash)) {
             return activeHash;
         }
+        if (availablePlugins.length === 0) return '';
+        const saved = readListView(TOPLIST_VIEW)?.pluginHash;
+        if (saved && availablePlugins.some((p) => p.hash === saved)) return saved;
         return availablePlugins[0]?.hash ?? '';
     }, [activeHash, availablePlugins]);
+
+    useEffect(() => {
+        if (!currentHash) return;
+        const prev = readListView(TOPLIST_VIEW);
+        if (prev?.pluginHash === currentHash) return;
+        writeListView(TOPLIST_VIEW, { pluginHash: currentHash, scrollTop: 0 });
+    }, [currentHash]);
 
     const currentPlugin = useMemo(
         () => availablePlugins.find((p) => p.hash === currentHash),
         [availablePlugins, currentHash],
     );
 
-    const tabItems = useMemo(
-        () =>
-            availablePlugins.map((p) => ({
-                key: p.hash,
-                label: p.platform,
-            })),
-        [availablePlugins],
+    const handleTabChange = useCallback(
+        (key: string) => {
+            if (key !== currentHash) {
+                writeListView(TOPLIST_VIEW, { pluginHash: key, scrollTop: 0 });
+                setContentScroll(0);
+            }
+            setActiveHash(key);
+        },
+        [currentHash],
     );
-
-    const handleTabChange = useCallback((key: string) => {
-        setActiveHash(key);
-    }, []);
 
     // 无插件支持此功能
     if (availablePlugins.length === 0) {
         return (
             <div className="p-toplist">
-                <h2 className="p-toplist__title">{t('toplist.title')}</h2>
                 <PluginFeatureUnavailable featureName={t('toplist.title')} />
             </div>
         );
@@ -62,10 +77,12 @@ export default function ToplistPage() {
 
     return (
         <div className="p-toplist">
-            <h2 className="p-toplist__title">{t('toplist.title')}</h2>
-
             <div className="p-toplist__tabs">
-                <TabBar items={tabItems} activeKey={currentHash} onChange={handleTabChange} />
+                <PluginSourceNav
+                    plugins={availablePlugins}
+                    activeHash={currentHash}
+                    onChange={handleTabChange}
+                />
             </div>
 
             {currentPlugin && (

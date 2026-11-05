@@ -3,6 +3,7 @@
  */
 
 import type { IMusicItemSlim } from '@appTypes/infra/musicSheet';
+import type { ActiveDownloadStatus } from '@appTypes/infra/downloadManager';
 import type { PlayerState, RepeatMode } from '@common/constant';
 import type { IParsedLrcItem } from '@common/lyricParser';
 
@@ -23,6 +24,8 @@ export interface IAppState {
     fullLyric: IParsedLrcItem[] | null;
     progress: { currentTime: number; duration: number };
     isFavorite: boolean;
+    /** 当前歌曲在主窗口下载器里的状态。迷你窗不自己下载。 */
+    downloadStatus: ActiveDownloadStatus | 'completed' | null;
 }
 
 export type AppStateType = keyof IAppState;
@@ -55,6 +58,8 @@ export interface ICommand {
 
     // ─── Window and navigation actions ───
     'set-repeat-mode': RepeatMode;
+    /** 用主窗口的下载器下载当前歌曲 */
+    'download-music': IMusic.IQualityKey;
     navigate: string;
     'open-music-detail': void;
 }

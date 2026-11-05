@@ -8,6 +8,7 @@ import { showToast } from '@renderer/mainWindow/components/ui/Toast';
 import { showModal } from '@renderer/mainWindow/components/ui/Modal/modalManager';
 import { LOCAL_PLUGIN_NAME } from '@common/constant';
 import pluginManager from '@infra/pluginManager/renderer';
+import { pluginPlatformLabel, pluginScriptLabel } from '@infra/pluginManager/common/pluginIdentity';
 import './index.scss';
 
 type ImportType = 'importMusicItem' | 'importMusicSheet';
@@ -74,17 +75,27 @@ export default function PluginImportModal({ close, plugin, type }: PluginImportM
         return (
             <Modal open onClose={close} title={t('plugin.method_import_music_sheet')} size="md">
                 <div className="plugin-modal__sheet-list">
-                    {candidates.map((p) => (
-                        <button
-                            key={p.hash}
-                            type="button"
-                            className="plugin-modal__sheet-item"
-                            onClick={() => setSelectedPlugin(p)}
-                        >
-                            <ListPlus size={16} />
-                            <span>{p.platform}</span>
-                        </button>
-                    ))}
+                    {candidates.map((p) => {
+                        const origin = pluginScriptLabel(p);
+                        return (
+                            <button
+                                key={p.hash}
+                                type="button"
+                                className="plugin-modal__sheet-item"
+                                onClick={() => setSelectedPlugin(p)}
+                            >
+                                <ListPlus size={16} />
+                                <span className="plugin-modal__choice-text">
+                                    <span>{pluginPlatformLabel(p)}</span>
+                                    {origin && (
+                                        <span className="plugin-modal__choice-origin">
+                                            {origin}
+                                        </span>
+                                    )}
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
             </Modal>
         );
@@ -93,11 +104,15 @@ export default function PluginImportModal({ close, plugin, type }: PluginImportM
     // ── hints ──
     const isTrack = type === 'importMusicItem';
     const title = isTrack
-        ? `${t('plugin.method_import_music_item')} · ${selectedPlugin.platform}`
-        : `${t('plugin.method_import_music_sheet')} · ${selectedPlugin.platform}`;
+        ? `${t('plugin.method_import_music_item')} · ${pluginPlatformLabel(selectedPlugin)}`
+        : `${t('plugin.method_import_music_sheet')} · ${pluginPlatformLabel(selectedPlugin)}`;
     const placeholder = isTrack
-        ? t('plugin.placeholder_import_music_item', { plugin: selectedPlugin.platform })
-        : t('plugin.placeholder_import_music_sheet', { plugin: selectedPlugin.platform });
+        ? t('plugin.placeholder_import_music_item', {
+              plugin: pluginPlatformLabel(selectedPlugin),
+          })
+        : t('plugin.placeholder_import_music_sheet', {
+              plugin: pluginPlatformLabel(selectedPlugin),
+          });
     const hints = selectedPlugin.hints?.[type];
 
     return (

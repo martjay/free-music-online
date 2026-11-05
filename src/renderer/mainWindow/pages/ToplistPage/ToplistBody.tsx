@@ -1,9 +1,16 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { RequestStatus } from '@common/constant';
 import { Artwork } from '../../components/ui/Artwork';
 import { StatusPlaceholder } from '../../components/ui/StatusPlaceholder';
+import {
+    TOPLIST_VIEW,
+    readContentScroll,
+    readListView,
+    setContentScroll,
+    writeListView,
+} from '../../core/listViewMemory';
 import { toplistDetailRoute } from '../../routes';
 import { useTopLists } from './useTopLists';
 import './index.scss';
@@ -26,14 +33,24 @@ export function ToplistBody({ pluginHash, pluginPlatform }: ToplistBodyProps) {
     const { t } = useTranslation();
     const { status, data, fetch, retry, syncFromCache } = useTopLists(pluginHash);
     const navigate = useNavigate();
+    const restoredRef = useRef(false);
 
     useEffect(() => {
         syncFromCache();
         fetch();
     }, [pluginHash]);
 
+    useLayoutEffect(() => {
+        if (restoredRef.current || data.length === 0) return;
+        const saved = readListView(TOPLIST_VIEW);
+        if (!saved || saved.pluginHash !== pluginHash) return;
+        restoredRef.current = true;
+        setContentScroll(saved.scrollTop);
+    }, [data.length, pluginHash]);
+
     const handleCardClick = useCallback(
         (item: IMusic.IMusicSheetItem) => {
+            writeListView(TOPLIST_VIEW, { pluginHash, scrollTop: readContentScroll() });
             navigate(toplistDetailRoute(pluginPlatform), {
                 state: {
                     topListItem: {
@@ -43,7 +60,7 @@ export function ToplistBody({ pluginHash, pluginPlatform }: ToplistBodyProps) {
                 },
             });
         },
-        [navigate, pluginPlatform],
+        [navigate, pluginHash, pluginPlatform],
     );
 
     // 加载中 / 错误 / 空态
@@ -96,9 +113,6 @@ export function ToplistBody({ pluginHash, pluginPlatform }: ToplistBodyProps) {
                                     <div className="p-toplist__card-title" title={item.title}>
                                         {item.title}
                                     </div>
-                                </div>
-                                <div className="p-toplist__card-preview">
-                                    {t('toplist.click_to_view')}
                                 </div>
                             </button>
                         ))}
