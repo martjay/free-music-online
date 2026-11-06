@@ -12,6 +12,7 @@ import {
     Maximize2,
     Shuffle,
     CircleCheckBig,
+    ArrowRightLeft,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { DesktopLyric } from '@renderer/common/icons';
@@ -169,6 +170,15 @@ export default function PlayerBar() {
                                             <CircleCheckBig size={14} />
                                         </span>
                                     )}
+                                    <button
+                                        className="l-player-bar__ctrl-btn"
+                                        type="button"
+                                        title={t('playback.switch_source')}
+                                        aria-label={t('playback.switch_source')}
+                                        onClick={() => trackPlayer.switchSource()}
+                                    >
+                                        <ArrowRightLeft size={14} />
+                                    </button>
                                     <div className="l-player-bar__divider" />
                                     <TimeDisplay />
                                 </div>

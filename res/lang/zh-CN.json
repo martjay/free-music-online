@@ -211,7 +211,10 @@
         "play_all": "播放全部",
         "source_fallback_hint": "原音源「{{original}}」不可用，已自动切换到「{{platform}}」，播放内容可能与原曲不一致",
         "source_fallback_toast": "「{{original}}」音源不可用，已切换到「{{platform}}」，播放内容可能与原曲不一致",
-        "source_fallback_short": "{{original}} → {{platform}}"
+        "source_fallback_short": "{{original}} → {{platform}}",
+        "switch_source": "换源播放",
+        "switch_source_failed": "没有其他可用音源",
+        "source_switch_toast": "「{{original}}」播放卡顿，已换到「{{platform}}」继续播放"
     },
     "lyric": {
         "search": "搜索歌词",

@@ -144,7 +144,10 @@
         "play_all": "Play All",
         "source_fallback_hint": "The original source \"{{original}}\" is unavailable. Switched to \"{{platform}}\"; playback may differ from the original track.",
         "source_fallback_toast": "\"{{original}}\" is unavailable. Switched to \"{{platform}}\"; playback may differ from the original track.",
-        "source_fallback_short": "{{original}} → {{platform}}"
+        "source_fallback_short": "{{original}} → {{platform}}",
+        "switch_source": "Switch source",
+        "switch_source_failed": "No other source is available",
+        "source_switch_toast": "\"{{original}}\" is stuttering. Switched to \"{{platform}}\" and continued playback."
     },
     "lyric": {
         "search": "Search Lyrics",

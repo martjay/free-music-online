@@ -144,7 +144,10 @@
         "play_all": "播放全部",
         "source_fallback_hint": "原音源「{{original}}」無法使用，已自動切換到「{{platform}}」，播放內容可能與原曲不一致",
         "source_fallback_toast": "「{{original}}」音源無法使用，已切換到「{{platform}}」，播放內容可能與原曲不一致",
-        "source_fallback_short": "{{original}} → {{platform}}"
+        "source_fallback_short": "{{original}} → {{platform}}",
+        "switch_source": "換源播放",
+        "switch_source_failed": "沒有其他可用音源",
+        "source_switch_toast": "「{{original}}」播放卡頓，已換到「{{platform}}」繼續播放"
     },
     "lyric": {
         "search": "搜尋歌詞",

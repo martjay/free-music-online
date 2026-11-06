@@ -9,7 +9,7 @@
 // FullscreenProgressBar 独立 memo 子组件，隔离 useProgress 高频更新。
 
 import { memo } from 'react';
-import { SkipBack, SkipForward, Play, Pause } from 'lucide-react';
+import { ArrowRightLeft, SkipBack, SkipForward, Play, Pause } from 'lucide-react';
 import { PlayerState } from '@common/constant';
 import { isRadioBrowserMedia } from '@common/radioBrowser';
 import formatDuration from '@common/formatDuration';
@@ -113,6 +113,17 @@ const PlaybackControls = memo(function PlaybackControls() {
                 >
                     <SkipForward size={22} fill="currentColor" />
                 </button>
+                {!isLive && (
+                    <button
+                        className="l-fullscreen-player__ctrl-btn"
+                        type="button"
+                        title={t('playback.switch_source')}
+                        aria-label={t('playback.switch_source')}
+                        onClick={() => trackPlayer.switchSource()}
+                    >
+                        <ArrowRightLeft size={18} />
+                    </button>
+                )}
                 {!isLive && (
                     <button
                         className="l-fullscreen-player__ctrl-btn"
