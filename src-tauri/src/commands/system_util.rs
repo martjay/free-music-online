@@ -71,6 +71,7 @@ pub fn app_update_installer_valid(installer_path: String) -> bool {
 ///
 /// 不能用 cmd 包一层再 ping：DETACHED_PROCESS 会强制弹出控制台，/S 又是静默安装，
 /// 用户只能看到终端一闪，安装界面不会出现。
+/// CreateProcess 也不会弹出 UAC，安装到 Program Files 时会因没有写权限失败。
 #[tauri::command]
 pub fn apply_app_update(app: AppHandle, installer_path: String) -> Result<(), String> {
     let installer = std::path::PathBuf::from(&installer_path);
@@ -87,12 +88,7 @@ pub fn apply_app_update(app: AppHandle, installer_path: String) -> Result<(), St
     }
 
     #[cfg(windows)]
-    {
-        // 安装包本身是窗口程序，直接打开就会出现安装界面。
-        std::process::Command::new(&installer)
-            .spawn()
-            .map_err(|err| err.to_string())?;
-    }
+    launch_installer_elevated(&installer)?;
     #[cfg(not(windows))]
     {
         return Err("仅支持在 Windows 上安装更新".to_string());
@@ -100,6 +96,36 @@ pub fn apply_app_update(app: AppHandle, installer_path: String) -> Result<(), St
 
     app.exit(0);
     Ok(())
+}
+
+/// 用 runas 启动安装包，让系统弹出 UAC。用户取消授权时不退出当前程序。
+#[cfg(windows)]
+fn launch_installer_elevated(installer: &std::path::Path) -> Result<(), String> {
+    use windows::core::{HSTRING, PCWSTR, w};
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let file = HSTRING::from(installer.as_os_str());
+    // 返回值大于 32 才是成功。用户在 UAC 点取消时，ShellExecute 会返回 1223。
+    const ERROR_CANCELLED: isize = 1223;
+    let code = unsafe {
+        ShellExecuteW(
+            None,
+            w!("runas"),
+            &file,
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    }
+    .0 as isize;
+    if code > 32 && code != ERROR_CANCELLED {
+        return Ok(());
+    }
+    if code == ERROR_CANCELLED || code == 5 {
+        return Err("已取消管理员授权".to_string());
+    }
+    Err(format!("无法以管理员身份启动安装包（{code}）"))
 }
 
 #[tauri::command]

@@ -1,9 +1,7 @@
 {
-    "version": "1.0.41",
+    "version": "1.0.42",
     "changeLog": [
-        "排行榜最前面增加官方榜：美国公告牌、英国UK、日本公信榜、法国NRJ、俄罗斯流行榜、全球电子舞曲",
-        "设置里可以选择官方榜用哪个已打开的音源播放",
-        "从托盘重新打开窗口后，任务栏悬停上的播放按钮会重新出现"
+        "一键更新打开安装包时会请求管理员权限，可以安装到 Program Files 等需要权限的目录"
     ],
     "download": ["https://github.com/martjay/free-music-online/releases/latest"]
 }
