@@ -25,6 +25,7 @@ import neteaseAccount from '@infra/neteaseAccount/renderer';
 import { addToRecentlyPlayed } from '../recentlyPlayed';
 import appSync from '@infra/appSync/renderer/main';
 import { syncKV } from '@renderer/common/kvStore';
+import { tauriInvoke, tauriListen } from '@infra/tauriBridge/ipc';
 import { REPEAT_MODE_MAP } from '@renderer/common/repeatModeMap';
 import { showToast } from '@renderer/mainWindow/components/ui/Toast';
 import i18n from '@infra/i18n/renderer';
@@ -153,9 +154,37 @@ function setupAppSyncBridge(): void {
 // ─── TrackPlayer ───
 
 class TrackPlayer {
-    private audioController!: IAudioController;
-    private playQueue!: PlayQueue;
-    private lyricManager!: LyricManager;
+    private audioController: IAudioController;
+    private playQueue: PlayQueue;
+    private lyricManager: LyricManager;
+    private readyPromise: Promise<void>;
+    private markReady: () => void;
+
+    constructor() {
+        this.audioController = createAudioController('web-audio');
+        this.playQueue = new PlayQueue();
+        this.lyricManager = new LyricManager();
+        let resolveReady = () => {};
+        this.readyPromise = new Promise<void>((resolve) => {
+            resolveReady = resolve;
+        });
+        this.markReady = () => resolveReady();
+        this.bindAudioEvents();
+        this.bindAppSyncCommands();
+        this.bindMediaSession();
+        this.bindTaskbarToolbar();
+        setupAppSyncBridge();
+        this.audioController.setVolume(store.get(volumeAtom));
+        this.audioController.setSpeed(store.get(speedAtom));
+        // 队列和上次的歌不等插件。插件卡住时也不能把音量、模式和列表留在默认值。
+        void this.playQueue.setup().then(() => {
+            if (store.get(repeatModeAtom) === RepeatMode.Shuffle) {
+                this.playQueue.enterShuffleIfUntouched();
+            }
+        });
+        this.rememberSessionOnLeave();
+        this.markReady();
+    }
 
     // 进度持久化节流
     private lastProgressWriteTime = 0;
@@ -174,6 +203,8 @@ class TrackPlayer {
     private activeSourceKey = '';
     private activeSourceHash = '';
     private pendingAlternative: Promise<IAlternativeSourceHit | null> | null = null;
+    /** 这一首里已经确认是短试听的平台，换源时跳过，不影响后面的歌。 */
+    private previewSkipHashes = new Set<string>();
     private ignorePlayErrorUntil = 0;
     private handlingPlayError = false;
     private static readonly SOURCE_UNHEALTHY_MS = 8 * 60 * 1000;
@@ -184,78 +215,53 @@ class TrackPlayer {
     // ─── 启动恢复 ───
 
     async setup(): Promise<void> {
-        // 1. 创建子模块
-        this.audioController = createAudioController('web-audio');
-        this.playQueue = new PlayQueue();
-        this.lyricManager = new LyricManager();
+        try {
+            await this.restorePlayerState();
+        } finally {
+            this.markReady();
+        }
+    }
 
+    private async restorePlayerState(): Promise<void> {
         // 2. 恢复持久化状态（localStorage 同步读取，首帧可用）
         const volume = syncKV.get('player.volume') ?? 1;
         const speed = syncKV.get('player.speed') ?? 1;
         const repeatMode = syncKV.get('player.repeatMode') ?? RepeatMode.Queue;
         const savedMusic = syncKV.get('player.currentMusic');
         const savedProgress = syncKV.get('player.currentProgress') ?? 0;
-        const savedQuality = syncKV.get('player.currentQuality') ?? 'standard';
-        const validQuality: IMusic.IQualityKey = QUALITY_KEYS.includes(savedQuality as any)
-            ? (savedQuality as IMusic.IQualityKey)
-            : 'standard';
+        const validQuality = this.configuredQuality();
 
         store.set(volumeAtom, volume);
         store.set(speedAtom, speed);
         store.set(repeatModeAtom, repeatMode);
         store.set(qualityAtom, validQuality);
+        syncKV.set('player.currentQuality', validQuality);
 
         this.audioController.setVolume(volume);
         this.audioController.setSpeed(speed);
 
-        // 3. 恢复播放队列（异步 IPC）
-        await this.playQueue.setup();
+        // 3. 恢复播放队列放到后台。用户已经点了播放时，不能等数据库，也不能被旧队列盖掉。
+        void this.playQueue
+            .setup()
+            .then(() => {
+                if (repeatMode === RepeatMode.Shuffle) this.playQueue.enterShuffleIfUntouched();
+            })
+            .catch(() => {});
 
-        // 3.5 恢复 Shuffle 状态（纯内存导航，需在 setup 后重建）
-        if (repeatMode === RepeatMode.Shuffle) {
-            this.playQueue.enterShuffle();
-        }
-
-        // 4. 恢复当前歌曲（仅恢复音乐，隔离电台）
-        if (savedMusic && !isRadioBrowserMedia(savedMusic)) {
-            store.set(currentMusicAtom, musicItemToSlim(savedMusic));
-
-            // 获取完整数据并加载音源（不自动播放）
-            const fullItem = await musicSheet.getRawMusicItem(savedMusic.platform, savedMusic.id);
-            const musicItem = fullItem ?? savedMusic;
-
-            try {
-                const localSource = await this.tryLocalSource(musicItem);
-                const result =
-                    localSource ?? (await this.resolveMediaSource(musicItem, validQuality));
-
-                if (result?.url && this.isCurrentMusic(savedMusic)) {
-                    this.audioController.setSpeed(speed);
-                    this.audioController.setTrackSource(result, musicItem);
-                    this.markPlaybackSource(musicItem.platform);
-                    this.audioController.seekTo(savedProgress);
-                    if (result.quality) store.set(qualityAtom, result.quality);
-                }
-            } catch {
-                // 恢复失败不阻塞启动
+        // 4. 先记下上次的歌曲。用户已经点了播放就不要再用上次的歌盖住。
+        if (this.playbackAttempt === 0) {
+            if (savedMusic && !isRadioBrowserMedia(savedMusic)) {
+                store.set(currentMusicAtom, musicItemToSlim(savedMusic));
+                void this.restoreSavedTrack(savedMusic, savedProgress, speed);
+            } else if (savedMusic && isRadioBrowserMedia(savedMusic)) {
+                syncKV.remove('player.currentMusic');
+                store.set(currentMusicAtom, null);
             }
-
-            this.lyricManager.fetchLyric(musicItem);
-        } else if (savedMusic && isRadioBrowserMedia(savedMusic)) {
-            syncKV.remove('player.currentMusic');
-            store.set(currentMusicAtom, null);
         }
 
-        // 5. 绑定事件
-        this.bindAudioEvents();
-        this.bindAppSyncCommands();
-        setupAppSyncBridge();
-        this.bindMediaSession();
+        // 5. 命令、媒体键和窗口同步已在构造时接上。
 
-        // 6. beforeunload 兜底
-        window.addEventListener('beforeunload', () => {
-            syncKV.set('player.currentProgress', store.get(progressAtom).currentTime);
-        });
+        // 6. 离开页面前再记一次进度。音量、模式和列表在变更时已经落盘。
 
         // 7. 恢复音频输出设备
         const device = appConfig.getConfigByKey('playMusic.audioOutputDevice');
@@ -299,6 +305,116 @@ class TrackPlayer {
         });
     }
 
+    /** 设置里的默认音质才是播放器的选择，不沿用上一首实际降级后的音质。 */
+    private configuredQuality(): IMusic.IQualityKey {
+        const configured = appConfig.getConfigByKey('playMusic.defaultQuality');
+        return configured && QUALITY_KEYS.includes(configured) ? configured : 'standard';
+    }
+
+    /** 关闭时返回 null。缺省 65 秒，用来拦住固定 1:00 的会员试听。 */
+    private shortPreviewLimitSec(): number | null {
+        if (appConfig.getConfigByKey('playMusic.rejectShortPreview') === false) return null;
+        const raw = appConfig.getConfigByKey('playMusic.shortPreviewLimitSec');
+        const seconds = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : 65;
+        return Math.min(30 * 60, Math.max(1, seconds));
+    }
+
+    /**
+     * 出声前读真实时长。短于设定值就换平台，直到找到更长的版本或没有其他源。
+     * 时长一时读不到就先用当前源，避免每首歌都多等一轮。
+     */
+    private async prepareAudibleSource(
+        result: IPlugin.IMediaSourceResult,
+        playbackItem: IMusic.IMusicItem,
+        original: IMusic.IMusicItem,
+        target: IMedia.IMediaBase,
+        attempt: number,
+        isLive: boolean,
+        allowSwitch: boolean,
+    ): Promise<{
+        result: IPlugin.IMediaSourceResult;
+        playbackItem: IMusic.IMusicItem;
+        switched: boolean;
+    } | null> {
+        let currentResult = result;
+        let currentItem = playbackItem;
+        let switched = false;
+
+        for (let hop = 0; hop < 4; hop++) {
+            if (!this.isCurrentMusic(target) || attempt !== this.playbackAttempt) return null;
+            this.audioController.setTrackSource(currentResult, currentItem);
+
+            const limit = !allowSwitch || isLive ? null : this.shortPreviewLimitSec();
+            if (!limit) break;
+
+            const duration = await this.audioController.waitForDuration(1000);
+            if (!this.isCurrentMusic(target) || attempt !== this.playbackAttempt) return null;
+            if (duration === null || duration > limit) break;
+
+            const identity = this.sourceIdentity(currentItem);
+            if (identity.hash) this.previewSkipHashes.add(identity.hash);
+            this.audioController.prepareTrack(target as IMusicItemSlim);
+
+            const alt = await this.findAlternativeSource(original, attempt);
+            if (!alt || attempt !== this.playbackAttempt || !this.isCurrentMusic(target)) {
+                this.audioController.setTrackSource(currentResult, currentItem);
+                break;
+            }
+            currentResult = alt.result;
+            currentItem = alt.musicItem;
+            switched = true;
+        }
+
+        if (!this.isCurrentMusic(target) || attempt !== this.playbackAttempt) return null;
+        return { result: currentResult, playbackItem: currentItem, switched };
+    }
+
+    private async restoreSavedTrack(
+        savedMusic: IMusic.IMusicItem,
+        savedProgress: number,
+        speed: number,
+    ): Promise<void> {
+        const attempt = this.playbackAttempt;
+        try {
+            const fullItem = await musicSheet.getRawMusicItem(savedMusic.platform, savedMusic.id);
+            const musicItem = fullItem ?? (savedMusic as IMusic.IMusicItem);
+            if (!this.isCurrentMusic(savedMusic) || attempt !== this.playbackAttempt) return;
+            this.lyricManager.fetchLyric(musicItem);
+
+            const quality = this.configuredQuality();
+            const localSource = await this.tryLocalSource(musicItem);
+            const result = localSource ?? (await this.resolveMediaSource(musicItem, quality));
+            if (
+                !result?.url ||
+                !this.isCurrentMusic(savedMusic) ||
+                attempt !== this.playbackAttempt
+            ) {
+                return;
+            }
+
+            const prepared = await this.prepareAudibleSource(
+                result,
+                musicItem,
+                musicItem,
+                savedMusic,
+                attempt,
+                false,
+                !localSource,
+            );
+            if (!prepared || !this.isCurrentMusic(savedMusic)) return;
+
+            this.audioController.setSpeed(speed);
+            this.markPlaybackSource(
+                prepared.playbackItem.platform,
+                prepared.switched ? musicItem.platform : undefined,
+                false,
+            );
+            this.audioController.seekTo(savedProgress);
+        } catch {
+            // 恢复失败不阻塞播放
+        }
+    }
+
     // ─── 播放控制 ───
 
     /** 播放指定位置 */
@@ -332,18 +448,26 @@ class TrackPlayer {
         this.resetProgress();
 
         try {
+            await pluginManager.whenReady();
+            if (!this.isCurrentMusic(targetSlim)) return;
+
             // 从 SQLite 获取完整数据；搜索结果刚入队时持久化可能尚未完成，回退到队列内存缓存。
+            // 刚点的歌以队列里的完整数据为准。库里可能还没写完，或者只剩精简字段，插件取词会失败。
+            const memoryItem = this.playQueue.getRawItem(targetSlim);
             const fullItem =
-                (await musicSheet.getRawMusicItem(targetSlim.platform, targetSlim.id)) ??
-                this.playQueue.getRawItem(targetSlim);
+                memoryItem ??
+                (await musicSheet.getRawMusicItem(targetSlim.platform, targetSlim.id));
             const musicItem: IMusic.IMusicItem = fullItem ?? (targetSlim as IMusic.IMusicItem);
 
             const isLive = isRadioBrowserMedia(musicItem);
+            const lyricTask = isLive ? Promise.resolve() : this.lyricManager.fetchLyric(musicItem);
             const attempt = ++this.playbackAttempt;
             this.pendingAlternative = null;
+            this.previewSkipHashes = new Set();
 
             // 电台使用受控直连源，普通歌曲优先使用已下载的本地文件。
-            const quality = store.get(qualityAtom);
+            const quality = this.configuredQuality();
+            store.set(qualityAtom, quality);
             const localSource = isLive ? null : await this.tryLocalSource(musicItem);
             if (!this.isCurrentMusic(targetSlim) || attempt !== this.playbackAttempt) return;
 
@@ -369,11 +493,23 @@ class TrackPlayer {
 
             // 直播固定 1× 播放，但不覆盖用户保存的歌曲倍速。
             this.audioController.setSpeed(isLive ? 1 : store.get(speedAtom));
-            if (!isLive && result.quality) {
-                store.set(qualityAtom, result.quality);
-                syncKV.set('player.currentQuality', result.quality);
+            const prepared = await this.prepareAudibleSource(
+                result,
+                playbackItem,
+                musicItem,
+                targetSlim,
+                attempt,
+                isLive,
+                !localSource,
+            );
+            if (!prepared) return;
+            result = prepared.result;
+            playbackItem = prepared.playbackItem;
+            if (prepared.switched) {
+                fallbackFrom = musicItem.platform;
+                notifyFallback = this.consumeFallbackNotice(this.sourceIdentity(musicItem).key);
             }
-            this.audioController.setTrackSource(result, playbackItem);
+            if (!isLive) syncKV.set('player.currentQuality', quality);
             this.rememberActiveSource(playbackItem);
             this.markPlaybackSource(playbackItem.platform, fallbackFrom, notifyFallback);
             this.audioController.play();
@@ -381,7 +517,21 @@ class TrackPlayer {
             this.consecutiveErrors = 0;
             this.resetSourceRetryState();
 
-            this.setCurrentMusic(musicItem);
+            this.setCurrentMusic(musicItem, false);
+            if (!isLive) {
+                void lyricTask.then(() => {
+                    if (
+                        this.lyricManager.hasLyric() ||
+                        !prepared.switched ||
+                        !this.isCurrentMusic(targetSlim) ||
+                        (playbackItem.platform === musicItem.platform &&
+                            String(playbackItem.id) === String(musicItem.id))
+                    ) {
+                        return;
+                    }
+                    return this.lyricManager.fetchLyric(playbackItem);
+                });
+            }
 
             if (!isLive) {
                 // 记录到最近播放（异步，不阻塞播放）
@@ -549,9 +699,17 @@ class TrackPlayer {
     }
 
     async setQuality(quality: IMusic.IQualityKey): Promise<boolean> {
-        const current = this.playQueue.getCurrentMusic();
-        if (isRadioBrowserMedia(current)) return false;
         const prevQuality = store.get(qualityAtom);
+        store.set(qualityAtom, quality);
+        syncKV.set('player.currentQuality', quality);
+        if (!this.audioController) return true;
+
+        const current = this.playQueue.getCurrentMusic();
+        if (isRadioBrowserMedia(current)) {
+            store.set(qualityAtom, prevQuality);
+            syncKV.set('player.currentQuality', prevQuality);
+            return false;
+        }
         if (!current || quality === prevQuality) return true;
 
         const currentTime = store.get(progressAtom).currentTime;
@@ -574,18 +732,11 @@ class TrackPlayer {
                 this.markPlaybackSource(musicItem.platform);
                 this.audioController.seekTo(currentTime);
                 if (wasPlaying) this.audioController.play();
-                store.set(qualityAtom, result.quality!);
-                syncKV.set('player.currentQuality', result.quality!);
-                return result.quality === quality;
-            } else {
-                // 切歌了或无结果，恢复原状态
-                store.set(qualityAtom, prevQuality);
-                store.set(playerStateAtom, wasPlaying ? PlayerState.Playing : PlayerState.Paused);
-                return false;
+                return true;
             }
+            store.set(playerStateAtom, wasPlaying ? PlayerState.Playing : PlayerState.Paused);
+            return false;
         } catch {
-            // 切换失败，恢复原音质标记
-            store.set(qualityAtom, prevQuality);
             store.set(playerStateAtom, wasPlaying ? PlayerState.Playing : PlayerState.Paused);
             return false;
         }
@@ -647,6 +798,9 @@ class TrackPlayer {
     private bindAudioEvents(): void {
         this.audioController.on('stateChange', (state) => {
             store.set(playerStateAtom, state);
+            void tauriInvoke('taskbar_toolbar_set_playing', {
+                playing: state === PlayerState.Playing,
+            });
             if (state === PlayerState.Playing) {
                 this.markSourceHealthy(this.activeSourceKey, this.activeSourceHash);
             }
@@ -700,6 +854,15 @@ class TrackPlayer {
             if (isRadioBrowserMedia(store.get(currentMusicAtom))) return;
             store.set(speedAtom, speed);
             syncKV.set('player.speed', speed);
+        });
+    }
+
+    private bindTaskbarToolbar(): void {
+        void tauriInvoke('taskbar_toolbar_install');
+        void tauriListen<string>('taskbar-media', (command) => {
+            if (command === 'previous') void this.skipToPrev();
+            else if (command === 'next') void this.skipToNext();
+            else if (command === 'play-pause') this.togglePlayPause();
         });
     }
 
@@ -765,10 +928,6 @@ class TrackPlayer {
 
         this.consecutiveErrors++;
 
-        // 播放出错时重置音质为默认，避免因高音质源不可用导致连续失败
-        store.set(qualityAtom, 'standard');
-        syncKV.set('player.currentQuality', 'standard');
-
         const behavior = appConfig.getConfigByKey('playMusic.playError') ?? 'retry_with_source';
 
         if (
@@ -816,14 +975,24 @@ class TrackPlayer {
         const attempt = ++this.playbackAttempt;
         if (!alt || !this.isCurrentMusic(musicItem)) return false;
 
-        const resolvedQuality = alt.result.quality ?? 'standard';
-        store.set(qualityAtom, resolvedQuality);
-        syncKV.set('player.currentQuality', resolvedQuality);
-        this.audioController.setTrackSource(alt.result, alt.musicItem);
+        const prepared = await this.prepareAudibleSource(
+            alt.result,
+            alt.musicItem,
+            sourceMusic,
+            musicItem,
+            attempt,
+            false,
+            true,
+        );
+        if (!prepared || !this.isCurrentMusic(musicItem)) return false;
+
+        const quality = this.configuredQuality();
+        store.set(qualityAtom, quality);
+        syncKV.set('player.currentQuality', quality);
         this.ignorePlayErrorUntil = Date.now() + 800;
-        this.rememberActiveSource(alt.musicItem);
+        this.rememberActiveSource(prepared.playbackItem);
         this.markPlaybackSource(
-            alt.musicItem.platform,
+            prepared.playbackItem.platform,
             sourceMusic.platform,
             this.consumeFallbackNotice(this.sourceIdentity(sourceMusic).key),
         );
@@ -923,7 +1092,10 @@ class TrackPlayer {
         const plugins = pluginManager
             .getSortedSupportedPlugin('getMediaSource')
             .filter(
-                (plugin) => plugin.hash !== originalHash && !this.isSourceUnhealthy(plugin.hash),
+                (plugin) =>
+                    plugin.hash !== originalHash &&
+                    !this.isSourceUnhealthy(plugin.hash) &&
+                    !this.previewSkipHashes.has(plugin.hash),
             );
         if (!this.preferredFallbackHash) return plugins;
         return [...plugins].sort((a, b) => {
@@ -972,12 +1144,13 @@ class TrackPlayer {
     ): Promise<IAlternativeSourceHit | null> {
         const candidateMusic = await this.resolveAlternativeMusicItem(sourceMusic, plugin);
         if (!candidateMusic) return null;
+        const quality = this.configuredQuality();
         const result = await pluginManager.adapters.getMediaSource({
             hash: plugin.hash,
             musicItem: candidateMusic,
-            quality: 'standard',
-            qualityOrder: ['standard', 'low'],
-            qualityFallbackOrder: 'lower',
+            quality,
+            qualityOrder: QUALITY_KEYS,
+            qualityFallbackOrder: this.getQualityFallbackOrder(),
         });
         if (!result?.url) return null;
         return { result, musicItem: candidateMusic };
@@ -1317,6 +1490,21 @@ class TrackPlayer {
             qualityOrder: QUALITY_KEYS,
             qualityFallbackOrder: this.getQualityFallbackOrder(),
         });
+    }
+
+    private rememberSessionOnLeave(): void {
+        const persist = () => {
+            const progress = store.get(progressAtom);
+            if (Number.isFinite(progress.currentTime)) {
+                syncKV.set('player.currentProgress', progress.currentTime);
+            }
+            syncKV.set('player.volume', store.get(volumeAtom));
+            syncKV.set('player.speed', store.get(speedAtom));
+            syncKV.set('player.repeatMode', store.get(repeatModeAtom));
+            this.playQueue.flush();
+        };
+        window.addEventListener('pagehide', persist);
+        window.addEventListener('beforeunload', persist);
     }
 
     /** 获取音质回退策略，'skip' 降级为 'lower' */

@@ -13,6 +13,7 @@ use commands::{
     lyric_window::{self, sync_lyric_window, LyricWindowState},
     netease::*,
     system_util::*,
+    taskbar_toolbar::*,
     webdav::*,
 };
 use tauri::{
@@ -37,6 +38,7 @@ fn restore_main_window(app: &AppHandle) {
         let _ = window.set_skip_taskbar(false);
         let _ = window.unminimize();
         let _ = window.show();
+        install_taskbar_window(&window);
         let _ = window.set_focus();
     }
 }
@@ -85,6 +87,9 @@ pub fn run() {
             fs_write_file,
             fs_read_file,
             fs_is_file,
+            fs_file_sizes,
+            taskbar_toolbar_install,
+            taskbar_toolbar_set_playing,
             fs_is_folder,
             fs_remove,
             fs_mkdir,
@@ -118,6 +123,8 @@ pub fn run() {
         .setup(|app| {
             commands::forwarder::init_forwarder(app.handle().clone());
             lyric_window::init_lyric_window(app.handle());
+            restore_saved_placements(app.handle());
+            install_taskbar_windows(app.handle());
 
             // ── 系统托盘 ──
             // 关闭按钮在「最小化」模式下只会隐藏窗口，必须提供托盘入口将其找回。
@@ -227,7 +234,16 @@ pub fn run() {
                 // 主窗口关闭请求：按配置决定「退出」还是「隐藏到托盘」，
                 // 避免窗口被销毁后进程与音频仍在后台运行却无法找回。
                 "main" => {
+                    if let WindowEvent::Focused(true) = event {
+                        if let Some(webview) = window.app_handle().get_webview_window("main") {
+                            install_taskbar_window(&webview);
+                        }
+                    }
+                    if let WindowEvent::Moved(_) | WindowEvent::Resized(_) = event {
+                        on_main_window_geometry(window);
+                    }
                     if let WindowEvent::CloseRequested { api, .. } = event {
+                        on_main_window_geometry(window);
                         if read_close_behavior() == "exit_app" {
                             window.app_handle().exit(0);
                             return;
@@ -239,6 +255,16 @@ pub fn run() {
                 }
                 // 歌词窗口：几何变化防抖持久化 + 关闭请求拦截
                 "lyric" => lyric_window::handle_lyric_window_event(window, event),
+                "minimode" => {
+                    if let WindowEvent::Focused(true) = event {
+                        if let Some(webview) = window.app_handle().get_webview_window("minimode") {
+                            install_taskbar_window(&webview);
+                        }
+                    }
+                    if let WindowEvent::Moved(_) | WindowEvent::Resized(_) = event {
+                        on_minimode_geometry(window);
+                    }
+                }
                 _ => {}
             }
         })

@@ -13,7 +13,13 @@ export function pluginGroupKey(
 export function pluginPlatformLabel(
     plugin: Pick<IPlugin.IPluginDelegate, 'platform' | 'platformLabel'>,
 ): string {
-    return plugin.platformLabel?.trim() || plugin.platform.split(' · ')[0];
+    return plugin.platformLabel?.trim() || shortPlatformName(plugin.platform);
+}
+
+/** 歌曲、歌单上展示的来源。平台内部会带上脚本名，界面只保留「QQ音乐」这一段。 */
+export function shortPlatformName(platform?: string | null): string {
+    const name = platform?.split(' · ')[0]?.trim();
+    return name || '';
 }
 
 /**

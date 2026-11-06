@@ -34,6 +34,7 @@ import appConfig from '@infra/appConfig/renderer';
 import trackPlayer from '../../../core/trackPlayer';
 import { showToast } from '../../ui/Toast';
 import { useColumnWidths } from '@renderer/common/hooks/useColumnWidths';
+import { shortPlatformName } from '@infra/pluginManager/common/pluginIdentity';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -41,6 +42,15 @@ import { useColumnWidths } from '@renderer/common/hooks/useColumnWidths';
 
 /** 可通过 hideColumns 隐藏的列 key */
 export type HideableColumn = 'index' | 'artist' | 'album' | 'platform' | 'duration';
+
+export interface SongTableExtraColumn {
+    id: string;
+    header: ReactNode;
+    width?: number | string;
+    align?: 'left' | 'center' | 'right';
+    cellClassName?: string;
+    render: (item: IMusic.IMusicItemBase, index: number) => ReactNode;
+}
 
 /** 行交互事件的上下文信息 */
 export interface RowInteractionDetail {
@@ -137,6 +147,8 @@ export interface SongTableProps {
     defaultColumnWidths?: Record<string, number | string>;
     /** 悬停显示被截断的全文，单击复制该格文字 */
     inspectText?: boolean;
+    /** 插在时长列后面的附加列，仅当前表格使用 */
+    extraColumns?: SongTableExtraColumn[];
 
     /** 外部滚动容器元素（不传则自动查找 .l-app-shell__content 或回退到 window） */
     scrollParent?: HTMLElement;
@@ -324,6 +336,7 @@ export function SongTable({
     hideColumns = appConfig.getConfigByKey('normal.musicListHideColumns'),
     columnLayoutKey,
     defaultColumnWidths,
+    extraColumns,
     inspectText = false,
     scrollParent: externalScrollParent,
     className,
@@ -443,12 +456,25 @@ export function SongTable({
             cols.push({
                 id: 'duration',
                 header: t('media.duration'),
-                width: 80,
+                width: defaultColumnWidths?.duration ?? 80,
                 align: 'right',
                 cellClassName: 'song-table__cell--duration',
                 resizable: true,
                 render: (item) => formatDuration(item.duration),
             });
+        }
+
+        if (extraColumns) {
+            for (const column of extraColumns) {
+                cols.push({
+                    id: column.id,
+                    header: column.header,
+                    width: defaultColumnWidths?.[column.id] ?? column.width,
+                    align: column.align,
+                    cellClassName: column.cellClassName,
+                    render: column.render,
+                });
+            }
         }
 
         if (!hideSet.has('platform')) {
@@ -457,15 +483,17 @@ export function SongTable({
                 header: t('media.platform'),
                 width: defaultColumnWidths?.platform ?? 88,
                 resizable: true,
-                textOf: (item) => item.platform ?? '',
+                textOf: (item) => shortPlatformName(item.platform),
                 render: (item) => (
-                    <span className="song-table__platform-badge">{item.platform}</span>
+                    <span className="song-table__platform-badge" title={item.platform}>
+                        {shortPlatformName(item.platform)}
+                    </span>
                 ),
             });
         }
 
         return cols;
-    }, [hideSet, t, defaultColumnWidths]);
+    }, [hideSet, t, defaultColumnWidths, extraColumns]);
 
     // ── colgroup（控制列宽） ──
     const colGroup = useMemo(

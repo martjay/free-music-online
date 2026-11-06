@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { SettingsCard } from '../components/SettingsCard';
 import { SettingRow } from '../components/SettingRow';
 import { Select } from '@renderer/mainWindow/components/ui/Select';
+import { Toggle } from '@renderer/mainWindow/components/ui/Toggle';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
+import trackPlayer from '@renderer/mainWindow/core/trackPlayer';
 import appConfig from '@infra/appConfig/renderer';
 import { getFacets, type IRadioBrowserFacets } from '@infra/radioBrowser/renderer';
 import { formatCountryName, formatLanguageName } from '../../RadioPage/utils/geoLanguageMap';
@@ -18,6 +20,12 @@ import type { IAudioOutputDevice } from '@appTypes/infra/appConfig';
 export function PlaybackSection() {
     const { t } = useTranslation();
     const [defaultQuality, setDefaultQuality] = useConfigValue('playMusic.defaultQuality');
+    const [rejectShortPreview, setRejectShortPreview] = useConfigValue(
+        'playMusic.rejectShortPreview',
+    );
+    const [shortPreviewLimitSec, setShortPreviewLimitSec] = useConfigValue(
+        'playMusic.shortPreviewLimitSec',
+    );
     const [whenQualityMissing, setWhenQualityMissing] = useConfigValue(
         'playMusic.whenQualityMissing',
     );
@@ -149,6 +157,22 @@ export function PlaybackSection() {
         [outputDevices, setAudioOutputDevice],
     );
 
+    const previewLimit = shortPreviewLimitSec ?? 65;
+    const previewMinutes = Math.floor(previewLimit / 60);
+    const previewSeconds = previewLimit % 60;
+    const commitPreviewLimit = useCallback(
+        (minutes: number, seconds: number) => {
+            const safeMinutes = Number.isFinite(minutes)
+                ? Math.max(0, Math.min(30, Math.floor(minutes)))
+                : 0;
+            const safeSeconds = Number.isFinite(seconds)
+                ? Math.max(0, Math.min(59, Math.floor(seconds)))
+                : 0;
+            setShortPreviewLimitSec(Math.max(1, safeMinutes * 60 + safeSeconds));
+        },
+        [setShortPreviewLimitSec],
+    );
+
     const deviceOptions = useMemo(
         () => [
             { value: 'default', label: t('settings.playback.system_default') },
@@ -174,7 +198,11 @@ export function PlaybackSection() {
                     control={
                         <Select
                             value={defaultQuality ?? 'standard'}
-                            onChange={setDefaultQuality}
+                            onChange={(quality) => {
+                                const next = quality as IMusic.IQualityKey;
+                                setDefaultQuality(next);
+                                void trackPlayer.setQuality(next);
+                            }}
                             options={[
                                 { value: 'low', label: t('quality.low') },
                                 { value: 'standard', label: t('quality.standard') },
@@ -182,6 +210,48 @@ export function PlaybackSection() {
                                 { value: 'super', label: t('quality.super') },
                             ]}
                         />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.short_preview_label')}
+                    description={t('settings.playback.short_preview_desc')}
+                    control={
+                        <Toggle
+                            checked={rejectShortPreview ?? true}
+                            onChange={setRejectShortPreview}
+                        />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.short_preview_limit_label')}
+                    description={t('settings.playback.short_preview_limit_desc')}
+                    control={
+                        <div className="p-setting__duration">
+                            <input
+                                className="p-setting__duration-input"
+                                type="number"
+                                min={0}
+                                max={30}
+                                aria-label={t('settings.playback.short_preview_minutes')}
+                                value={previewMinutes}
+                                onChange={(event) =>
+                                    commitPreviewLimit(Number(event.target.value), previewSeconds)
+                                }
+                            />
+                            <span>{t('settings.playback.short_preview_minutes')}</span>
+                            <input
+                                className="p-setting__duration-input"
+                                type="number"
+                                min={0}
+                                max={59}
+                                aria-label={t('settings.playback.short_preview_seconds')}
+                                value={previewSeconds}
+                                onChange={(event) =>
+                                    commitPreviewLimit(previewMinutes, Number(event.target.value))
+                                }
+                            />
+                            <span>{t('settings.playback.short_preview_seconds')}</span>
+                        </div>
                     }
                 />
                 <SettingRow

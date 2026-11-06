@@ -25,6 +25,9 @@ class PlayQueue {
     private indexMap: IIndexMap = createIndexMap([]);
     private currentIndex = -1;
     private mutationQueue = new MutationQueue();
+    /** 用户已经替换过队列时，启动恢复不能再把刚点的歌单盖掉。 */
+    private hasLocalEdits = false;
+    private setupPromise: Promise<void> | null = null;
 
     // ─── Shuffle 状态（虚拟导航，纯内存，不持久化） ───
     private shuffleKeys: string[] = [];
@@ -67,8 +70,21 @@ class PlayQueue {
 
     // ─── 初始化（启动恢复） ───
 
+    enterShuffleIfUntouched(): void {
+        if (this.hasLocalEdits || this._isShuffleActive) return;
+        this.enterShuffle();
+    }
+
     async setup(): Promise<void> {
+        if (!this.setupPromise) {
+            this.setupPromise = this.loadSavedQueue();
+        }
+        return this.setupPromise;
+    }
+
+    private async loadSavedQueue(): Promise<void> {
         const rawList = await playQueueBridge.getAll();
+        if (this.hasLocalEdits) return;
         // 隔离电台：播放队列专属于音乐，清理历史残留的电台条目
         const legacyRadioItems = rawList.filter(isRadioBrowserMedia);
         if (legacyRadioItems.length > 0) {
@@ -79,11 +95,24 @@ class PlayQueue {
 
         const savedMusic = syncKV.get('player.currentMusic');
         if (savedMusic && !isRadioBrowserMedia(savedMusic)) {
-            this.currentIndex = this.indexMap.indexOf(savedMusic);
+            let index = this.indexMap.indexOf(savedMusic);
+            if (index < 0) {
+                const shortName = savedMusic.platform.split(' · ')[0];
+                index = this.slimList.findIndex(
+                    (item) =>
+                        String(item.id) === String(savedMusic.id) &&
+                        item.platform.split(' · ')[0] === shortName,
+                );
+            }
+            this.currentIndex = index;
         } else if (savedMusic && isRadioBrowserMedia(savedMusic)) {
             syncKV.remove('player.currentMusic');
         }
         this.syncAtom();
+    }
+
+    flush(): void {
+        void playQueueBridge.flush();
     }
 
     // ─── 队列操作（乐观更新 + MutationQueue） ───
@@ -98,6 +127,7 @@ class PlayQueue {
         items: (IMusic.IMusicItem | IMusicItemSlim)[],
         options?: { playIndex?: number; fromSheetId?: string },
     ): void {
+        this.hasLocalEdits = true;
         this.rawItemCache.clear();
         this.cacheRawItems(items);
 
@@ -119,6 +149,7 @@ class PlayQueue {
      * Shuffle 模式下同时更新 shuffle 导航，确保新歌曲在随机序列的下一位。
      */
     addNext(items: (IMusic.IMusicItem | IMusicItemSlim)[]): void {
+        this.hasLocalEdits = true;
         const slims = items.map(musicItemToSlim);
         const currentMusic = this.getCurrentMusic();
         const currentKey = currentMusic ? this.keyOf(currentMusic) : null;
@@ -166,6 +197,7 @@ class PlayQueue {
 
     /** 追加到队尾 */
     append(items: (IMusic.IMusicItem | IMusicItemSlim)[]): void {
+        this.hasLocalEdits = true;
         this.cacheRawItems(items);
 
         const slims = items.map(musicItemToSlim);

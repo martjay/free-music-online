@@ -17,6 +17,10 @@ const OFFSET_PERSIST_DELAY = 500;
 class LyricManager {
     private parser: LyricParser | null = null;
     private currentMusicKey: string | null = null;
+    /** 只允许最新一次取词写回，避免后返回的空结果把歌词清掉 */
+    private requestSeq = 0;
+    private pendingKey: string | null = null;
+    private pending: Promise<void> | null = null;
     /** 当前歌曲的 platform + musicId，用于写入 mediaMeta */
     private currentPlatform: string | null = null;
     private currentMusicId: string | null = null;
@@ -25,20 +29,39 @@ class LyricManager {
     /** 防抖写入 mediaMeta 的定时器 */
     private persistTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 
-    /** 获取并解析歌词 */
-    async fetchLyric(musicItem: IMusic.IMusicItem): Promise<void> {
+    /** 当前歌曲是否已经有可显示的歌词 */
+    hasLyric(): boolean {
+        return (this.parser?.getLyricItems().length ?? 0) > 0;
+    }
+
+    /** 获取并解析歌词。同一首歌的重复调用会并到同一次请求上。 */
+    fetchLyric(musicItem: IMusic.IMusicItem): Promise<void> {
         const key = compositeKey(musicItem.platform, musicItem.id);
+        if (this.pending && this.pendingKey === key) return this.pending;
+
+        const seq = ++this.requestSeq;
         this.currentMusicKey = key;
         this.currentPlatform = musicItem.platform;
         this.currentMusicId = String(musicItem.id);
+        this.pendingKey = key;
+        this.pending = this.loadLyric(musicItem, key, seq).finally(() => {
+            if (this.requestSeq === seq) {
+                this.pending = null;
+                this.pendingKey = null;
+            }
+        });
+        return this.pending;
+    }
 
-        // 从 mediaMeta 恢复该歌曲的歌词偏移和关联歌词信息
-        const meta = await mediaMeta.getMeta(musicItem.platform, String(musicItem.id));
-        this.userOffset = meta?.lyricOffset ?? 0;
-        store.set(associatedLyricAtom, meta?.associatedLyric?.musicItem ?? null);
+    private async loadLyric(musicItem: IMusic.IMusicItem, key: string, seq: number): Promise<void> {
+        // 偏移和歌词一起取。偏移读得慢时，不要挡住歌词本身。
+        const metaPromise = mediaMeta
+            .getMeta(musicItem.platform, String(musicItem.id))
+            .catch((): null => null);
 
         try {
             let lyricSource = await pluginManager.adapters.getLyric(musicItem);
+            if (this.requestSeq !== seq) return;
 
             // 若插件未获取到歌词且属于网易云平台，尝试从网易云接口获取官方歌词
             if (!lyricSource?.rawLrc && !lyricSource?.lrc && musicItem.platform === 'wy') {
@@ -55,32 +78,47 @@ class LyricManager {
                 }
             }
 
-            // 切歌了，丢弃旧结果
-            if (this.currentMusicKey !== key) return;
+            if (this.requestSeq !== seq) return;
 
-            if (!lyricSource?.rawLrc && !lyricSource?.lrc) {
+            const rawText = lyricSource?.rawLrc || lyricSource?.lrc;
+            if (!rawText) {
                 this.parser = null;
                 store.set(currentLyricAtom, null);
                 return;
             }
 
-            this.parser = new LyricParser(lyricSource.rawLrc ?? lyricSource.lrc ?? '', {
+            this.parser = new LyricParser(rawText, {
                 musicItem,
-                translation: lyricSource.translation,
+                translation: lyricSource?.translation,
             });
+            this.publishLyric(store.get(progressAtom).currentTime);
 
-            // C-17: 初始定位到当前播放时间（恢复播放等场景，避免歌词从头开始）
-            const currentTime = store.get(progressAtom).currentTime;
-            store.set(currentLyricAtom, {
-                parser: this.parser,
-                currentLrc: this.parser.getPosition(currentTime + this.userOffset) ?? undefined,
-            });
+            const meta = await metaPromise;
+            if (this.requestSeq !== seq || !meta) return;
+            this.userOffset = meta.lyricOffset ?? 0;
+            store.set(associatedLyricAtom, meta.associatedLyric?.musicItem ?? null);
+            this.updatePosition(store.get(progressAtom).currentTime);
         } catch {
-            if (this.currentMusicKey === key) {
+            if (this.requestSeq === seq) {
                 this.parser = null;
                 store.set(currentLyricAtom, null);
             }
         }
+    }
+
+    /** 写入当前行。还没到第一句时先显示第一句有字的歌词，避免窗口一直空白。 */
+    private publishLyric(currentTime: number): void {
+        if (!this.parser) {
+            store.set(currentLyricAtom, null);
+            return;
+        }
+        const items = this.parser.getLyricItems();
+        const positioned = this.parser.getPosition(currentTime + this.userOffset);
+        const fallback = items.find((item) => item.lrc.trim());
+        store.set(currentLyricAtom, {
+            parser: this.parser,
+            currentLrc: positioned ?? fallback,
+        });
     }
 
     /** 根据播放进度更新当前歌词行 */
@@ -88,6 +126,7 @@ class LyricManager {
         if (!this.parser) return;
 
         const lyricItem = this.parser.getPosition(currentTime + this.userOffset);
+        if (!lyricItem) return;
         const prev = store.get(currentLyricAtom);
 
         if (prev?.currentLrc?.index !== lyricItem?.index) {
@@ -100,6 +139,9 @@ class LyricManager {
 
     /** 重置 */
     reset(): void {
+        this.requestSeq += 1;
+        this.pending = null;
+        this.pendingKey = null;
         this.parser = null;
         this.currentMusicKey = null;
         this.currentPlatform = null;

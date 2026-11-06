@@ -13,6 +13,7 @@
  */
 import { nanoid } from 'nanoid';
 import { QUALITY_KEYS, INTERNAL_SLIM_KEY } from '@common/constant';
+import { pickSameMusicItem } from '@common/matchMusicItem';
 import sanitizeFileName from '@common/sanitizeFileName';
 import delay from '@common/delay';
 import { safeParse, safeStringify } from '@common/safeSerialize';
@@ -22,6 +23,7 @@ import {
     pluginsForSourceKey,
 } from '@infra/pluginManager/common/pluginIdentity';
 import neteaseAccount from '@infra/neteaseAccount/renderer';
+import requestForwarder from '@infra/requestForwarder/renderer';
 import { CONTEXT_BRIDGE_KEY as APP_CONFIG_KEY } from '@infra/appConfig/common/constant';
 import type {
     IDownloadProgress,
@@ -381,6 +383,69 @@ class DownloadStore {
         return null;
     }
 
+    /** 关闭时不换源。缺省 65 秒，用来拦住固定 1:00 的会员试听。 */
+    private shortPreviewLimitSec(): number | null {
+        if (this.config['download.rejectShortPreview'] === false) return null;
+        const raw = this.config['download.shortPreviewLimitSec'];
+        const seconds = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : 65;
+        return Math.min(30 * 60, Math.max(1, seconds));
+    }
+
+    /**
+     * 原平台地址如果是短试听，在落盘前换成其他平台的完整版本。
+     * 读不到时长时保留原地址，避免每首歌都多等一轮。
+     */
+    private async preferFullDownloadSource(
+        musicItem: IMusic.IMusicItem,
+        quality: IMusic.IQualityKey,
+        source: IGetMediaSourceResult,
+    ): Promise<IGetMediaSourceResult> {
+        const limit = this.shortPreviewLimitSec();
+        if (!limit || !source.url) return source;
+
+        const duration = await probeRemoteDuration(source.url, source.headers, source.userAgent);
+        if (duration === null || duration > limit) return source;
+
+        const pluginMod = (window as any)[PLUGIN_KEY];
+        if (!pluginMod?.getAllPlugins || !pluginMod.getMediaSource) return source;
+
+        const [plugins, meta] = (await Promise.all([
+            pluginMod.getAllPlugins(),
+            pluginMod.getAllPluginMeta?.() ?? {},
+        ])) as [IPlugin.IPluginDelegate[], Record<string, { enabled?: boolean }>];
+        const enabled = plugins.filter(
+            (plugin) =>
+                plugin.supportedMethod?.includes('getMediaSource') &&
+                meta?.[plugin.hash]?.enabled !== false,
+        );
+        const origin = findPluginForPlatform(enabled, musicItem.platform);
+        const qualityFallbackOrder = this.config['download.whenQualityMissing'] ?? 'lower';
+        const alternatives = enabled.filter((plugin) => plugin.hash !== origin?.hash).slice(0, 4);
+        let unknown: IGetMediaSourceResult | null = null;
+
+        for (const plugin of alternatives) {
+            const candidate = await findSameTrackOnPlugin(pluginMod, musicItem, plugin);
+            if (!candidate) continue;
+            try {
+                const alt = (await pluginMod.getMediaSource({
+                    hash: plugin.hash,
+                    musicItem: candidate,
+                    quality,
+                    qualityOrder: QUALITY_KEYS,
+                    qualityFallbackOrder,
+                })) as IGetMediaSourceResult | null;
+                if (!alt?.url) continue;
+                const altDuration = await probeRemoteDuration(alt.url, alt.headers, alt.userAgent);
+                if (altDuration !== null && altDuration > limit) return alt;
+                if (altDuration === null && !unknown) unknown = alt;
+            } catch {
+                // 这个平台不可用，继续看下一个
+            }
+        }
+
+        return unknown ?? source;
+    }
+
     /**
      * 嵌入封面/歌词标签
      * - 封面上抛 artwork URL，由 Rust 侧直接下载（http_request 仅支持文本，二进制走不了）；
@@ -441,15 +506,21 @@ class DownloadStore {
         // 2. 延迟获取媒体源（任务真正开始执行时才请求；失败自动重试一次，插件可能刚装好/处于瞬时空档）
         let sourceError = '';
         if (musicItem && !task.mediaSource) {
+            await this.refreshConfig();
             for (let attempt = 0; attempt < 2 && !task.mediaSource; attempt += 1) {
                 if (attempt > 0) await delay(800);
                 if (this.isStale(task.id, generation)) return;
                 try {
                     const source = await this.fetchMediaSource(musicItem, task.quality);
                     if (source?.url) {
-                        task.mediaSource = safeStringify(source);
-                        if (source.quality && source.quality !== task.quality) {
-                            task.quality = source.quality;
+                        const chosen = await this.preferFullDownloadSource(
+                            musicItem,
+                            task.quality,
+                            source,
+                        );
+                        task.mediaSource = safeStringify(chosen);
+                        if (chosen.quality && chosen.quality !== task.quality) {
+                            task.quality = chosen.quality;
                         }
                     } else {
                         sourceError = '插件未返回可用音源';
@@ -762,6 +833,82 @@ class DownloadStore {
         Array<{ platform: string; musicId: string; path: string; quality: IMusic.IQualityKey }>
     > {
         return mediaMetaStore.getAllDownloaded();
+    }
+}
+
+/** 只读元数据，确认不是 1:00 试听后再把整首文件写下来。 */
+function probeRemoteDuration(
+    url: string,
+    headers?: Record<string, string>,
+    userAgent?: string,
+): Promise<number | null> {
+    if (/\.m3u8(\?|$)/i.test(url)) return Promise.resolve(null);
+    const merged = { ...(headers ?? {}) };
+    if (userAgent) merged['User-Agent'] = userAgent;
+    const src = requestForwarder.isProxyRequired(url)
+        ? requestForwarder.buildProxyUrl(url, merged)
+        : url;
+
+    return new Promise((resolve) => {
+        const audio = new Audio();
+        audio.preload = 'metadata';
+        let settled = false;
+        const finish = (value: number | null) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            audio.removeAttribute('src');
+            audio.load();
+            resolve(value);
+        };
+        const read = () => {
+            const duration = audio.duration;
+            return Number.isFinite(duration) && duration > 0 ? duration : null;
+        };
+        const onReady = () => {
+            const duration = read();
+            if (duration !== null) finish(duration);
+        };
+        audio.addEventListener('loadedmetadata', onReady);
+        audio.addEventListener('durationchange', onReady);
+        audio.addEventListener('error', () => finish(null));
+        const timer = window.setTimeout(() => finish(read()), 1500);
+        audio.src = src;
+    });
+}
+
+async function findSameTrackOnPlugin(
+    pluginMod: {
+        callPluginMethod?: (params: {
+            hash: string;
+            method: string;
+            args: unknown[];
+        }) => Promise<{ data?: IMusic.IMusicItem[] } | null>;
+    },
+    sourceMusic: IMusic.IMusicItem,
+    plugin: IPlugin.IPluginDelegate,
+): Promise<IMusic.IMusicItem | null> {
+    if (!sourceMusic.title?.trim()) return null;
+    if (!plugin.supportedMethod?.includes('search')) return null;
+    if (plugin.supportedSearchType && !plugin.supportedSearchType.includes('music')) return null;
+    if (!pluginMod.callPluginMethod) return null;
+
+    try {
+        const query = [sourceMusic.title, sourceMusic.artist].filter(Boolean).join(' ');
+        const result = await pluginMod.callPluginMethod({
+            hash: plugin.hash,
+            method: 'search',
+            args: [query, 1, 'music'],
+        });
+        const best = pickSameMusicItem(sourceMusic, result?.data ?? []);
+        if (!best) return null;
+        return {
+            ...best,
+            id: String(best.id),
+            platform: plugin.platform,
+        };
+    } catch {
+        return null;
     }
 }
 

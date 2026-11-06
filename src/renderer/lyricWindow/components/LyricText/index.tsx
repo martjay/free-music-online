@@ -20,6 +20,7 @@ export default memo(function LyricText() {
     const currentMusic = useAppStatePartial('musicItem');
     const currentLrc = useAppStatePartial('currentLrc');
     const fullLyric = useAppStatePartial('fullLyric');
+    const progress = useAppStatePartial('progress');
 
     const [fontData] = useConfigValue('lyric.fontData');
     const [fontSize] = useConfigValue('lyric.fontSize');
@@ -33,13 +34,26 @@ export default memo(function LyricText() {
     // 因此 undefined 可靠地表示“状态尚未从主窗口同步”
     const isStateReady = currentMusic !== undefined;
 
+    const lyricLine = useMemo(() => {
+        const timed = currentLrc?.lrc?.trim();
+        if (timed) return timed;
+        if (!fullLyric?.length) return '';
+        const time = progress?.currentTime ?? 0;
+        let line = fullLyric[0];
+        for (const item of fullLyric) {
+            if (item.time <= time) line = item;
+            else break;
+        }
+        return line?.lrc?.trim() || fullLyric.find((item) => item.lrc.trim())?.lrc.trim() || '';
+    }, [currentLrc, fullLyric, progress]);
+
     // 歌词文本：状态未就绪前显示空白，避免闪烁 "no_lyric"
     const displayText = !isStateReady
         ? ''
-        : (currentLrc?.lrc ??
+        : lyricLine ||
           (currentMusic
               ? `${currentMusic.title} - ${currentMusic.artist ?? ''}`
-              : t('lyric.no_lyric')));
+              : t('lyric.no_lyric'));
 
     // ── DOM 测量：用实际渲染宽度判断是否需要滚动 ──
     const containerRef = useRef<HTMLDivElement>(null);

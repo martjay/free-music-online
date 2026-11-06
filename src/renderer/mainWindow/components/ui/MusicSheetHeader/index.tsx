@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@common/cn';
+import { shortPlatformName } from '@infra/pluginManager/common/pluginIdentity';
 import { Artwork } from '../Artwork';
 import { showModal } from '../Modal/modalManager';
 import './index.scss';
@@ -105,7 +106,9 @@ export function MusicSheetHeader({
             <div className="music-sheet-header__cover">
                 <Artwork src={artwork} size="md" rounded="md" fallback={placeholderIcon} />
                 {!hideSourceBadge && platform && (
-                    <span className="music-sheet-header__source-badge">{platform}</span>
+                    <span className="music-sheet-header__source-badge">
+                        {shortPlatformName(platform)}
+                    </span>
                 )}
             </div>
 

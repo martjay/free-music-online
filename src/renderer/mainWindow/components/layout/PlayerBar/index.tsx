@@ -16,6 +16,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { DesktopLyric } from '@renderer/common/icons';
 import { cn } from '@common/cn';
+import { shortPlatformName } from '@infra/pluginManager/common/pluginIdentity';
 import { isRadioBrowserMedia } from '@common/radioBrowser';
 import { PlayerState } from '@common/constant';
 import trackPlayer from '@renderer/mainWindow/core/trackPlayer';
@@ -78,7 +79,8 @@ export default function PlayerBar() {
     }, [isRadio]);
 
     // 优先展示实际播放来源：自动换源后可能与歌曲原始平台不同
-    const displayPlatform = playbackSource?.platform ?? currentMusic?.platform;
+    const displayPlatform = shortPlatformName(playbackSource?.platform ?? currentMusic?.platform);
+    const originalPlatform = shortPlatformName(playbackSource?.originalPlatform);
     const sourceFallback = playbackSource?.fallback ?? false;
 
     const { Icon: RepeatIcon, tipKey: repeatTipKey } = REPEAT_MODE_MAP[repeatMode];
@@ -130,8 +132,7 @@ export default function PlayerBar() {
                                                 title={
                                                     sourceFallback
                                                         ? t('playback.source_fallback_hint', {
-                                                              original:
-                                                                  playbackSource?.originalPlatform,
+                                                              original: originalPlatform,
                                                               platform: displayPlatform,
                                                           })
                                                         : undefined
@@ -142,8 +143,7 @@ export default function PlayerBar() {
                                                     ? t('radio.live')
                                                     : sourceFallback
                                                       ? t('playback.source_fallback_short', {
-                                                            original:
-                                                                playbackSource?.originalPlatform,
+                                                            original: originalPlatform,
                                                             platform: displayPlatform,
                                                         })
                                                       : displayPlatform}

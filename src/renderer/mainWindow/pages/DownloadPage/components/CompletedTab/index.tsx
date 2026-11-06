@@ -9,13 +9,19 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Download } from 'lucide-react';
 import { RequestStatus } from '@common/constant';
+import formatFileSize from '@common/formatFileSize';
+import { compositeKey } from '@common/mediaKey';
 import appConfig from '@infra/appConfig/renderer';
+import downloadManager from '@infra/downloadManager/renderer';
 import musicSheet, { useCurrentMusicList, useIsLoadingSheet } from '@infra/musicSheet/renderer';
 import { DOWNLOADED_SHEET_ID } from '@infra/musicSheet/common/constant';
+import { tauriInvoke } from '@infra/tauriBridge/ipc';
 import trackPlayer from '@renderer/mainWindow/core/trackPlayer';
-import { SongTable, type RowInteractionDetail } from '../../../../components/business/SongTable';
-import { FavoriteButton } from '../../../../components/business/FavoriteButton';
-import { DownloadButton } from '../../../../components/business/DownloadButton';
+import {
+    SongTable,
+    type RowInteractionDetail,
+    type SongTableExtraColumn,
+} from '../../../../components/business/SongTable';
 import { SongToolbar } from '../../../../components/ui/SongToolbar';
 import { ListFooter } from '../../../../components/ui/ListFooter';
 import { StatusPlaceholder } from '../../../../components/ui/StatusPlaceholder';
@@ -23,9 +29,11 @@ import { showContextMenu } from '../../../../components/ui/ContextMenu/contextMe
 import './index.scss';
 
 const COMPLETED_COLUMN_WIDTHS = {
-    title: '22%',
+    title: '26%',
     artist: '16%',
-    album: '30%',
+    album: '22%',
+    duration: 64,
+    size: 84,
 };
 
 /**
@@ -43,6 +51,8 @@ export function CompletedTab() {
     const deferredSearchValue = useDeferredValue(searchValue);
 
     const [loadError, setLoadError] = useState(false);
+    const [fileSizes, setFileSizes] = useState<Record<string, number>>({});
+    const [downloadRevision, setDownloadRevision] = useState(0);
 
     useEffect(() => {
         let aborted = false;
@@ -55,6 +65,14 @@ export function CompletedTab() {
             aborted = true;
         };
     }, []);
+
+    useEffect(
+        () =>
+            downloadManager.subscribeDownloadChange(() => {
+                setDownloadRevision((revision) => revision + 1);
+            }),
+        [],
+    );
 
     const filteredList = useMemo(() => {
         const raw = deferredSearchValue.trim();
@@ -71,6 +89,57 @@ export function CompletedTab() {
                 normalize(item.album).includes(keyword),
         );
     }, [musicList, deferredSearchValue]);
+
+    const sizeTargets = useMemo(
+        () =>
+            filteredList.map((item) => {
+                const key = compositeKey(item.platform, String(item.id));
+                return {
+                    key,
+                    path: downloadManager.getDownloadedByKey(key)?.path ?? '',
+                };
+            }),
+        [filteredList, downloadRevision],
+    );
+
+    useEffect(() => {
+        const targets = sizeTargets.filter((item) => item.path);
+        if (targets.length === 0) return;
+        let cancelled = false;
+        void tauriInvoke<Array<number | null>>('fs_file_sizes', {
+            paths: targets.map((item) => item.path),
+        })
+            .then((sizes) => {
+                if (cancelled || !sizes) return;
+                const next: Record<string, number> = {};
+                targets.forEach((item, index) => {
+                    const size = sizes[index];
+                    if (typeof size === 'number' && size > 0) next[item.key] = size;
+                });
+                setFileSizes(next);
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [sizeTargets]);
+
+    const sizeColumn = useMemo<SongTableExtraColumn[]>(
+        () => [
+            {
+                id: 'size',
+                header: t('download.col_size'),
+                width: 84,
+                align: 'right',
+                cellClassName: 'song-table__cell--duration',
+                render: (item) => {
+                    const size = fileSizes[compositeKey(item.platform, String(item.id))];
+                    return size ? formatFileSize(size, 1) : '–';
+                },
+            },
+        ],
+        [fileSizes, t],
+    );
 
     const handlePlayAll = useCallback(() => {
         if (filteredList.length === 0) return;
@@ -156,15 +225,11 @@ export function CompletedTab() {
                     data={filteredList}
                     requestStatus={requestStatus}
                     onRetry={handleRetry}
-                    columnLayoutKey="download-completed-columns:v1"
+                    columnLayoutKey="download-completed-columns:v2"
                     defaultColumnWidths={COMPLETED_COLUMN_WIDTHS}
+                    hideColumns={['platform']}
+                    extraColumns={sizeColumn}
                     inspectText
-                    statusColumn={(item) => (
-                        <>
-                            <FavoriteButton musicItem={item} size="sm" />
-                            <DownloadButton musicItem={item} size="sm" />
-                        </>
-                    )}
                     onRowDoubleClick={handleRowDoubleClick}
                     onRowContextMenu={handleRowContextMenu}
                 />

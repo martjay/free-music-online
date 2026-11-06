@@ -72,16 +72,6 @@ export default function App() {
     }, []);
 
     useEffect(() => {
-        const size = { Logical: { width: 408, height: 148 } };
-        void tauriInvoke('plugin:window|set_min_size', { value: size })
-            .catch(() => {})
-            .then(() => tauriInvoke('plugin:window|set_max_size', { value: size }))
-            .catch(() => {})
-            .then(() => tauriInvoke('plugin:window|set_size', { value: size }))
-            .catch(() => {});
-    }, []);
-
-    useEffect(() => {
         tauriInvoke<boolean>('plugin:window|is_always_on_top')
             .then((value) => {
                 if (typeof value === 'boolean') setPinned(value);

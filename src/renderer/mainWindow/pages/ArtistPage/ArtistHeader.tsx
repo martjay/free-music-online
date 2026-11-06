@@ -2,6 +2,7 @@ import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { User } from 'lucide-react';
 import { cn } from '@common/cn';
+import { shortPlatformName } from '@infra/pluginManager/common/pluginIdentity';
 import { Artwork } from '../../components/ui/Artwork';
 import './ArtistHeader.scss';
 
@@ -70,7 +71,11 @@ export function ArtistHeader({ artist, className }: ArtistHeaderProps) {
                     fallback={<User className="p-artist-header__cover-placeholder" />}
                     className="p-artist-header__avatar"
                 />
-                {platform && <span className="p-artist-header__source-badge">{platform}</span>}
+                {platform && (
+                    <span className="p-artist-header__source-badge">
+                        {shortPlatformName(platform)}
+                    </span>
+                )}
             </div>
 
             {/* ── 信息区 ── */}

@@ -33,6 +33,15 @@ pub fn fs_is_file(path: String) -> bool {
     Path::new(&path).is_file()
 }
 
+/// 批量读取文件字节数。不存在或不可读的路径返回 null，不中断其余结果。
+#[tauri::command]
+pub fn fs_file_sizes(paths: Vec<String>) -> Vec<Option<u64>> {
+    paths
+        .into_iter()
+        .map(|path| fs::metadata(path).ok().filter(|meta| meta.is_file()).map(|meta| meta.len()))
+        .collect()
+}
+
 #[tauri::command]
 pub fn fs_is_folder(path: String) -> bool {
     Path::new(&path).is_dir()

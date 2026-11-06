@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="./res/logo.svg" width="96" height="96" alt="Anhe Player logo" />
+<img src="./res/logo.svg" width="96" height="96" alt="Free Music Online" />
 
-# Anhe Player
+# Free Music Online
 
-A modern, lightweight desktop music player tailored for Windows with LX sound source plugin support.
+A Windows desktop music player with LX source plugins, desktop lyrics, a mini player, and taskbar playback controls.
 
 English | [简体中文](./README.md)
 
@@ -14,58 +14,48 @@ English | [简体中文](./README.md)
 
 </div>
 
-## Origin
+## About
 
-This repository is a modified and optimized continuation of [AnhePlayer](https://github.com/raclen/AnhePlayer), not a player written from scratch. The original project is maintained by [raclen](https://github.com/raclen). The app structure, features, and [AGPL-3.0-only](./LICENSE) license are kept.
+Free Music Online continues from [AnhePlayer](https://github.com/raclen/AnhePlayer), maintained by [raclen](https://github.com/raclen). This repository keeps that structure and the [AGPL-3.0-only](./LICENSE) license. Reuse and redistribution must keep the original license and attribution.
 
-Later changes focus on day-to-day use: plugin sources, playback fallback, lyrics, downloads, the mini player, and radio. Reuse and redistribution must keep the original license and attribution.
-
-## Overview
-
-Anhe Player is a modern desktop music player built exclusively for Windows, powered by the lightweight **Tauri v2** native engine. It focuses on local data management, external-plugin playback parsing, and UI customization. It contains no ads and does not collect or upload your personal data.
-
-The modern refactor features an isolated **Web Worker LX sound source sandbox** paired with a zero-cost **Tauri IPC ContextBridge adapter**, drastically reducing memory and CPU overhead while offering lightning-fast cold boot times.
-
-<img width="1022" height="692" alt="image" src="https://img.meituan.net/content/1a7c6bc9cfc1c3f7dfa9a95d2a194cf0337799.png" />
+Installers, update checks, and issues live in [martjay/free-music-online](https://github.com/martjay/free-music-online). This app does not follow the original project's releases.
 
 ## Download
 
-Installers for this repository are published on [GitHub Releases](https://github.com/martjay/free-music-online/releases). The original releases remain at [AnhePlayer Releases](https://github.com/raclen/AnhePlayer/releases).
+Installers are on [GitHub Releases](https://github.com/martjay/free-music-online/releases).
 
-Currently supports **Windows (10 / 11)**:
+**Windows 10 / 11**:
 
-- **Windows Installers** (`.msi` / `.exe`)
-- **Windows Portable Edition** (Unzip and run)
+- `FreeMusicOnline_<version>_x64-setup.exe`
+
+In-app update checks read [`release/version.json`](./release/version.json) on the `main` branch. One-click install downloads that version's setup exe from the matching Release.
 
 ## Features
 
-| Feature                       | Description                                                                         |
-| ----------------------------- | ----------------------------------------------------------------------------------- |
-| Windows Desktop App           | Deeply optimized for Windows with sub-second cold boot and minimal memory footprint |
-| Plugin-based playback parsing | Supports LX `.js` plugins for playback URL parsing                                  |
-| Source redirect               | Routes playback requests to available parser sources                                |
-| Multi-quality playback        | Supports low, standard, high, and super quality options when provided by plugins    |
-| Theme packs                   | Customizes colors, backgrounds, and the overall app appearance                      |
-| Local data                    | App data stays on your device and personal data is not uploaded                     |
+| Area | What it does |
+| --- | --- |
+| Playback | Queue, repeat, shuffle, loop, speed, quality, and output device |
+| Taskbar | Previous, play/pause, and next from the taskbar thumbnail |
+| Windows | Remembers the last position and size of the main and mini players |
+| Resume | Remembers the queue, current song, volume, and repeat mode |
+| Sources | LX plugins. Short previews can switch to a full source before play or download |
+| Lyrics | Search, translation, offset, and desktop lyrics |
+| Downloads | Folder, quality, concurrency, filenames, duration, and file size |
+| Library | Local folders by song, artist, album, and folder |
+| Playlists | Create, rename, delete, favorite, and import links |
+| Themes | Built-in, local, and remote theme packs |
+| Backup | Local files and WebDAV |
+| Data | Playlists and settings stay on this computer |
 
 ## Plugins
 
-Anhe Player does not ship with built-in playback parser plugins. You can install LX `.js` plugin files or add http(s) plugin links ending in `.js` from the plugin manager.
+No source plugin is bundled. Install an LX `.js` file, or add an http(s) link ending in `.js`, from Plugin Manager.
 
-Sources declared by installed plugins are adapted into playback parser sources and can be used for playback parsing, multi-quality switching, and source redirect.
+Platforms are shown by their short name, such as QQ Music. The full source id still separates plugins that share a name.
 
-Plugin capability summary:
+## Theme packs
 
-```text
-Playback parsing    LX musicUrl parsing, multi-quality switching, source redirect
-Install             Local .js file, remote .js link
-```
-
-## Theme Packs
-
-Anhe Player supports theme packs for UI customization. The app includes light and pure black themes, and the theme marketplace also ships a set of curated themes you can install directly.
-
-A theme pack can be a folder or a `.mftheme` archive:
+A theme pack is a folder or a `.mftheme` archive:
 
 ```text
 my-theme/
@@ -76,84 +66,32 @@ my-theme/
     └── app.html
 ```
 
-Example `config.json`:
-
-```jsonc
-{
-    "name": "Theme name",
-    "preview": "#000000",
-    "description": "Theme description",
-    "author": "Author",
-    "authorUrl": "https://example.com",
-    "version": "1.0.0",
-    "srcUrl": "https://example.com/theme.mftheme",
-    "thumb": "@/thumb.png",
-    "blurHash": "LEHV6nWB2yk8pyo...",
-    "iframe": {
-        "app": "@/iframes/app.html",
-    },
-}
-```
-
-Use `@/` to reference the theme pack root directory. For the full list of supported theme variables, see the built-in light theme:
-
-[`res/builtin-themes/light/index.css`](./res/builtin-themes/light/index.css)
-
-Curated themes currently available in the marketplace:
-
-- `柔雾白昼`: Figma-inspired light theme
-- `极夜流光`: Figma-inspired dark theme
-- `Silk Motion`: more Apple Music-like
-- `Pulse Grid`: more Linear / Raycast-like
-- `Hype Wave`: more trend-driven music product styling
+`@/` in `config.json` means the theme root. See [`res/builtin-themes/light/index.css`](./res/builtin-themes/light/index.css).
 
 ## Development
 
-### Requirements
-
-| Dependency | Version | Note                                                 |
-| ---------- | ------- | ---------------------------------------------------- |
-| Node.js    | 22      | Frontend & build runtime                             |
-| pnpm       | 9+      | Package manager                                      |
-| Rust       | 1.80+   | Tauri v2 core compilation (Optional, only for Tauri) |
-
-> For comprehensive architecture design and migration details, please refer to the [Tauri Migration & Architecture Guide](./TAURI_MIGRATION_GUIDE.md).
-
-### Quick Start
+| Dependency | Version |
+| --- | --- |
+| Node.js | 22 |
+| pnpm | 9+ |
+| Rust | 1.80+ |
 
 ```bash
 git clone https://github.com/martjay/free-music-online.git
 cd free-music-online
 pnpm install
-
-# Start the Tauri v2 development environment
 pnpm tauri:dev
-
 ```
 
-### Commands
+| Command | Purpose |
+| --- | --- |
+| `pnpm tauri:dev` | Development |
+| `pnpm tauri:build` | Windows installer |
+| `pnpm run lint` | Lint |
+| `pnpm run format` | Format |
 
-| Command            | Description                                      |
-| ------------------ | ------------------------------------------------ |
-| `pnpm tauri:dev`   | **Start Tauri v2 dev mode** (Vite + Rust core)   |
-| `pnpm tauri:build` | **Build Tauri v2 lightweight package** (MSI/EXE) |
-| `pnpm run lint`    | Run lint checks                                  |
-| `pnpm run format`  | Format code                                      |
-
-## Release
-
-GitHub Actions builds Windows desktop installers:
-
-- [`Tauri Build & Release`](./.github/workflows/tauri-build.yml): builds Windows (x86_64) installers and uploads to Releases
-
-## Contributing
-
-Issues and pull requests are welcome. Please read the [Contributing Guide](./CONTRIBUTING.md) before starting development.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=martjay/free-music-online&type=Date)](https://star-history.com/#martjay/free-music-online&Date)
+A release keeps `package.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, and `release/version.json` on the same version, then pushes a `v<version>` tag to this repository.
 
 ## License
 
-This project is open-sourced under the [AGPL-3.0-only](./LICENSE) license. Please comply with the license when using, modifying, distributing, or republishing this project.
+[AGPL-3.0-only](./LICENSE).

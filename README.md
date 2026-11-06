@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="./res/logo.svg" width="96" height="96" alt="AnhePlayer Logo" />
+<img src="./res/logo.svg" width="96" height="96" alt="Free Music Online" />
 
-# AnhePlayer
+# Free Music Online
 
-一款专为 Windows 打造的现代化、高颜值、支持洛雪音源插件的轻量音乐播放器。
+一款给 Windows 用的桌面音乐播放器。支持洛雪音源插件、桌面歌词、迷你播放器，以及悬停任务栏图标时直接切歌。
 
 [English](./README_EN.md) | 简体中文
 
@@ -14,64 +14,48 @@
 
 </div>
 
-## 来源
+## 说明
 
-这个仓库是在 [AnhePlayer](https://github.com/raclen/AnhePlayer) 上继续修改和优化的版本，不是另起炉灶的新播放器。原项目由 [raclen](https://github.com/raclen) 维护，本仓库保留它的功能、代码结构和 [AGPL-3.0-only](./LICENSE) 许可证。
+Free Music Online 在 [AnhePlayer](https://github.com/raclen/AnhePlayer) 上继续改。原项目由 [raclen](https://github.com/raclen) 维护，本仓库保留它的代码结构和 [AGPL-3.0-only](./LICENSE) 许可证。使用、修改或再发布时，需要同时保留原项目的许可和署名。
 
-后续改动集中在实际使用体验，包括插件音源、播放换源、歌词、下载列表、迷你播放器和电台。使用、修改或再发布时，需要同时保留原项目的许可和署名。
-
-## 简介
-
-AnhePlayer 是一款专为 Windows 设计的现代化桌面音乐播放器，基于 **Tauri v2** 轻量级原生引擎打造。它专注于本地数据管理、外部插件音源解析和界面定制，不内置广告，也不会上传你的个人数据。
-
-桌面端采用单一 **Tauri v2 + Rust** 运行链路，洛雪音源插件在 Web Worker 沙箱中运行。
-
-<img width="1022" height="692" alt="image" src="https://img.meituan.net/content/1a7c6bc9cfc1c3f7dfa9a95d2a194cf0337799.png" />
+本仓库的安装包、更新检查和问题反馈都在 [martjay/free-music-online](https://github.com/martjay/free-music-online)。软件不会跟着原项目的发版走。
 
 ## 下载
 
-本仓库的安装包发布在 [GitHub Releases](https://github.com/martjay/free-music-online/releases)。原版发布页仍是 [AnhePlayer Releases](https://github.com/raclen/AnhePlayer/releases)。
+安装包在 [GitHub Releases](https://github.com/martjay/free-music-online/releases)。
 
-当前仅支持 **Windows (10 / 11)** 系统：
+当前支持 **Windows 10 / 11**：
 
-- **Windows 安装包** (`.msi` / `.exe`)
-- **Windows 便携免安装版** (解压即用)
+- `FreeMusicOnline_<版本>_x64-setup.exe`
 
-## 功能模块
+软件内的「检查更新」读取本仓库 `main` 分支的 [`release/version.json`](./release/version.json)。发现新版本后，一键安装会下载对应 Release 里的这个 exe。
 
-| 模块           | 支持能力                                                                 |
-| -------------- | ------------------------------------------------------------------------ |
-| Windows 桌面端 | 专为 Windows 深度优化，秒级启动与极低内存占用，提供安装包与便携版        |
-| 播放与队列     | 支持播放队列、下一首播放、顺序/随机/单曲循环、倍速播放和音频输出设备选择 |
-| 在线音乐       | 通过插件提供歌曲、歌手、专辑、歌单、排行榜和热门歌单等内容浏览与搜索     |
-| 歌单管理       | 支持创建、重命名、删除、收藏、歌单内搜索，以及单曲/歌单链接导入          |
-| 本地音乐       | 支持扫描本地文件夹，并按单曲、歌手、专辑、文件夹管理本地曲库             |
-| 插件系统       | 支持本地插件与远程插件链接，插件能力决定可用音源和解析范围               |
-| 播放解析       | 支持多音质切换、音质缺失策略、播放失败后换源重试/跳过/暂停等处理方式     |
-| 歌词           | 支持歌词搜索与关联、翻译歌词、进度偏移、歌词保存/下载和桌面歌词          |
-| 下载管理       | 支持设置下载目录、默认音质、并发数量和文件命名格式                       |
-| 主题外观       | 支持内置主题、本地主题包和远程主题包，自定义颜色、背景与界面观感         |
-| 备份与迁移     | 支持文件备份、WebDAV 备份恢复，以及旧版数据导入                          |
-| 隐私与本地数据 | 应用数据默认保存在本机，不会上传个人数据                                 |
+## 功能
+
+| 模块 | 能力 |
+| --- | --- |
+| 播放 | 播放队列、顺序 / 随机 / 单曲循环、倍速、音质、输出设备 |
+| 任务栏 | 悬停任务栏图标，可直接上一首、播放暂停、下一首 |
+| 窗口 | 记住主窗口和小播放器上次的位置与大小 |
+| 续播 | 记住播放列表、当前歌曲、音量和播放模式 |
+| 音源 | 洛雪插件解析；试听过短时，播放和下载前自动换到能听全的平台 |
+| 歌词 | 歌词搜索、翻译、偏移、桌面歌词 |
+| 下载 | 下载目录、音质、并发和文件名；已完成列表显示时长和文件大小 |
+| 本地 | 扫描本地文件夹，按单曲、歌手、专辑、文件夹管理 |
+| 歌单 | 创建、重命名、删除、收藏，以及单曲 / 歌单链接导入 |
+| 主题 | 内置主题、本地主题包和远程主题包 |
+| 备份 | 本地文件备份、WebDAV 备份恢复 |
+| 数据 | 歌单和设置保存在本机，不上传个人数据 |
 
 ## 插件
 
-AnhePlayer 默认不内置音源解析插件。你可以在插件管理中安装洛雪 `.js` 插件文件，或添加以 `.js` 结尾的 http(s) 插件链接。
+默认不带音源插件。在插件管理里安装洛雪 `.js` 文件，或添加以 `.js` 结尾的 http(s) 链接。
 
-插件声明的 source 会被适配为播放器中的播放解析源，可用于播放解析、多音质切换和音源重定向。
-
-插件能力范围：
-
-```text
-播放解析    洛雪 musicUrl 解析、多音质切换、音源重定向
-安装方式    本地 .js 文件、远程 .js 链接
-```
+插件提供的平台会显示成短名，例如「QQ音乐」「酷我音乐」。内部仍用完整来源区分不同脚本，避免两家同名音源串在一起。
 
 ## 主题包
 
-AnhePlayer 支持通过主题包自定义界面外观。本地内置主题包括浅色主题和纯黑主题，主题市场里还提供了多套可直接安装的策展主题。
-
-主题包可以是一个文件夹，也可以是 `.mftheme` 压缩包：
+主题包可以是文件夹，也可以是 `.mftheme`：
 
 ```text
 my-theme/
@@ -82,83 +66,32 @@ my-theme/
     └── app.html
 ```
 
-`config.json` 示例：
-
-```jsonc
-{
-    "name": "主题名称",
-    "preview": "#000000",
-    "description": "主题描述",
-    "author": "作者",
-    "authorUrl": "https://example.com",
-    "version": "1.0.0",
-    "srcUrl": "https://example.com/theme.mftheme",
-    "thumb": "@/thumb.png",
-    "blurHash": "LEHV6nWB2yk8pyo...",
-    "iframe": {
-        "app": "@/iframes/app.html",
-    },
-}
-```
-
-路径中的 `@/` 表示主题包根目录。完整主题变量可参考内置浅色主题：
-
-[`res/builtin-themes/light/index.css`](./res/builtin-themes/light/index.css)
-
-主题市场当前提供的策展主题包括：
-
-- `柔雾白昼`：Figma 风格浅色主题
-- `极夜流光`：Figma 风格深色主题
-- `Silk Motion`：更偏 Apple Music 风
-- `Pulse Grid`：更偏 Linear / Raycast 风
-- `Hype Wave`：更偏潮流音乐产品风
+`config.json` 里用 `@/` 表示主题包根目录。变量写法见 [`res/builtin-themes/light/index.css`](./res/builtin-themes/light/index.css)。
 
 ## 开发
 
-### 环境要求
-
-| 依赖    | 版本  | 说明                                        |
-| ------- | ----- | ------------------------------------------- |
-| Node.js | 22    | 前端与构建环境                              |
-| pnpm    | 9+    | 包管理器                                    |
-| Rust    | 1.80+ | Tauri v2 核心编译 (可选，仅用于 Tauri 运行) |
-
-> 详细的 Tauri v2 架构设计与迁移细节请参考 [Tauri 迁移与开发指南](./TAURI_MIGRATION_GUIDE.md)。
-
-### 快速开始
+| 依赖 | 版本 |
+| --- | --- |
+| Node.js | 22 |
+| pnpm | 9+ |
+| Rust | 1.80+ |
 
 ```bash
 git clone https://github.com/martjay/free-music-online.git
 cd free-music-online
 pnpm install
-
-# 启动 Tauri v2 开发环境
 pnpm tauri:dev
 ```
 
-### 常用命令
+| 命令 | 作用 |
+| --- | --- |
+| `pnpm tauri:dev` | 开发模式 |
+| `pnpm tauri:build` | 打 Windows 安装包 |
+| `pnpm run lint` | 检查 |
+| `pnpm run format` | 格式化 |
 
-| 命令               | 说明                                     |
-| ------------------ | ---------------------------------------- |
-| `pnpm tauri:dev`   | **Tauri v2 开发模式** (Vite + Rust 核心) |
-| `pnpm tauri:build` | **构建 Tauri v2 超轻量安装包** (MSI/EXE) |
-| `pnpm run lint`    | 代码检查                                 |
-| `pnpm run format`  | 格式化代码                               |
-
-## 发布
-
-项目通过 GitHub Actions 构建 Windows 桌面安装包：
-
-- [`Tauri Build & Release`](./.github/workflows/tauri-build.yml)：自动构建 Windows (x86_64) 安装包并发布到 Releases
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request。开发前请先阅读 [贡献指南](./CONTRIBUTING.md)。
-
-## Star 趋势
-
-[![Star History Chart](https://api.star-history.com/svg?repos=martjay/free-music-online&type=Date)](https://star-history.com/#martjay/free-music-online&Date)
+发版时把 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json` 和 `release/version.json` 改成同一个版本，再把 `v<版本>` 标签推到本仓库。
 
 ## 许可证
 
-本项目基于 [AGPL-3.0-only](./LICENSE) 协议开源。请在使用、修改、分发或二次发布时遵守许可证要求。
+[AGPL-3.0-only](./LICENSE)。

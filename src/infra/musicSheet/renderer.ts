@@ -65,6 +65,7 @@ interface IMod {
     playQueueAdd(items: IMusic.IMusicItem[], afterIndex: number): Promise<void>;
     playQueueRemove(musicBases: IMedia.IMediaBase[]): Promise<void>;
     playQueueClear(): Promise<void>;
+    flushPersisted(): Promise<void>;
     // ─── 事件 ───
     onMusicSheetEvent(cb: (event: IMusicSheetEvent) => void): () => void;
 }
@@ -79,6 +80,7 @@ export const playQueueBridge = {
     add: mod.playQueueAdd.bind(mod),
     remove: mod.playQueueRemove.bind(mod),
     clear: mod.playQueueClear.bind(mod),
+    flush: () => mod.flushPersisted?.(),
 } as const;
 
 export type IPlayQueueBridge = typeof playQueueBridge;

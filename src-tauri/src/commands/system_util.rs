@@ -1,7 +1,37 @@
-use tauri::{AppHandle, LogicalSize, Manager, WebviewWindow};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewWindow, Window};
 
 const MINIMODE_WIDTH: f64 = 408.0;
 const MINIMODE_HEIGHT: f64 = 148.0;
+const MAIN_MIN_WIDTH: f64 = 900.0;
+const MAIN_MIN_HEIGHT: f64 = 600.0;
+
+struct MiniMemory {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    at: Instant,
+}
+
+struct MainMemory {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    maximized: bool,
+    at: Instant,
+}
+
+static MAIN_MEMORY: Mutex<Option<MainMemory>> = Mutex::new(None);
+static MAIN_SAVE_PENDING: AtomicBool = AtomicBool::new(false);
+static PLACEMENT_SUPPRESS: AtomicBool = AtomicBool::new(false);
+
+static MINI_MEMORY: Mutex<Option<MiniMemory>> = Mutex::new(None);
+static MINI_SAVE_PENDING: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub fn exit_app(app: AppHandle) {
@@ -96,6 +126,7 @@ pub fn show_main_window(app: AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        super::taskbar_toolbar::install_taskbar_window(&window);
     }
 }
 
@@ -128,20 +159,23 @@ pub fn enter_minimode(app: AppHandle) {
         let _ = main.hide();
     }
     if let Some(mini) = app.get_webview_window("minimode") {
-        let _ = mini.set_size(LogicalSize::new(MINIMODE_WIDTH, MINIMODE_HEIGHT));
+        restore_mini_placement(&mini);
         let _ = mini.show();
         let _ = mini.set_focus();
+        super::taskbar_toolbar::install_taskbar_window(&mini);
     }
 }
 
 #[tauri::command]
 pub fn exit_minimode(app: AppHandle) {
     if let Some(mini) = app.get_webview_window("minimode") {
+        persist_mini_placement(&mini, true);
         let _ = mini.hide();
     }
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.show();
         let _ = main.set_focus();
+        super::taskbar_toolbar::install_taskbar_window(&main);
     }
 }
 
@@ -254,4 +288,347 @@ fn dir_size(dir: &std::path::Path, depth: u32) -> u64 {
 #[tauri::command]
 pub fn clear_cache(window: WebviewWindow) -> Result<(), String> {
     window.clear_all_browsing_data().map_err(|e| e.to_string())
+}
+
+/// 迷你窗被拖动或改变大小时钳回工作区，并记住位置和尺寸。
+pub fn on_minimode_geometry(window: &Window) {
+    if PLACEMENT_SUPPRESS.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(webview) = window.app_handle().get_webview_window(window.label()) else {
+        return;
+    };
+    persist_mini_placement(&webview, false);
+}
+
+/// 主窗口移动或改变大小时记住位置、尺寸和最大化状态。
+pub fn on_main_window_geometry(window: &Window) {
+    if PLACEMENT_SUPPRESS.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(webview) = window.app_handle().get_webview_window("main") else {
+        return;
+    };
+    persist_main_placement(&webview, false);
+}
+
+pub fn restore_saved_placements(app: &AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        restore_main_placement(&main);
+    }
+}
+
+fn restore_mini_placement(window: &WebviewWindow) {
+    let config = super::app_config::read_config_value();
+    let (width, height) = saved_logical_size(
+        config.get("private.minimodeWindowSize"),
+        MINIMODE_WIDTH,
+        MINIMODE_HEIGHT,
+        320.0,
+        120.0,
+    );
+    suppress_placement_events();
+    let _ = window.set_size(LogicalSize::new(width, height));
+    let Some(pos) = config.get("private.minimodeWindowPosition") else {
+        return;
+    };
+    let Some(x) = pos.get("x").and_then(|value| value.as_i64()) else {
+        return;
+    };
+    let Some(y) = pos.get("y").and_then(|value| value.as_i64()) else {
+        return;
+    };
+    let (phys_w, phys_h) = physical_size(window, width, height);
+    let (x, y) = clamp_to_work_area(
+        window.app_handle(),
+        window.current_monitor().ok().flatten(),
+        x as i32,
+        y as i32,
+        phys_w,
+        phys_h,
+    );
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+}
+
+fn persist_mini_placement(window: &WebviewWindow, force: bool) {
+    let Ok(pos) = window.outer_position() else {
+        return;
+    };
+    let Some((width, height, phys_w, phys_h)) = logical_window_size(window) else {
+        return;
+    };
+    let (x, y) = clamp_to_work_area(
+        window.app_handle(),
+        window.current_monitor().ok().flatten(),
+        pos.x,
+        pos.y,
+        phys_w,
+        phys_h,
+    );
+    if x != pos.x || y != pos.y {
+        suppress_placement_events();
+        let _ = window.set_position(PhysicalPosition::new(x, y));
+    }
+
+    if !force {
+        let memory = MINI_MEMORY.lock().unwrap();
+        if let Some(prev) = memory.as_ref() {
+            if prev.x == x && prev.y == y && prev.width == width && prev.height == height {
+                return;
+            }
+            if prev.at.elapsed() < Duration::from_millis(200) {
+                drop(memory);
+                schedule_mini_save(window.app_handle().clone());
+                return;
+            }
+        }
+    }
+
+    write_mini_placement(window, x, y, width, height);
+}
+
+fn schedule_mini_save(app: AppHandle) {
+    if MINI_SAVE_PENDING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(220));
+        MINI_SAVE_PENDING.store(false, Ordering::Release);
+        if let Some(window) = app.get_webview_window("minimode") {
+            persist_mini_placement(&window, true);
+        }
+    });
+}
+
+fn write_mini_placement(window: &WebviewWindow, x: i32, y: i32, width: i32, height: i32) {
+    if let Ok(mut memory) = MINI_MEMORY.lock() {
+        *memory = Some(MiniMemory {
+            x,
+            y,
+            width,
+            height,
+            at: Instant::now(),
+        });
+    }
+    let _ = super::app_config::patch_config(
+        window.app_handle(),
+        serde_json::json!({
+            "private.minimodeWindowPosition": { "x": x, "y": y },
+            "private.minimodeWindowSize": { "width": width, "height": height }
+        }),
+    );
+}
+
+fn restore_main_placement(window: &WebviewWindow) {
+    let config = super::app_config::read_config_value();
+    let maximized = config
+        .get("private.mainWindowMaximized")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let (width, height) = saved_logical_size(
+        config.get("private.mainWindowSize"),
+        1100.0,
+        690.0,
+        MAIN_MIN_WIDTH,
+        MAIN_MIN_HEIGHT,
+    );
+    suppress_placement_events();
+    let _ = window.set_size(LogicalSize::new(width, height));
+    if let Some(pos) = config.get("private.mainWindowPosition") {
+        if let (Some(x), Some(y)) = (
+            pos.get("x").and_then(|value| value.as_i64()),
+            pos.get("y").and_then(|value| value.as_i64()),
+        ) {
+            let (phys_w, phys_h) = physical_size(window, width, height);
+            let (x, y) = clamp_to_work_area(
+                window.app_handle(),
+                window.current_monitor().ok().flatten(),
+                x as i32,
+                y as i32,
+                phys_w,
+                phys_h,
+            );
+            let _ = window.set_position(PhysicalPosition::new(x, y));
+        }
+    }
+    if maximized {
+        let _ = window.maximize();
+    }
+}
+
+fn persist_main_placement(window: &WebviewWindow, force: bool) {
+    let maximized = window.is_maximized().unwrap_or(false);
+    if maximized {
+        if !force {
+            let memory = MAIN_MEMORY.lock().unwrap();
+            if memory.as_ref().is_some_and(|prev| prev.maximized) {
+                return;
+            }
+        }
+        write_main_maximized(window, true);
+        return;
+    }
+
+    let Ok(pos) = window.outer_position() else {
+        return;
+    };
+    let Some((width, height, phys_w, phys_h)) = logical_window_size(window) else {
+        return;
+    };
+    if width < MAIN_MIN_WIDTH as i32 || height < MAIN_MIN_HEIGHT as i32 {
+        return;
+    }
+    let (x, y) = clamp_to_work_area(
+        window.app_handle(),
+        window.current_monitor().ok().flatten(),
+        pos.x,
+        pos.y,
+        phys_w,
+        phys_h,
+    );
+
+    if !force {
+        let memory = MAIN_MEMORY.lock().unwrap();
+        if let Some(prev) = memory.as_ref() {
+            if !prev.maximized
+                && prev.x == x
+                && prev.y == y
+                && prev.width == width
+                && prev.height == height
+            {
+                return;
+            }
+            if prev.at.elapsed() < Duration::from_millis(200) {
+                drop(memory);
+                schedule_main_save(window.app_handle().clone());
+                return;
+            }
+        }
+    }
+
+    if let Ok(mut memory) = MAIN_MEMORY.lock() {
+        *memory = Some(MainMemory {
+            x,
+            y,
+            width,
+            height,
+            maximized: false,
+            at: Instant::now(),
+        });
+    }
+    let _ = super::app_config::patch_config(
+        window.app_handle(),
+        serde_json::json!({
+            "private.mainWindowPosition": { "x": x, "y": y },
+            "private.mainWindowSize": { "width": width, "height": height },
+            "private.mainWindowMaximized": false
+        }),
+    );
+}
+
+fn write_main_maximized(window: &WebviewWindow, maximized: bool) {
+    if let Ok(mut memory) = MAIN_MEMORY.lock() {
+        let (x, y, width, height) = memory
+            .as_ref()
+            .map(|item| (item.x, item.y, item.width, item.height))
+            .unwrap_or((0, 0, 0, 0));
+        *memory = Some(MainMemory {
+            x,
+            y,
+            width,
+            height,
+            maximized,
+            at: Instant::now(),
+        });
+    }
+    let _ = super::app_config::patch_config(
+        window.app_handle(),
+        serde_json::json!({ "private.mainWindowMaximized": maximized }),
+    );
+}
+
+fn schedule_main_save(app: AppHandle) {
+    if MAIN_SAVE_PENDING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(220));
+        MAIN_SAVE_PENDING.store(false, Ordering::Release);
+        if let Some(window) = app.get_webview_window("main") {
+            persist_main_placement(&window, true);
+        }
+    });
+}
+
+fn suppress_placement_events() {
+    PLACEMENT_SUPPRESS.store(true, Ordering::Release);
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(300));
+        PLACEMENT_SUPPRESS.store(false, Ordering::Release);
+    });
+}
+
+fn saved_logical_size(
+    size: Option<&serde_json::Value>,
+    fallback_width: f64,
+    fallback_height: f64,
+    min_width: f64,
+    min_height: f64,
+) -> (f64, f64) {
+    let Some(size) = size else {
+        return (fallback_width, fallback_height);
+    };
+    let width = size
+        .get("width")
+        .and_then(|value| value.as_f64())
+        .unwrap_or(fallback_width)
+        .clamp(min_width, 4000.0);
+    let height = size
+        .get("height")
+        .and_then(|value| value.as_f64())
+        .unwrap_or(fallback_height)
+        .clamp(min_height, 3000.0);
+    (width, height)
+}
+
+fn logical_window_size(window: &WebviewWindow) -> Option<(i32, i32, i32, i32)> {
+    let size = window.inner_size().ok()?;
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    let width = (size.width as f64 / scale).round() as i32;
+    let height = (size.height as f64 / scale).round() as i32;
+    Some((width, height, size.width as i32, size.height as i32))
+}
+
+fn physical_size(window: &WebviewWindow, width: f64, height: f64) -> (i32, i32) {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    ((width * scale).round() as i32, (height * scale).round() as i32)
+}
+
+fn clamp_to_work_area(
+    app: &AppHandle,
+    current: Option<tauri::Monitor>,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) -> (i32, i32) {
+    let monitor = app
+        .monitor_from_point(x as f64, y as f64)
+        .ok()
+        .flatten()
+        .or(current)
+        .or_else(|| app.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else {
+        return (x, y);
+    };
+    let area = monitor.work_area();
+    let ax = area.position.x;
+    let ay = area.position.y;
+    let aw = area.size.width as i32;
+    let ah = area.size.height as i32;
+    let max_x = (ax + aw - width).max(ax);
+    let max_y = (ay + ah - height).max(ay);
+    (x.clamp(ax, max_x), y.clamp(ay, max_y))
 }

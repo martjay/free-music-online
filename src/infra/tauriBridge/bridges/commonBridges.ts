@@ -25,6 +25,18 @@ const EVENT_COMMAND = 'tauri-command';
 const SELF_LABEL = getCurrentWindowLabel();
 
 /** 浅字段比较：辅助窗口只需要知道「哪个字段真的变了」 */
+/**
+ * Tauri 事件序列化拒绝 Infinity / NaN。
+ * 进度在时长未知时是 Infinity，整包快照会因此发不出去，歌词窗口就收不到当前行。
+ */
+function sanitizeState(state: Partial<IAppState>): Partial<IAppState> {
+    try {
+        return JSON.parse(JSON.stringify(state)) as Partial<IAppState>;
+    } catch {
+        return {};
+    }
+}
+
 function isSameShallow(a: unknown, b: unknown): boolean {
     if (a === b) return true;
     if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
@@ -58,7 +70,7 @@ function registerAppSyncMainBridge(): void {
             v: 1,
             from: SELF_LABEL,
             full: true,
-            state: snapshotProvider(),
+            state: sanitizeState(snapshotProvider()),
         } satisfies IAppStateEnvelope).catch(() => {});
     };
 
@@ -71,7 +83,7 @@ function registerAppSyncMainBridge(): void {
                 v: 1,
                 from: SELF_LABEL,
                 full: false,
-                state,
+                state: sanitizeState(state),
             } satisfies IAppStateEnvelope).catch(() => {});
         },
         syncAppStateTo: (_windowType: string, state: Partial<IAppState>) => {
@@ -79,7 +91,7 @@ function registerAppSyncMainBridge(): void {
                 v: 1,
                 from: SELF_LABEL,
                 full: false,
-                state,
+                state: sanitizeState(state),
             } satisfies IAppStateEnvelope).catch(() => {});
         },
         /** 注册状态快照提供者；若有挂起的订阅请求则立即补发 */

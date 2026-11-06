@@ -4,7 +4,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
 
-import bootstrapMainWindow from '../bootstrap/mainWindow';
+import { bootstrapMainWindowServices, bootstrapMainWindowShell } from '../bootstrap/mainWindow';
 import router from './router';
 
 document.body.dataset.window = 'main';
@@ -79,13 +79,17 @@ window.addEventListener('unhandledrejection', (event) => {
     }
 });
 
-bootstrapMainWindow()
+bootstrapMainWindowShell()
     .then(() => {
         root.render(
             <React.StrictMode>
                 <RouterProvider router={router} />
             </React.StrictMode>,
         );
+        // 插件、歌单和上次歌曲的音源继续在后台准备，不再挡住第一帧。
+        void bootstrapMainWindowServices().catch((err) => {
+            console.error('[MainWindow Bootstrap Failed]', err);
+        });
     })
     .catch((err) => {
         console.error('[MainWindow Bootstrap Failed]', err);

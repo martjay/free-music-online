@@ -11,8 +11,8 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@common/cn';
 import { QUALITY_KEYS } from '@common/constant';
 import trackPlayer from '@renderer/mainWindow/core/trackPlayer';
-import { useQuality } from '@renderer/mainWindow/core/trackPlayer/hooks';
 import appConfig from '@infra/appConfig/renderer';
+import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import { showToast } from '../../ui/Toast';
 
 /** 音质 key → i18n key */
@@ -36,7 +36,11 @@ const QUALITY_OPTIONS = [...QUALITY_KEYS].reverse();
  * - 点击选项：切换当前播放音质 + 更新全局默认音质
  */
 const QualityPopover = memo(function QualityPopover() {
-    const quality = useQuality();
+    const [configuredQuality] = useConfigValue('playMusic.defaultQuality');
+    const quality: IMusic.IQualityKey =
+        configuredQuality && QUALITY_KEYS.includes(configuredQuality)
+            ? configuredQuality
+            : 'standard';
     const { t } = useTranslation();
 
     const popoverRef = useRef<HTMLDivElement>(null);
@@ -62,15 +66,13 @@ const QualityPopover = memo(function QualityPopover() {
 
     const handleSelect = useCallback(
         async (q: IMusic.IQualityKey) => {
-            const success = await trackPlayer.setQuality(q);
-            console.log('切换音质结果', { success, quality: q });
-            if (success) {
-                appConfig.setConfig({ 'playMusic.defaultQuality': q });
-            } else {
+            appConfig.setConfig({ 'playMusic.defaultQuality': q });
+            const switched = await trackPlayer.setQuality(q);
+            if (!switched) {
                 showToast(t('quality.unavailable'), { type: 'warn' });
             }
         },
-        [quality, t],
+        [t],
     );
 
     return (

@@ -353,7 +353,7 @@
         "playback": {
             "subtitle": "Playback Experience, Queue & Quality",
             "default_quality_label": "Default playback quality",
-            "default_quality_desc": "Default quality for online playback",
+            "default_quality_desc": "The player bar and later tracks use this quality",
             "when_quality_missing_label": "When quality unavailable",
             "when_quality_missing_desc": "Behavior when selected quality is unavailable",
             "play_lower": "Play lower quality",
@@ -377,7 +377,13 @@
             "case_sensitive_label": "Case-sensitive search in playlist",
             "case_sensitive_desc": "Enable case-sensitive search",
             "case_insensitive": "Case-insensitive",
-            "case_sensitive": "Case-sensitive"
+            "case_sensitive": "Case-sensitive",
+            "short_preview_label": "Switch short previews",
+            "short_preview_desc": "VIP previews are often locked at 1:00. When audio is shorter than the limit below, switch to another platform before it starts",
+            "short_preview_limit_label": "Switch when shorter than",
+            "short_preview_limit_desc": "Set minutes and seconds. The default of 1:05 catches one-minute previews",
+            "short_preview_minutes": "min",
+            "short_preview_seconds": "sec"
         },
         "download": {
             "subtitle": "Download Path, Format & Quality",
@@ -395,7 +401,13 @@
             "filename_format_label": "Filename format",
             "filename_format_desc": "Format for downloaded file names",
             "format_title_artist": "Title - Artist",
-            "format_artist_title": "Artist - Title"
+            "format_artist_title": "Artist - Title",
+            "short_preview_label": "Switch platform for short previews",
+            "short_preview_desc": "VIP previews are often only 1:00. When audio is shorter than the limit, switch platform before saving the file",
+            "short_preview_limit_label": "Switch when shorter than",
+            "short_preview_limit_desc": "Set minutes and seconds. The default of 1:05 catches one-minute previews",
+            "short_preview_minutes": "min",
+            "short_preview_seconds": "sec"
         },
         "lyric": {
             "subtitle": "Style, Color & Display Settings",
@@ -482,7 +494,7 @@
             "contact_author_title": "Contact Author",
             "contact_author_subtitle": "Follow on these platforms for latest updates",
             "author_label": "Author",
-            "author_name": "raclen"
+            "author_name": "martjay"
         }
     },
     "theme": {

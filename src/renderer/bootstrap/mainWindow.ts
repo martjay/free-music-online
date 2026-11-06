@@ -10,7 +10,9 @@
  */
 import './global.scss';
 
+import { QUALITY_KEYS } from '@common/constant';
 import appConfig from '@infra/appConfig/renderer';
+import { qualityAtom, store as playerStore } from '@renderer/mainWindow/core/trackPlayer/store';
 import i18n from '@infra/i18n/renderer';
 import themePack from '@infra/themepack/renderer';
 import requestForwarder from '@infra/requestForwarder/renderer';
@@ -43,18 +45,30 @@ function migrateLegacyKVKeys(): void {
     localStorage.removeItem('currentMusic');
 }
 
-export default async function bootstrapMainWindow(): Promise<void> {
-    // Phase 1: appConfig 必须最先初始化
-    await appConfig.setup();
+function syncPlaybackQuality(): void {
+    const configured = appConfig.getConfigByKey('playMusic.defaultQuality');
+    if (configured && QUALITY_KEYS.includes(configured)) {
+        playerStore.set(qualityAtom, configured);
+    }
+}
 
-    // Phase 1.5: 旧版 localStorage key 迁移（同步，须在 trackPlayer.setup 之前）
+/** 主题和文案就绪后就可以画界面，插件和上次歌曲的音源放到后面。 */
+export async function bootstrapMainWindowShell(): Promise<void> {
+    await appConfig.setup();
+    syncPlaybackQuality();
+    appConfig.onConfigUpdated((patch) => {
+        if ('playMusic.defaultQuality' in patch) syncPlaybackQuality();
+    });
     // TODO(v1.1.0): Remove this call
     migrateLegacyKVKeys();
+    await Promise.all([i18n.setup(), themePack.setup()]);
+    // 歌词窗口只依赖配置，不等插件和歌单，否则开关打开时窗口还没人接管。
+    setupDesktopLyricController();
+}
 
+export async function bootstrapMainWindowServices(): Promise<void> {
     // Phase 2: 无相互依赖的模块并行初始化
     await Promise.all([
-        i18n.setup(),
-        themePack.setup(),
         requestForwarder.setup(),
         pluginManager.setup(),
         musicSheet.setup(),
@@ -69,9 +83,6 @@ export default async function bootstrapMainWindow(): Promise<void> {
         appSync,
     });
 
-    // Phase 3.5: 桌面歌词窗口控制器（只依赖 appConfig + systemUtil，越早越好）
-    setupDesktopLyricController();
-
     // Phase 4: trackPlayer 依赖 pluginManager + musicSheet（恢复状态时需要获取音源）
     await trackPlayer.setup();
 
@@ -80,4 +91,9 @@ export default async function bootstrapMainWindow(): Promise<void> {
 
     // Phase 6: 启动后副作用（自动更新插件、检查软件更新），不阻塞 UI
     runPostBootstrapTasks();
+}
+
+export default async function bootstrapMainWindow(): Promise<void> {
+    await bootstrapMainWindowShell();
+    await bootstrapMainWindowServices();
 }

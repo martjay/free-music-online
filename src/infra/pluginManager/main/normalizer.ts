@@ -90,11 +90,23 @@ export const methodNormalizers: Partial<
         afterCall(result) {
             if (!result) return null;
 
-            // 翻译提升逻辑统一在 getLyricAdapter 中处理，此处只做字段透传
+            // 插件有的把正文放在 lyric / lrc，不能只认 rawLrc，否则歌词会被丢掉。
+            const rawLrc =
+                typeof result.rawLrc === 'string' && result.rawLrc
+                    ? result.rawLrc
+                    : typeof result.lyric === 'string' && result.lyric
+                      ? result.lyric
+                      : undefined;
+            const lrcField = typeof result.lrc === 'string' ? result.lrc : undefined;
+            const lrcIsBody =
+                !!lrcField && !/^https?:\/\//i.test(lrcField) && lrcField.includes('[');
             return {
-                lrc: result.lrc,
-                rawLrc: result.rawLrc,
-                translation: result.translation,
+                lrc: lrcIsBody ? undefined : lrcField,
+                rawLrc: rawLrc || (lrcIsBody ? lrcField : undefined),
+                translation:
+                    (typeof result.translation === 'string' && result.translation) ||
+                    (typeof result.tlyric === 'string' && result.tlyric) ||
+                    undefined,
             };
         },
         defaultResult: () => null,

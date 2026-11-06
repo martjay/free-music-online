@@ -38,6 +38,10 @@ interface _IAppConfig {
     'playMusic.audioOutputDevice': IAudioOutputDevice | null;
     /** 设备变化时 */
     'playMusic.whenDeviceRemoved': 'pause' | 'play';
+    /** 音频短于设定时长时，出声前自动换平台 */
+    'playMusic.rejectShortPreview': boolean;
+    /** 触发自动换源的最长时长（秒） */
+    'playMusic.shortPreviewLimitSec': number;
 
     /** 电台：筛选码率 */
     'radio.bitrate': 'all' | '128' | '192' | '320';
@@ -80,6 +84,10 @@ interface _IAppConfig {
     'download.concurrency': number;
     /** 下载文件名格式 */
     'download.filenameFormat': 'title-artist' | 'artist-title';
+    /** 下载到过短试听时，保存前自动换平台 */
+    'download.rejectShortPreview': boolean;
+    /** 触发下载换平台的最长时长（秒） */
+    'download.shortPreviewLimitSec': number;
 
     /** 是否自动升级插件 */
     'plugin.autoUpdatePlugin': boolean;
@@ -104,10 +112,13 @@ interface _IAppConfig {
 
     /** 不需要用户配置的数据 */
     'private.mainWindowSize': ISize;
+    'private.mainWindowPosition': IPoint;
+    'private.mainWindowMaximized': boolean;
     'private.lyricWindowPosition': IPoint;
     'private.lyricWindowSize': ISize;
 
     'private.minimodeWindowPosition': IPoint;
+    'private.minimodeWindowSize': ISize;
 }
 
 type PartialOrNull<T> = { [P in keyof T]?: T[P] | null };

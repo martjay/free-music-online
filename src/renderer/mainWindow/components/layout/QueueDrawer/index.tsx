@@ -15,6 +15,7 @@ import { useAtomValue } from 'jotai/react';
 import { Virtuoso } from 'react-virtuoso';
 import { X, Play, ListMusic } from 'lucide-react';
 import { cn } from '@common/cn';
+import { shortPlatformName } from '@infra/pluginManager/common/pluginIdentity';
 import { isSameMedia } from '@common/mediaKey';
 import { isRadioBrowserMedia } from '@common/radioBrowser';
 import type { IMusicItemSlim } from '@appTypes/infra/musicSheet';
@@ -137,7 +138,9 @@ const QueueItemRow = React.memo(function QueueItemRow({
                 <div className="l-queue-drawer__item-meta">
                     <span className="l-queue-drawer__item-artist">{item.artist}</span>
                     <span className="l-queue-drawer__item-source">
-                        {isRadioBrowserMedia(item) ? t('radio.live') : item.platform}
+                        {isRadioBrowserMedia(item)
+                            ? t('radio.live')
+                            : shortPlatformName(item.platform)}
                     </span>
                 </div>
             </div>

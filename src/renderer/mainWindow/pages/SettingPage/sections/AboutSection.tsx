@@ -11,14 +11,14 @@ import { Github, type LucideIcon } from 'lucide-react';
 const GITHUB_REPO = 'https://github.com/martjay/free-music-online';
 const GITHUB_AUTHOR = 'https://github.com/martjay';
 const GITHUB_ISSUES = 'https://github.com/martjay/free-music-online/issues';
-const LICENSE_URL = `${GITHUB_REPO}/blob/master/LICENSE`;
+const LICENSE_URL = `${GITHUB_REPO}/blob/main/LICENSE`;
 
 const SOCIAL_LINKS_DATA: {
     icon: LucideIcon;
     label: string;
     handle: string;
     url: string;
-}[] = [{ icon: Github, label: 'GitHub', handle: '@raclen', url: GITHUB_AUTHOR }];
+}[] = [{ icon: Github, label: 'GitHub', handle: '@martjay', url: GITHUB_AUTHOR }];
 
 export function AboutSection() {
     const { t } = useTranslation();
@@ -76,7 +76,7 @@ export function AboutSection() {
                     <div className="p-setting__about-column">
                         <LinkRow
                             label={t('settings.about.official_site_link')}
-                            text={OFFICIAL_SITE_URL}
+                            text="free-music-online"
                             url={OFFICIAL_SITE_URL}
                         />
                         <LinkRow label="GitHub" text="Free Music Online" url={GITHUB_REPO} />

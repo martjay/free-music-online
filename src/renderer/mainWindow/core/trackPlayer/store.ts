@@ -3,19 +3,44 @@
  */
 import { atom, getDefaultStore, type PrimitiveAtom } from 'jotai';
 import type { IMusicItemSlim } from '@appTypes/infra/musicSheet';
+import musicItemToSlim from '@common/musicItemToSlim';
 import { PlayerState, RepeatMode } from '@common/constant';
+import { isRadioBrowserMedia } from '@common/radioBrowser';
+import { syncKV } from '@renderer/common/kvStore';
 import type { ICurrentLyric } from './types';
+
+function savedVolume(): number {
+    const value = syncKV.get('player.volume');
+    return typeof value === 'number' && value >= 0 && value <= 1 ? value : 1;
+}
+
+function savedSpeed(): number {
+    const value = syncKV.get('player.speed');
+    return typeof value === 'number' && value >= 0.25 && value <= 4 ? value : 1;
+}
+
+function savedRepeatMode(): RepeatMode {
+    const value = syncKV.get('player.repeatMode');
+    if (value === RepeatMode.Shuffle || value === RepeatMode.Queue || value === RepeatMode.Loop) {
+        return value;
+    }
+    return RepeatMode.Queue;
+}
+
+function savedMusic(): IMusicItemSlim | null {
+    const saved = syncKV.get('player.currentMusic');
+    if (!saved || isRadioBrowserMedia(saved)) return null;
+    return musicItemToSlim(saved);
+}
 
 const store = getDefaultStore();
 
 // ─── Atoms ───
 
-export const currentMusicAtom: PrimitiveAtom<IMusicItemSlim | null> = atom(
-    null as IMusicItemSlim | null,
-);
+export const currentMusicAtom: PrimitiveAtom<IMusicItemSlim | null> = atom(savedMusic());
 export const musicQueueAtom: PrimitiveAtom<IMusicItemSlim[]> = atom<IMusicItemSlim[]>([]);
 export const playerStateAtom: PrimitiveAtom<PlayerState> = atom<PlayerState>(PlayerState.None);
-export const repeatModeAtom: PrimitiveAtom<RepeatMode> = atom<RepeatMode>(RepeatMode.Queue);
+export const repeatModeAtom: PrimitiveAtom<RepeatMode> = atom<RepeatMode>(savedRepeatMode());
 export const progressAtom: PrimitiveAtom<{ currentTime: number; duration: number }> = atom<{
     currentTime: number;
     duration: number;
@@ -23,8 +48,8 @@ export const progressAtom: PrimitiveAtom<{ currentTime: number; duration: number
     currentTime: 0,
     duration: Infinity,
 });
-export const volumeAtom: PrimitiveAtom<number> = atom<number>(1);
-export const speedAtom: PrimitiveAtom<number> = atom<number>(1);
+export const volumeAtom: PrimitiveAtom<number> = atom<number>(savedVolume());
+export const speedAtom: PrimitiveAtom<number> = atom<number>(savedSpeed());
 export const qualityAtom: PrimitiveAtom<IMusic.IQualityKey> = atom<IMusic.IQualityKey>('standard');
 export const currentLyricAtom: PrimitiveAtom<ICurrentLyric | null> = atom(
     null as ICurrentLyric | null,
@@ -40,9 +65,8 @@ export interface IPlaybackSourceInfo {
     originalPlatform?: string;
 }
 
-export const playbackSourceAtom: PrimitiveAtom<IPlaybackSourceInfo | null> = atom<IPlaybackSourceInfo | null>(
-    null as IPlaybackSourceInfo | null,
-);
+export const playbackSourceAtom: PrimitiveAtom<IPlaybackSourceInfo | null> =
+    atom<IPlaybackSourceInfo | null>(null as IPlaybackSourceInfo | null);
 export const associatedLyricAtom: PrimitiveAtom<IMusic.IMusicItem | null> = atom(
     null as IMusic.IMusicItem | null,
 );

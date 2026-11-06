@@ -420,7 +420,7 @@
         "playback": {
             "subtitle": "播放体验、队列与音质",
             "default_quality_label": "默认播放音质",
-            "default_quality_desc": "在线播放默认音质",
+            "default_quality_desc": "播放栏和之后的歌曲都使用这个音质",
             "when_quality_missing_label": "音质缺失时",
             "when_quality_missing_desc": "当所选音质不可用时的行为",
             "play_lower": "播放更低音质",
@@ -452,7 +452,13 @@
             "radio_country_label": "电台国家和地区",
             "radio_country_desc": "探索电台时过滤指定国家或地区的电台",
             "radio_language_label": "电台语言",
-            "radio_language_desc": "探索电台时过滤指定广播语言的电台"
+            "radio_language_desc": "探索电台时过滤指定广播语言的电台",
+            "short_preview_label": "过短试听自动换源",
+            "short_preview_desc": "会员试听经常被固定成 1:00。开启后，音频短于下面的时长时，会在出声前换到其他平台的完整版本",
+            "short_preview_limit_label": "短于此时长就换源",
+            "short_preview_limit_desc": "按分和秒设置。默认 1 分 05 秒，用来避开一分钟试听",
+            "short_preview_minutes": "分",
+            "short_preview_seconds": "秒"
         },
         "download": {
             "subtitle": "下载路径、格式与质量",
@@ -470,7 +476,13 @@
             "filename_format_label": "文件名格式",
             "filename_format_desc": "下载文件名的格式",
             "format_title_artist": "歌名 - 歌手",
-            "format_artist_title": "歌手 - 歌名"
+            "format_artist_title": "歌手 - 歌名",
+            "short_preview_label": "过短试听自动换平台",
+            "short_preview_desc": "会员试听经常只有 1:00。开启后，下载前如果音频短于设定时长，会先换到其他平台再保存",
+            "short_preview_limit_label": "短于此时长就换平台",
+            "short_preview_limit_desc": "按分和秒设置。默认 1 分 05 秒，用来避开一分钟试听",
+            "short_preview_minutes": "分",
+            "short_preview_seconds": "秒"
         },
         "lyric": {
             "subtitle": "样式、颜色与显示策略",
@@ -557,7 +569,7 @@
             "contact_author_title": "联系作者",
             "contact_author_subtitle": "关注以下平台，获取最新动态与更新",
             "author_label": "作者",
-            "author_name": "raclen"
+            "author_name": "martjay"
         }
     },
     "theme": {

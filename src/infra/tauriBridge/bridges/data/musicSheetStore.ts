@@ -206,6 +206,10 @@ class MusicSheetStore {
         this.file.scheduleSave();
     }
 
+    public flush(): Promise<void> {
+        return this.file.flush();
+    }
+
     public onMusicSheetEvent(cb: SheetEventListener): () => void {
         this.listeners.add(cb);
         return () => {

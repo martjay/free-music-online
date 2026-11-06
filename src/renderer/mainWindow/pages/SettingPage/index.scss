@@ -464,7 +464,16 @@
     }
 
     &__info-label {
+        flex-shrink: 0;
+        white-space: nowrap;
         color: var(--color-text-secondary);
+    }
+
+    &__info-row .ext-link {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     &__info-value {
@@ -531,4 +540,24 @@
 
 .p-setting__author-value {
     cursor: pointer;
+}
+
+.p-setting__duration {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--color-text-secondary);
+    font-size: var(--text-caption-size);
+}
+
+.p-setting__duration-input {
+    width: 56px;
+    height: 32px;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-control);
+    background: var(--color-fill-neutral);
+    color: var(--color-text-primary);
+    font: inherit;
+    text-align: center;
 }

@@ -52,6 +52,7 @@ export function registerDataBridges(): void {
             musicSheetStore.playQueueAdd(items, afterIndex),
         playQueueRemove: (musicBases: any[]) => musicSheetStore.playQueueRemove(musicBases),
         playQueueClear: () => musicSheetStore.playQueueClear(),
+        flushPersisted: () => musicSheetStore.flush(),
 
         onMusicSheetEvent: (cb: (event: any) => void) => musicSheetStore.onMusicSheetEvent(cb),
     };

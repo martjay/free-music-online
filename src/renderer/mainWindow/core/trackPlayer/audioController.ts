@@ -10,6 +10,7 @@ import Hls from 'hls.js';
 import type { IMusicItemSlim } from '@appTypes/infra/musicSheet';
 import { PlayerState, ErrorReason } from '@common/constant';
 import requestForwarder from '@infra/requestForwarder/renderer';
+import { syncKV } from '@renderer/common/kvStore';
 import type { IResolvedMediaSource } from './types';
 
 // ─── 事件类型 ───
@@ -46,6 +47,8 @@ export interface IAudioController extends EventEmitter<IAudioControllerEvents> {
     setVolume(volume: number): void;
     setSpeed(speed: number): void;
     setSinkId(deviceId: string): Promise<void>;
+    /** 等待当前音源的真实时长。超时或还不知道时长时返回 null。 */
+    waitForDuration(timeoutMs: number): Promise<number | null>;
 
     readonly playerState: PlayerState;
     readonly hasSource: boolean;
@@ -60,6 +63,9 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
     private _sourceId = 0; // fetch 竞态守卫
     private _currentBlobUrl: string | null = null; // 追踪 blob URL 防止内存泄漏
     private pendingHlsPlay = false;
+    /** 用户选择的音量和倍速。换音源时播放器可能把它们复位，不能写回设置。 */
+    private intendedVolume = 1;
+    private intendedSpeed = 1;
 
     get playerState(): PlayerState {
         return this._playerState;
@@ -71,9 +77,18 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
 
     constructor() {
         super();
+        const savedVolume = syncKV.get('player.volume');
+        const savedSpeed = syncKV.get('player.speed');
+        this.intendedVolume =
+            typeof savedVolume === 'number' ? Math.max(0, Math.min(1, savedVolume)) : 1;
+        this.intendedSpeed =
+            typeof savedSpeed === 'number' ? Math.max(0.25, Math.min(4, savedSpeed)) : 1;
         this.audio = new Audio();
         this.audio.preload = 'auto';
         this.audio.controls = false;
+        this.audio.volume = this.intendedVolume;
+        this.audio.defaultPlaybackRate = this.intendedSpeed;
+        this.audio.playbackRate = this.intendedSpeed;
         this.bindEvents();
     }
 
@@ -91,6 +106,8 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
         this._sourceId++;
         this.audio.src = '';
         this.audio.removeAttribute('src');
+        this.audio.volume = this.intendedVolume;
+        this.audio.playbackRate = this.intendedSpeed;
         navigator.mediaSession.playbackState = 'none';
     }
 
@@ -124,6 +141,7 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
                     };
                 }
                 this.hls!.loadSource(url);
+                this.applyPlaybackPrefs();
             } else {
                 this.emit('error', ErrorReason.UnsupportedResource);
             }
@@ -139,11 +157,13 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
             );
             if (proxyUrl !== url) {
                 this.audio.src = proxyUrl;
+                this.applyPlaybackPrefs();
                 return;
             }
 
             if (!headers) {
                 this.audio.src = url;
+                this.applyPlaybackPrefs();
                 return;
             }
 
@@ -155,6 +175,7 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
                     if (this._sourceId !== sourceId) return;
                     this._currentBlobUrl = URL.createObjectURL(blob);
                     this.audio.src = this._currentBlobUrl;
+                    this.applyPlaybackPrefs();
                 })
                 .catch((err) => {
                     if (this._sourceId !== sourceId) return;
@@ -164,6 +185,12 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
         }
 
         this.audio.src = url;
+        this.applyPlaybackPrefs();
+    }
+
+    private applyPlaybackPrefs(): void {
+        this.audio.volume = this.intendedVolume;
+        this.audio.playbackRate = this.intendedSpeed;
     }
 
     play(): void {
@@ -189,16 +216,52 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
     }
 
     setVolume(volume: number): void {
-        this.audio.volume = Math.max(0, Math.min(1, volume));
+        this.intendedVolume = Math.max(0, Math.min(1, volume));
+        this.audio.volume = this.intendedVolume;
     }
 
     setSpeed(speed: number): void {
+        this.intendedSpeed = speed;
         this.audio.defaultPlaybackRate = speed;
         this.audio.playbackRate = speed;
     }
 
     setSinkId(deviceId: string): Promise<void> {
         return (this.audio as any).setSinkId(deviceId);
+    }
+
+    waitForDuration(timeoutMs: number): Promise<number | null> {
+        const sourceId = this._sourceId;
+        const read = (): number | null => {
+            if (this._sourceId !== sourceId) return null;
+            const duration = this.audio.duration;
+            if (!Number.isFinite(duration) || duration <= 0) return null;
+            return duration;
+        };
+        const ready = read();
+        if (ready !== null) return Promise.resolve(ready);
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (value: number | null) => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timer);
+                this.audio.removeEventListener('loadedmetadata', onReady);
+                this.audio.removeEventListener('durationchange', onReady);
+                this.audio.removeEventListener('error', onError);
+                resolve(this._sourceId === sourceId ? value : null);
+            };
+            const onReady = () => {
+                const duration = read();
+                if (duration !== null) finish(duration);
+            };
+            const onError = () => finish(null);
+            const timer = window.setTimeout(() => finish(read()), timeoutMs);
+            this.audio.addEventListener('loadedmetadata', onReady);
+            this.audio.addEventListener('durationchange', onReady);
+            this.audio.addEventListener('error', onError);
+        });
     }
 
     reset(): void {
@@ -221,6 +284,10 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
     // ─── Private Methods ───
 
     private bindEvents(): void {
+        this.audio.onloadedmetadata = () => {
+            this.applyPlaybackPrefs();
+        };
+
         this.audio.onplaying = () => {
             this.pendingHlsPlay = false;
             this.setPlayerState(PlayerState.Playing);
@@ -250,10 +317,18 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
         };
 
         this.audio.onvolumechange = () => {
+            if (Math.abs(this.audio.volume - this.intendedVolume) > 0.001) {
+                this.audio.volume = this.intendedVolume;
+                return;
+            }
             this.emit('volumeChange', this.audio.volume);
         };
 
         this.audio.onratechange = () => {
+            if (Math.abs(this.audio.playbackRate - this.intendedSpeed) > 0.001) {
+                this.audio.playbackRate = this.intendedSpeed;
+                return;
+            }
             this.emit('speedChange', this.audio.playbackRate);
         };
     }
