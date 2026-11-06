@@ -28,7 +28,7 @@ import { useCurrentMusic } from '../../../core/trackPlayer/hooks';
 import { ListFooter } from '../../ui/ListFooter';
 import { StatusPlaceholder } from '../../ui/StatusPlaceholder';
 import './index.scss';
-import { isSameMedia } from '@common/mediaKey';
+import { isOfficialChartNowPlaying, isSameMedia } from '@common/mediaKey';
 import formatDuration from '@common/formatDuration';
 import appConfig from '@infra/appConfig/renderer';
 import trackPlayer from '../../../core/trackPlayer';
@@ -804,8 +804,9 @@ export function SongTable({
             const item = dataRef.current[index];
             if (!item) return <tr {...trProps} />;
 
+            const playing = currentMusicRef.current;
             const isActive = showActiveIndicator
-                ? isSameMedia(item, currentMusicRef.current)
+                ? isSameMedia(item, playing) || isOfficialChartNowPlaying(item, playing)
                 : false;
             const isSelected = selectedIdsRef.current.has(item.id);
 
