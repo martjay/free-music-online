@@ -1,7 +1,7 @@
 {
-    "version": "1.0.42",
+    "version": "1.0.43",
     "changeLog": [
-        "一键更新打开安装包时会请求管理员权限，可以安装到 Program Files 等需要权限的目录"
+        "桌面歌词支持多行、原文/翻译/双语，字体颜色可自定义，描边可以关闭；锁定后文字可穿透，调整窗口大小时仍能看到歌词区域"
     ],
     "download": ["https://github.com/martjay/free-music-online/releases/latest"]
 }

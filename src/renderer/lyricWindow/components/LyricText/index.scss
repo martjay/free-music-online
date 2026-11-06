@@ -16,6 +16,9 @@
     }
 
     &__content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         white-space: nowrap;
         user-select: none;
         -webkit-text-stroke-width: 1px;
@@ -24,5 +27,73 @@
         line-height: 1.2;
         -webkit-app-region: drag;
         app-region: drag;
+    }
+
+    &__primary,
+    &__secondary {
+        white-space: nowrap;
+    }
+
+    &__secondary {
+        font-size: 0.58em;
+        line-height: 1.35;
+        opacity: 0.9;
+    }
+
+    &--multi {
+        align-items: stretch;
+        padding: 0 var(--space-6) var(--space-4);
+    }
+
+    &__scroll {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        scrollbar-width: none;
+        padding-block: 28%;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
+    &__stack {
+        width: min(100%, 920px);
+        margin: 0 auto;
+        text-align: center;
+    }
+
+    &__heading,
+    &__line {
+        margin: 0;
+        user-select: none;
+        -webkit-text-stroke-width: 1px;
+        paint-order: stroke fill;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    &__heading {
+        margin-bottom: 0.8em;
+        opacity: 0.9;
+    }
+
+    &__line {
+        margin-block: 0.2em;
+        opacity: 0.38;
+
+        &.is-active {
+            opacity: 1;
+        }
+    }
+
+    &__translation {
+        display: block;
+        margin-top: 0.15em;
+        font-size: 0.72em;
+        opacity: 0.85;
     }
 }

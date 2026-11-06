@@ -8,3 +8,10 @@ export const LYRIC_COLOR_SWATCHES = [
     '#facc15',
     '#f97316',
 ] as const;
+
+/** 空字符串、none、transparent 都表示不描边。 */
+export function activeLyricStroke(value: string | null | undefined): string | null {
+    const raw = (value ?? '').trim().toLowerCase();
+    if (!raw || raw === 'none' || raw === 'transparent') return null;
+    return (value ?? '').trim();
+}

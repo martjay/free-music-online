@@ -112,7 +112,7 @@ git diff --check
 
 On this development machine, `pnpm` may run a dependency-state check and attempt to reinstall optional packages. When dependencies already exist and only tool execution is needed, call the binaries in `node_modules/.bin` directly instead of repeatedly triggering installation.
 
-The local machine has no usable MSVC linker, so a successful Vite build and `rustfmt --check` do not replace the GitHub Actions Tauri build. The CI result is the Rust/package validation authority.
+To build the Windows installer on this machine, run `build-exe.bat` at the repository root. It calls `pnpm tauri:build`. Finished installers are in `src-tauri\target\release\bundle\nsis\*.exe` and `src-tauri\target\release\bundle\msi\*.msi`. Do not treat a missing `link.exe` in the current shell as proof that a local package cannot be built. `cargo check` does not produce the installer. The published GitHub Release assets still come from the tag workflow.
 
 ## Commit And Push Master
 

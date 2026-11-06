@@ -33,7 +33,7 @@ body[data-window='lyric'] {
     }
 
     &.is-unlocked.is-hovered,
-    &.is-locked.is-hovered {
+    &.is-unlocked.is-resizing {
         background: var(--lyric-bg-hover);
     }
 }

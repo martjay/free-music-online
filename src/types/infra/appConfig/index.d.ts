@@ -60,6 +60,10 @@ interface _IAppConfig {
     'lyric.alwaysOnTop': boolean;
     /** 锁定桌面歌词 */
     'lyric.lockLyric': boolean;
+    /** 桌面歌词多行显示 */
+    'lyric.multiLine': boolean;
+    /** 桌面歌词显示原文、翻译，或两者同时显示 */
+    'lyric.lineContent': 'original' | 'translation' | 'both';
     /** 字体 */
     'lyric.fontData': FontData;
     /** 字体颜色 */

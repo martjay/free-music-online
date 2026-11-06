@@ -20,6 +20,7 @@ export default function App() {
 
     const [showToolbar, setShowToolbar] = useState(false);
     const [lockedHover, setLockedHover] = useState(false);
+    const [resizing, setResizing] = useState(false);
 
     // 锁定后整窗穿透，WebView 收不到鼠标。系统侧轮询光标，停留后暂时取消穿透。
     useEffect(() => {
@@ -60,6 +61,34 @@ export default function App() {
         setShowToolbar(false);
     }, [isLocked]);
 
+    // 拖拽改窗口大小时鼠标在边框上，网页收不到悬停，底色会消失。
+    // 尺寸变化期间补上底色，方便看出歌词区边界。
+    useEffect(() => {
+        if (isLocked) {
+            setResizing(false);
+            return;
+        }
+        let timer = 0;
+        let lastWidth = window.innerWidth;
+        let lastHeight = window.innerHeight;
+        const onResize = () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const changed = width !== lastWidth || height !== lastHeight;
+            lastWidth = width;
+            lastHeight = height;
+            if (!changed) return;
+            setResizing(true);
+            window.clearTimeout(timer);
+            timer = window.setTimeout(() => setResizing(false), 600);
+        };
+        window.addEventListener('resize', onResize);
+        return () => {
+            window.removeEventListener('resize', onResize);
+            window.clearTimeout(timer);
+        };
+    }, [isLocked]);
+
     const handlePointerDown = useCallback(
         (event: React.PointerEvent) => {
             if (isLocked || event.button !== 0) return;
@@ -80,12 +109,51 @@ export default function App() {
         ]);
     }, []);
 
+    // 锁定后文字保持穿透。这里只上报区域：文字用来显示解锁按钮，按钮本身才接收点击。
+    useEffect(() => {
+        if (!isLocked) {
+            void tauriInvoke('set_lyric_hover_rects', { rects: [] });
+            return;
+        }
+        const report = () => {
+            const rects = Array.from(
+                document.querySelectorAll<HTMLElement>('[data-lyric-hit], [data-lyric-unlock]'),
+            )
+                .map((node) => {
+                    const box = node.getBoundingClientRect();
+                    return {
+                        x: box.left,
+                        y: box.top,
+                        width: box.width,
+                        height: box.height,
+                        kind: node.hasAttribute('data-lyric-unlock') ? 'unlock' : 'reveal',
+                    };
+                })
+                .filter((rect) => rect.width >= 2 && rect.height >= 2);
+            void tauriInvoke('set_lyric_hover_rects', { rects });
+        };
+        report();
+        const observer = new ResizeObserver(report);
+        document.querySelectorAll<HTMLElement>('[data-lyric-hit]').forEach((node) => {
+            observer.observe(node);
+        });
+        window.addEventListener('resize', report);
+        const timer = window.setInterval(report, 400);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', report);
+            window.clearInterval(timer);
+            void tauriInvoke('set_lyric_hover_rects', { rects: [] });
+        };
+    }, [isLocked, lockedHover]);
+
     return (
         <div
             className={cn(
                 'l-lyric-shell',
                 isLocked ? 'is-locked' : 'is-unlocked',
-                (isLocked ? lockedHover : showToolbar) && 'is-hovered',
+                !isLocked && showToolbar && 'is-hovered',
+                !isLocked && resizing && 'is-resizing',
             )}
             onMouseOver={handleMouseOver}
             onMouseLeave={handleMouseLeave}

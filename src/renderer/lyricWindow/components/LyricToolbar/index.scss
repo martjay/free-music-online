@@ -53,6 +53,12 @@
             color: var(--lyric-active-color);
         }
 
+        &--mark {
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1;
+        }
+
         &--unlock {
             background: var(--lyric-bg-hover);
 
@@ -107,5 +113,36 @@
                 0 0 0 2px rgba(0, 0, 0, 0.45),
                 0 0 0 3px #fff;
         }
+    }
+
+    &__swatch--none {
+        background:
+            linear-gradient(
+                135deg,
+                transparent 42%,
+                rgba(255, 255, 255, 0.9) 42%,
+                rgba(255, 255, 255, 0.9) 58%,
+                transparent 58%
+            ),
+            rgba(255, 255, 255, 0.08);
+    }
+
+    &__swatch--custom {
+        background:
+            conic-gradient(from 90deg, #f43f5e, #facc15, #34d399, #60a5fa, #a78bfa, #f43f5e)
+                padding-box,
+            conic-gradient(#f43f5e, #facc15, #34d399, #60a5fa, #a78bfa, #f43f5e) border-box;
+        border: 2px solid transparent;
+        box-sizing: border-box;
+    }
+
+    &__color-input {
+        position: fixed;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        border: 0;
+        opacity: 0;
+        pointer-events: none;
     }
 }

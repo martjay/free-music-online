@@ -5,7 +5,7 @@ import { SettingsCard } from '../components/SettingsCard';
 import { SettingRow } from '../components/SettingRow';
 import { Toggle } from '@renderer/mainWindow/components/ui/Toggle';
 import { Select, type SelectOption } from '@renderer/mainWindow/components/ui/Select';
-import { LYRIC_COLOR_SWATCHES } from '@renderer/common/lyricColors';
+import { LYRIC_COLOR_SWATCHES, activeLyricStroke } from '@renderer/common/lyricColors';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import appConfig from '@infra/appConfig/renderer';
 
@@ -205,18 +205,34 @@ export function LyricSection() {
             <SettingRow
                 label={t('settings.lyric.stroke_color_label')}
                 description={t('settings.lyric.stroke_color_desc')}
-                control={<ColorPicker value={strokeColor ?? '#f5c542'} onChange={setStrokeColor} />}
+                control={
+                    <ColorPicker
+                        value={strokeColor ?? '#f5c542'}
+                        allowNone
+                        onChange={setStrokeColor}
+                    />
+                }
             />
         </SettingsCard>
     );
 }
 
 /** 内联颜色选择器 — 原生 color input 使用 onBlur 提交 */
-function ColorPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
-    const [localColor, setLocalColor] = useState(value);
+function ColorPicker({
+    value,
+    onChange,
+    allowNone = false,
+}: {
+    value: string;
+    onChange: (color: string) => void;
+    allowNone?: boolean;
+}) {
+    const { t } = useTranslation();
+    const none = allowNone && !activeLyricStroke(value);
+    const [localColor, setLocalColor] = useState(activeLyricStroke(value) ?? '#f5c542');
 
     useEffect(() => {
-        setLocalColor(value);
+        setLocalColor(activeLyricStroke(value) ?? '#f5c542');
     }, [value]);
 
     const handleNativeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -239,6 +255,20 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (color: str
                 className="p-setting__color-input"
             />
             <div className="p-setting__color-swatches">
+                {allowNone && (
+                    <button
+                        type="button"
+                        className={cn('p-setting__color-swatch-btn', none && 'is-selected')}
+                        title={t('lyric.no_stroke')}
+                        aria-label={t('lyric.no_stroke')}
+                        aria-pressed={none}
+                        onClick={() => onChange('')}
+                        style={{
+                            background:
+                                'linear-gradient(135deg, transparent 42%, currentColor 42%, currentColor 58%, transparent 58%)',
+                        }}
+                    />
+                )}
                 {LYRIC_COLOR_SWATCHES.map((color) => (
                     <button
                         type="button"

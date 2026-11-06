@@ -10,7 +10,10 @@ use commands::{
     global_context::*,
     http_proxy::*,
     local_meta::*,
-    lyric_window::{self, sync_lyric_window, LyricWindowState},
+    lyric_window::{
+        self, set_lyric_display_span, set_lyric_hover_rects, set_lyric_topmost, sync_lyric_window,
+        LyricWindowState,
+    },
     netease::*,
     system_util::*,
     taskbar_toolbar::*,
@@ -80,6 +83,9 @@ pub fn run() {
             clear_cache,
             // 桌面歌词窗口
             sync_lyric_window,
+            set_lyric_hover_rects,
+            set_lyric_display_span,
+            set_lyric_topmost,
             // Dialog
             show_open_dialog,
             show_save_dialog,
