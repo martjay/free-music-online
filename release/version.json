@@ -1,8 +1,9 @@
 {
-    "version": "1.0.47",
+    "version": "1.0.48",
     "changeLog": [
-        "搜索结果可以播放全部，按钮在标题右侧",
-        "修复网易云登录点了没有弹出登录窗口"
+        "歌曲表的来源和专辑更宽，表头可以拖动列宽，悬停能看到完整名字",
+        "托盘右键可以上一首、播放或暂停、下一首",
+        "关于页写明原作者 raclen 和原项目 AnhePlayer"
     ],
     "download": ["https://github.com/martjay/free-music-online/releases/latest"]
 }

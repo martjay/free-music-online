@@ -135,14 +135,25 @@
         color: var(--color-text-secondary);
         margin-top: var(--space-1);
         line-height: var(--text-caption-leading);
+        overflow-wrap: break-word;
     }
 
     &__row-control {
         display: flex;
+        align-items: center;
         justify-content: flex-end;
 
-        .input {
+        .input,
+        .select {
+            width: 220px;
             min-width: 220px;
+            max-width: 220px;
+        }
+
+        .select__trigger {
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
         }
     }
 
@@ -539,10 +550,6 @@
     to {
         opacity: 1;
     }
-}
-
-.p-setting__author-value {
-    cursor: pointer;
 }
 
 .p-setting__duration {

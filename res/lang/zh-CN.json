@@ -52,6 +52,7 @@
         "minimize": "最小化",
         "maximize": "最大化",
         "minimode": "迷你模式",
+        "show_main_window": "显示主窗口",
         "pin_window": "置顶",
         "unpin_window": "取消置顶",
         "enter_minimode": "进入迷你模式",
@@ -584,10 +585,10 @@
             "current_version_label": "当前版本",
             "official_site_link": "官方网站",
             "issues_link": "问题反馈",
-            "contact_author_title": "联系作者",
-            "contact_author_subtitle": "关注以下平台，获取最新动态与更新",
-            "author_label": "作者",
-            "author_name": "martjay"
+            "original_author_label": "原作者",
+            "original_project_label": "原项目",
+            "maintainer_title": "本版本维护",
+            "maintainer_subtitle": "这是在原项目上的修改版。更新和问题反馈找这里，原项目仍由原作者维护"
         }
     },
     "theme": {

@@ -17,12 +17,12 @@ use commands::{
     netease::*,
     system_util::*,
     taskbar_toolbar::*,
+    tray_menu::{on_tray_menu_blur, show_tray_menu, tray_menu_click},
     webdav::*,
 };
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Listener, Manager, WindowEvent,
+    AppHandle, Manager, WindowEvent,
 };
 
 /// 从配置文件读取关闭行为。
@@ -74,6 +74,7 @@ pub fn run() {
             enter_minimode,
             exit_minimode,
             toggle_minimode,
+            tray_menu_click,
             open_external,
             open_path,
             show_item_in_folder,
@@ -134,63 +135,35 @@ pub fn run() {
 
             // ── 系统托盘 ──
             // 关闭按钮在「最小化」模式下只会隐藏窗口，必须提供托盘入口将其找回。
-            let show_item = MenuItem::with_id(app, "tray-show", "显示主窗口", true, None::<&str>)?;
-            // 桌面歌词锁定时整窗鼠标穿透，托盘是唯一可靠的解锁入口
-            let lyric_item = CheckMenuItem::with_id(
-                app,
-                "tray-desktop-lyric",
-                "桌面歌词",
-                true,
-                app_config::get_config_bool("lyric.enableDesktopLyric", false),
-                None::<&str>,
-            )?;
-            let lock_lyric_item = CheckMenuItem::with_id(
-                app,
-                "tray-lock-lyric",
-                "锁定桌面歌词",
-                true,
-                app_config::get_config_bool("lyric.lockLyric", false),
-                None::<&str>,
-            )?;
-            let exit_item = MenuItem::with_id(app, "tray-exit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(
-                app,
-                &[&show_item, &lyric_item, &lock_lyric_item, &exit_item],
-            )?;
-
+            // 右键用应用自己的菜单，系统菜单改不了行距。
             let mut tray_builder = TrayIconBuilder::with_id("main-tray")
-                .menu(&menu)
-                // 左键单击恢复窗口，右键才弹出菜单
                 .show_menu_on_left_click(false)
                 .tooltip("Free Music Online")
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "tray-show" => restore_main_window(app),
-                    // 只写配置，窗口由主窗口控制器统一驱动，避免双驱动
-                    "tray-desktop-lyric" => {
-                        let next = !app_config::get_config_bool("lyric.enableDesktopLyric", false);
-                        let _ = app_config::patch_config(
-                            app,
-                            serde_json::json!({ "lyric.enableDesktopLyric": next }),
-                        );
-                    }
-                    "tray-lock-lyric" => {
-                        let next = !app_config::get_config_bool("lyric.lockLyric", false);
-                        let _ = app_config::patch_config(
-                            app,
-                            serde_json::json!({ "lyric.lockLyric": next }),
-                        );
-                    }
-                    "tray-exit" => app.exit(0),
-                    _ => {}
-                })
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
+                    let TrayIconEvent::Click {
+                        button,
                         button_state: MouseButtonState::Up,
+                        rect,
                         ..
                     } = event
-                    {
+                    else {
+                        return;
+                    };
+                    if button == MouseButton::Left {
                         restore_main_window(tray.app_handle());
+                        return;
+                    }
+                    if button == MouseButton::Right {
+                        let tauri::Position::Physical(tauri::PhysicalPosition { x, y }) =
+                            rect.position
+                        else {
+                            return;
+                        };
+                        let tauri::Size::Physical(tauri::PhysicalSize { width, height }) = rect.size
+                        else {
+                            return;
+                        };
+                        show_tray_menu(tray.app_handle(), x, y, width as i32, height as i32);
                     }
                 });
 
@@ -198,27 +171,6 @@ pub fn run() {
                 tray_builder = tray_builder.icon(icon.clone());
             }
             tray_builder.build(app)?;
-
-            // 任一入口（设置页 / 主窗口 / 歌词工具栏）改动配置后，同步托盘勾选状态
-            let lyric_for_config = lyric_item.clone();
-            let lock_for_config = lock_lyric_item.clone();
-            app.listen("app-config-update", move |event| {
-                let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) else {
-                    return;
-                };
-                let Some(patch) = payload.get("patch") else {
-                    return;
-                };
-                if let Some(checked) = patch
-                    .get("lyric.enableDesktopLyric")
-                    .and_then(|v| v.as_bool())
-                {
-                    let _ = lyric_for_config.set_checked(checked);
-                }
-                if let Some(checked) = patch.get("lyric.lockLyric").and_then(|v| v.as_bool()) {
-                    let _ = lock_for_config.set_checked(checked);
-                }
-            });
 
             // 启动时按磁盘配置对齐一次歌词窗口（隐藏状态下也会正确设置穿透与置顶）
             let enabled = app_config::get_config_bool("lyric.enableDesktopLyric", false);
@@ -264,6 +216,15 @@ pub fn run() {
                 }
                 // 歌词窗口：几何变化防抖持久化 + 关闭请求拦截
                 "lyric" => lyric_window::handle_lyric_window_event(window, event),
+                "tray-menu" => {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                    if let WindowEvent::Focused(false) = event {
+                        on_tray_menu_blur(window);
+                    }
+                }
                 "minimode" => {
                     if let WindowEvent::Focused(true) = event {
                         if let Some(webview) = window.app_handle().get_webview_window("minimode") {

@@ -154,31 +154,33 @@ export default function PlayerBar() {
                                 </Marquee>
                                 {/* 第二行: 喜欢、下载、分割线、时间 */}
                                 <div className="l-player-bar__actions">
-                                    <FavoriteButton musicItem={currentMusic} size="sm" />
-                                    {!isLive && (
-                                        <DownloadButton
-                                            musicItem={currentMusic}
-                                            size="sm"
-                                            selectQuality
-                                        />
-                                    )}
-                                    {downloaded && (
-                                        <span
-                                            className="l-player-bar__downloaded"
-                                            title={t('common.downloaded')}
+                                    <div className="l-player-bar__action-btns">
+                                        <FavoriteButton musicItem={currentMusic} size="sm" />
+                                        {!isLive && (
+                                            <DownloadButton
+                                                musicItem={currentMusic}
+                                                size="sm"
+                                                selectQuality
+                                            />
+                                        )}
+                                        {downloaded && (
+                                            <span
+                                                className="l-player-bar__downloaded"
+                                                title={t('common.downloaded')}
+                                            >
+                                                <CircleCheckBig size={14} />
+                                            </span>
+                                        )}
+                                        <button
+                                            className="l-player-bar__ctrl-btn"
+                                            type="button"
+                                            title={t('playback.switch_source')}
+                                            aria-label={t('playback.switch_source')}
+                                            onClick={() => trackPlayer.switchSource()}
                                         >
-                                            <CircleCheckBig size={14} />
-                                        </span>
-                                    )}
-                                    <button
-                                        className="l-player-bar__ctrl-btn"
-                                        type="button"
-                                        title={t('playback.switch_source')}
-                                        aria-label={t('playback.switch_source')}
-                                        onClick={() => trackPlayer.switchSource()}
-                                    >
-                                        <ArrowRightLeft size={14} />
-                                    </button>
+                                            <ArrowRightLeft size={14} />
+                                        </button>
+                                    </div>
                                     <div className="l-player-bar__divider" />
                                     <TimeDisplay />
                                 </div>

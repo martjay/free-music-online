@@ -31,7 +31,7 @@ import './index.scss';
 const COMPLETED_COLUMN_WIDTHS = {
     title: '26%',
     artist: '16%',
-    album: '22%',
+    album: '28%',
     duration: 64,
     size: 84,
 };

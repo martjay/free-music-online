@@ -125,6 +125,17 @@
         flex-shrink: 0;
     }
 
+    &__action-btns {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+
+        .l-player-bar__ctrl-btn {
+            width: 16px;
+            height: 16px;
+        }
+    }
+
     &__downloaded {
         display: inline-flex;
         color: var(--color-status-success-text);

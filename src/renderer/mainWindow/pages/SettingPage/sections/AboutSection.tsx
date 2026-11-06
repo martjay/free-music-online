@@ -10,8 +10,10 @@ import { setPendingUpdate } from '@renderer/mainWindow/common/updateNotice';
 import { Github, type LucideIcon } from 'lucide-react';
 
 const GITHUB_REPO = 'https://github.com/martjay/free-music-online';
-const GITHUB_AUTHOR = 'https://github.com/martjay';
+const GITHUB_MAINTAINER = 'https://github.com/martjay';
 const GITHUB_ISSUES = 'https://github.com/martjay/free-music-online/issues';
+const ORIGINAL_AUTHOR_URL = 'https://github.com/raclen';
+const ORIGINAL_PROJECT_URL = 'https://github.com/raclen/AnhePlayer';
 const LICENSE_URL = `${GITHUB_REPO}/blob/main/LICENSE`;
 
 const SOCIAL_LINKS_DATA: {
@@ -19,7 +21,7 @@ const SOCIAL_LINKS_DATA: {
     label: string;
     handle: string;
     url: string;
-}[] = [{ icon: Github, label: 'GitHub', handle: '@martjay', url: GITHUB_AUTHOR }];
+}[] = [{ icon: Github, label: 'GitHub', handle: '@martjay', url: GITHUB_MAINTAINER }];
 
 export function AboutSection() {
     const { t } = useTranslation();
@@ -73,7 +75,16 @@ export function AboutSection() {
                             value={`v${globalContext.appVersion}`}
                         />
                         <LinkRow label="License" text="AGPL-3.0" url={LICENSE_URL} />
-                        <AuthorRow />
+                        <LinkRow
+                            label={t('settings.about.original_author_label')}
+                            text="raclen"
+                            url={ORIGINAL_AUTHOR_URL}
+                        />
+                        <LinkRow
+                            label={t('settings.about.original_project_label')}
+                            text="AnhePlayer"
+                            url={ORIGINAL_PROJECT_URL}
+                        />
                     </div>
                     <div className="p-setting__about-column">
                         <LinkRow
@@ -91,10 +102,9 @@ export function AboutSection() {
                 </div>
             </SettingsCard>
 
-            {/* 联系作者 */}
             <SettingsCard
-                title={t('settings.about.contact_author_title')}
-                subtitle={t('settings.about.contact_author_subtitle')}
+                title={t('settings.about.maintainer_title')}
+                subtitle={t('settings.about.maintainer_subtitle')}
             >
                 <div className="p-setting__about-contact-body">
                     <div className="p-setting__about-social-list">
@@ -133,19 +143,6 @@ function InfoRow({ label, value }: { label: string; value: string }) {
         <div className="p-setting__info-row">
             <span className="p-setting__info-label">{label}</span>
             <span className="p-setting__info-value">{value}</span>
-        </div>
-    );
-}
-
-function AuthorRow() {
-    const { t } = useTranslation();
-
-    return (
-        <div className="p-setting__info-row">
-            <span className="p-setting__info-label">{t('settings.about.author_label')}</span>
-            <A href={GITHUB_AUTHOR} className="p-setting__info-value p-setting__author-value">
-                {t('settings.about.author_name')}
-            </A>
         </div>
     );
 }

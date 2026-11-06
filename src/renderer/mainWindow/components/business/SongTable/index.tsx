@@ -49,6 +49,8 @@ export interface SongTableExtraColumn {
     width?: number | string;
     align?: 'left' | 'center' | 'right';
     cellClassName?: string;
+    /** 悬停提示用的全文 */
+    textOf?: (item: IMusic.IMusicItemBase) => string;
     render: (item: IMusic.IMusicItemBase, index: number) => ReactNode;
 }
 
@@ -138,11 +140,12 @@ export interface SongTableProps {
 
     /** 需要隐藏的列（标题列不可隐藏） */
     hideColumns?: HideableColumn[];
-    /** 序号列表头。搜索结果这块不放井号 */
+    /** 序号列表头。搜索结果也保留 # */
     showIndexHeader?: boolean;
 
     /**
-     * 传入后标题、歌手、专辑、来源可以拖右边缘改列宽，宽度记在本地。
+     * 列宽存在本地的键。标题、歌手、专辑、时长、来源都可以拖右边缘改宽度。
+     * 各页面默认共用同一份宽度。
      */
     columnLayoutKey?: string;
     /** 还没拖过时的列宽。数字是像素，字符串是百分比。 */
@@ -291,7 +294,7 @@ function DragOverlayContent({ dragCount }: { dragCount: number }) {
  * 基于 react-virtuoso TableVirtuoso，支持全局滚动、多选拖拽排序、
  * Ctrl/Shift 多选、右键菜单、滚动加载更多、可选状态列。
  *
- * 固定列：序号 (56px) | 标题 (auto) | 歌手 (18%) | 专辑 (16%) | 时长 (80px) | 来源 (88px)
+ * 固定列：序号 (40px) | 标题 (auto) | 歌手 (18%) | 专辑 (22%) | 时长 (80px) | 来源 (120px)
  * 可通过 hideColumns 隐藏部分列；标题列始终可见。
  * 当前播放高亮通过内部 useCurrentMusic() 自动判断。
  *
@@ -337,7 +340,7 @@ export function SongTable({
     showActiveIndicator = true,
     hideColumns = appConfig.getConfigByKey('normal.musicListHideColumns'),
     showIndexHeader = true,
-    columnLayoutKey,
+    columnLayoutKey = 'song-table-columns:v1',
     defaultColumnWidths,
     extraColumns,
     inspectText = false,
@@ -415,8 +418,8 @@ export function SongTable({
             cols.push({
                 id: 'index',
                 header: showIndexHeader ? '#' : '',
-                width: 36,
-                align: 'right',
+                width: 40,
+                align: 'center',
                 cellClassName: 'song-table__cell--index',
                 render: (_item, index) => index + 1,
             });
@@ -448,7 +451,7 @@ export function SongTable({
             cols.push({
                 id: 'album',
                 header: t('media.album'),
-                width: defaultColumnWidths?.album ?? '16%',
+                width: defaultColumnWidths?.album ?? '22%',
                 resizable: true,
                 textOf: (item) => item.album ?? '',
                 render: (item) => item.album ?? '',
@@ -475,6 +478,8 @@ export function SongTable({
                     width: defaultColumnWidths?.[column.id] ?? column.width,
                     align: column.align,
                     cellClassName: column.cellClassName,
+                    resizable: true,
+                    textOf: column.textOf,
                     render: column.render,
                 });
             }
@@ -484,11 +489,11 @@ export function SongTable({
             cols.push({
                 id: 'platform',
                 header: t('media.platform'),
-                width: defaultColumnWidths?.platform ?? 88,
+                width: defaultColumnWidths?.platform ?? 120,
                 resizable: true,
-                textOf: (item) => shortPlatformName(item.platform),
+                textOf: (item) => item.platform ?? '',
                 render: (item) => (
-                    <span className="song-table__platform-badge" title={item.platform}>
+                    <span className="song-table__platform-badge">
                         {shortPlatformName(item.platform)}
                     </span>
                 ),
@@ -738,7 +743,7 @@ export function SongTable({
                     </td>
                 )}
                 {columns.map((col) => {
-                    const fullText = inspectText ? (col.textOf?.(item) ?? '').trim() : '';
+                    const fullText = (col.textOf?.(item) ?? '').trim();
                     return (
                         <td
                             key={col.id}
@@ -751,11 +756,11 @@ export function SongTable({
                             <div
                                 className={cn(
                                     'song-table__cell-content',
-                                    fullText && 'is-copyable',
+                                    inspectText && fullText && 'is-copyable',
                                 )}
                                 title={fullText || undefined}
                                 onClick={
-                                    fullText
+                                    inspectText && fullText
                                         ? (event) => {
                                               event.stopPropagation();
                                               const text = fullText;

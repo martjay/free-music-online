@@ -11,4 +11,5 @@ pub mod lyric_window;
 pub mod netease;
 pub mod system_util;
 pub mod taskbar_toolbar;
+pub mod tray_menu;
 pub mod webdav;

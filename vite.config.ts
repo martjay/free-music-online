@@ -41,6 +41,7 @@ export default defineConfig(({ mode }) => ({
                 main: path.resolve(__dirname, 'mainWindow.html'),
                 lyric: path.resolve(__dirname, 'lyricWindow.html'),
                 minimode: path.resolve(__dirname, 'minimodeWindow.html'),
+                trayMenu: path.resolve(__dirname, 'trayMenuWindow.html'),
             },
         },
     },

@@ -26,7 +26,7 @@ import neteaseAccount from '@infra/neteaseAccount/renderer';
 import { addToRecentlyPlayed } from '../recentlyPlayed';
 import appSync from '@infra/appSync/renderer/main';
 import { syncKV } from '@renderer/common/kvStore';
-import { tauriInvoke, tauriListen } from '@infra/tauriBridge/ipc';
+import { tauriEmit, tauriInvoke, tauriListen } from '@infra/tauriBridge/ipc';
 import { REPEAT_MODE_MAP } from '@renderer/common/repeatModeMap';
 import { showToast } from '@renderer/mainWindow/components/ui/Toast';
 import i18n from '@infra/i18n/renderer';
@@ -94,7 +94,9 @@ function setupAppSyncBridge(): void {
         });
     });
     store.sub(playerStateAtom, () => {
-        appSync.syncAppState({ playerState: store.get(playerStateAtom) });
+        const playerState = store.get(playerStateAtom);
+        appSync.syncAppState({ playerState });
+        void tauriEmit('tray-player-state', playerState);
     });
     store.sub(repeatModeAtom, () => {
         appSync.syncAppState({ repeatMode: store.get(repeatModeAtom) });
@@ -897,6 +899,9 @@ class TrackPlayer {
             if (command === 'previous') void this.skipToPrev();
             else if (command === 'next') void this.skipToNext();
             else if (command === 'play-pause') this.togglePlayPause();
+        });
+        void tauriListen('tray-menu-open', () => {
+            void tauriEmit('tray-player-state', store.get(playerStateAtom));
         });
     }
 

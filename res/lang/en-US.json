@@ -49,6 +49,7 @@
         "minimize": "Minimize",
         "maximize": "Maximize",
         "minimode": "Mini Mode",
+        "show_main_window": "Show main window",
         "pin_window": "Pin on top",
         "unpin_window": "Unpin",
         "enter_minimode": "Enter Mini Mode",
@@ -509,10 +510,10 @@
             "current_version_label": "Current Version",
             "official_site_link": "Official Website",
             "issues_link": "Report Issues",
-            "contact_author_title": "Contact Author",
-            "contact_author_subtitle": "Follow on these platforms for latest updates",
-            "author_label": "Author",
-            "author_name": "martjay"
+            "original_author_label": "Original author",
+            "original_project_label": "Original project",
+            "maintainer_title": "This version",
+            "maintainer_subtitle": "A modified version of the original project. Updates and issues for this release go here. The original project stays with its author"
         }
     },
     "theme": {
