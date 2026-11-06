@@ -458,7 +458,9 @@
             "short_preview_limit_label": "短于此时长就换源",
             "short_preview_limit_desc": "按分和秒设置。默认 1 分 05 秒，用来避开一分钟试听",
             "short_preview_minutes": "分",
-            "short_preview_seconds": "秒"
+            "short_preview_seconds": "秒",
+            "official_platform_label": "官方榜播放平台",
+            "official_platform_desc": "排行榜最前面的官方榜，用这个已打开的音源搜索并播放"
         },
         "download": {
             "subtitle": "下载路径、格式与质量",
@@ -658,7 +660,17 @@
         "click_to_view": "点击查看完整榜单",
         "missing_info": "缺少榜单信息",
         "missing_info_desc": "请从排行榜页面进入",
-        "search_placeholder": "搜索此榜单..."
+        "search_placeholder": "搜索此榜单...",
+        "official": "官方榜",
+        "chart_billboard": "美国公告牌榜",
+        "chart_uk": "英国UK榜",
+        "chart_oricon": "日本公信榜",
+        "chart_nrj": "法国NJR榜",
+        "chart_tophit": "俄罗斯流行榜",
+        "chart_beatport": "全球电子舞曲榜",
+        "official_updated": "榜单更新于 {{time}}",
+        "official_no_plugin": "没有可搜索的音源，请先打开一个平台",
+        "official_not_found": "在所选平台没搜到这首歌"
     },
     "history": {
         "title": "最近播放",

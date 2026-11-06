@@ -1,6 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { RequestStatus } from '@common/constant';
 import pluginManager from '@infra/pluginManager/renderer';
+import i18n from '@infra/i18n/renderer';
+import {
+    fetchOfficialChart,
+    formatChartUpdatedAt,
+    OFFICIAL_CHART_PLATFORM,
+} from '../ToplistPage/officialCharts';
 
 /**
  * useTopListDetail — 排行榜详情分页加载 hook
@@ -8,7 +14,11 @@ import pluginManager from '@infra/pluginManager/renderer';
  * 加载指定榜单的歌曲列表，支持分页。
  * 首次 mount 立即触发第一页加载。
  */
-export function useTopListDetail(topListItem: IMusic.IMusicSheetItem | null, platform: string) {
+export function useTopListDetail(
+    topListItem: IMusic.IMusicSheetItem | null,
+    platform: string,
+    refreshKey = '',
+) {
     const [sheetItem, setSheetItem] = useState<IMusic.IMusicSheetItem>(
         topListItem ?? { id: '', platform, title: '' },
     );
@@ -26,17 +36,38 @@ export function useTopListDetail(topListItem: IMusic.IMusicSheetItem | null, pla
             setRequestStatus(RequestStatus.Pending);
 
             try {
-                const result = await pluginManager.callPluginMethod({
-                    platform,
-                    method: 'getTopListDetail',
-                    args: [topListItem, page],
-                });
+                let resMusicList: IMusic.IMusicItem[] = [];
+                let resIsEnd = true;
+                let nextSheet: IMusic.IMusicSheetItem | undefined;
+                let updatedAt: number | undefined;
 
-                const resMusicList = result?.musicList ?? [];
-                const resIsEnd = result?.isEnd ?? true;
+                if (platform === OFFICIAL_CHART_PLATFORM) {
+                    const chart = await fetchOfficialChart(topListItem.id, topListItem.title);
+                    resMusicList = chart.musicList;
+                    nextSheet = chart.sheetItem;
+                    updatedAt = chart.updatedAt;
+                } else {
+                    const result = await pluginManager.callPluginMethod({
+                        platform,
+                        method: 'getTopListDetail',
+                        args: [topListItem, page],
+                    });
+                    resMusicList = result?.musicList ?? [];
+                    resIsEnd = result?.isEnd ?? true;
+                    nextSheet = result?.topListItem;
+                }
 
-                if (result?.topListItem) {
-                    setSheetItem((prev) => ({ ...prev, ...result.topListItem }));
+                if (nextSheet) {
+                    setSheetItem((prev) => ({
+                        ...prev,
+                        ...nextSheet,
+                        description: updatedAt
+                            ? i18n.t('toplist.official_updated', {
+                                  time: formatChartUpdatedAt(updatedAt),
+                                  interpolation: { escapeValue: false },
+                              })
+                            : nextSheet.description,
+                    }));
                 }
 
                 setMusicList((prev) => (isFirstPage ? resMusicList : [...prev, ...resMusicList]));
@@ -61,7 +92,7 @@ export function useTopListDetail(topListItem: IMusic.IMusicSheetItem | null, pla
             setIsEnd(false);
             fetchPage(1, true);
         }
-    }, [topListItem?.id, platform]);
+    }, [topListItem?.id, platform, refreshKey]);
 
     const loadMore = useCallback(() => {
         if (isEnd || pendingRef.current) return;

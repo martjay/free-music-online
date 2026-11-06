@@ -38,7 +38,7 @@ fn restore_main_window(app: &AppHandle) {
         let _ = window.set_skip_taskbar(false);
         let _ = window.unminimize();
         let _ = window.show();
-        install_taskbar_window(&window);
+        reinstall_taskbar_window(&window);
         let _ = window.set_focus();
     }
 }
@@ -251,6 +251,9 @@ pub fn run() {
                         api.prevent_close();
                         let _ = window.hide();
                         let _ = window.set_skip_taskbar(true);
+                        if let Some(webview) = window.app_handle().get_webview_window("main") {
+                            detach_taskbar_window(&webview);
+                        }
                     }
                 }
                 // 歌词窗口：几何变化防抖持久化 + 关闭请求拦截

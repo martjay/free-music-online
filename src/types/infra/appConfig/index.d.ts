@@ -28,6 +28,8 @@ interface _IAppConfig {
     'playMusic.caseSensitiveInSearch': boolean;
     /** 默认播放音质 */
     'playMusic.defaultQuality': IMusic.IQualityKey;
+    /** 官方榜用来搜索播放的插件 hash */
+    'playMusic.officialChartPlugin': string;
     /** 默认播放音质缺失时 */
     'playMusic.whenQualityMissing': 'higher' | 'lower' | 'skip';
     /** 双击音乐列表时 */

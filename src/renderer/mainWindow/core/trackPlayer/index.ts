@@ -624,6 +624,12 @@ class TrackPlayer {
         this.playQueue.addNext(items);
     }
 
+    /** 追加到当前队列末尾，不打断正在播放的歌 */
+    appendToQueue(items: (IMusic.IMusicItem | IMusicItemSlim)[]): void {
+        if (items.length === 0) return;
+        this.playQueue.append(items);
+    }
+
     /** 从队列中移除歌曲。若移除了当前正在播放的曲目，自动切到下一首或清空 */
     async removeMusic(targets: IMedia.IMediaBase | IMedia.IMediaBase[]): Promise<void> {
         const currentMusic = this.playQueue.getCurrentMusic();

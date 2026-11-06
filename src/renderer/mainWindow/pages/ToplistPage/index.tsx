@@ -4,17 +4,15 @@
  * 路由: /toplist
  *
  * 布局：
- *   标题  "排行榜"
+ *   官方榜  固定在最前面，不依赖插件
  *   TabBar  支持 getTopLists 的插件列表
  *   Body    当前插件的分组榜单卡片网格
- *
- * 无可用插件时展示 PluginFeatureUnavailable。
  */
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useSortedSupportedPlugins } from '@infra/pluginManager/renderer/hooks';
-import { PluginFeatureUnavailable } from '../../components/business/PluginFeatureUnavailable';
 import { PluginSourceNav } from '../../components/business/PluginSourceNav';
 import {
     TOPLIST_VIEW,
@@ -22,11 +20,14 @@ import {
     setContentScroll,
     writeListView,
 } from '../../core/listViewMemory';
+import { toplistDetailRoute } from '../../routes';
 import { ToplistBody } from './ToplistBody';
+import { OFFICIAL_CHARTS, OFFICIAL_CHART_PLATFORM } from './officialCharts';
 import './index.scss';
 
 export default function ToplistPage() {
     const { t } = useTranslation();
+    const navigate = useNavigate();
     const availablePlugins = useSortedSupportedPlugins('getTopLists');
     const [activeHash, setActiveHash] = useState(
         () => readListView(TOPLIST_VIEW)?.pluginHash ?? '',
@@ -66,17 +67,55 @@ export default function ToplistPage() {
         [currentHash],
     );
 
-    // 无插件支持此功能
-    if (availablePlugins.length === 0) {
-        return (
-            <div className="p-toplist">
-                <PluginFeatureUnavailable featureName={t('toplist.title')} />
+    const openOfficialChart = useCallback(
+        (chartId: string, title: string) => {
+            navigate(toplistDetailRoute(OFFICIAL_CHART_PLATFORM), {
+                state: {
+                    openedAt: Date.now(),
+                    topListItem: {
+                        id: chartId,
+                        title,
+                        platform: OFFICIAL_CHART_PLATFORM,
+                    },
+                },
+            });
+        },
+        [navigate],
+    );
+
+    const officialCharts = (
+        <div className="p-toplist__official">
+            <h3 className="p-toplist__group-title">{t('toplist.official')}</h3>
+            <div className="p-toplist__grid">
+                {OFFICIAL_CHARTS.map((chart) => {
+                    const title = t(chart.titleKey);
+                    return (
+                        <button
+                            type="button"
+                            key={chart.id}
+                            className="p-toplist__card"
+                            onClick={() => openOfficialChart(chart.id, title)}
+                        >
+                            <div className="p-toplist__card-header">
+                                <div className="p-toplist__card-title" title={title}>
+                                    {title}
+                                </div>
+                            </div>
+                        </button>
+                    );
+                })}
             </div>
-        );
+        </div>
+    );
+
+    // 官方榜不依赖插件。插件榜只在有音源实现 getTopLists 时出现。
+    if (availablePlugins.length === 0) {
+        return <div className="p-toplist">{officialCharts}</div>;
     }
 
     return (
         <div className="p-toplist">
+            {officialCharts}
             <div className="p-toplist__tabs">
                 <PluginSourceNav
                     plugins={availablePlugins}

@@ -383,7 +383,9 @@
             "short_preview_limit_label": "Switch when shorter than",
             "short_preview_limit_desc": "Set minutes and seconds. The default of 1:05 catches one-minute previews",
             "short_preview_minutes": "min",
-            "short_preview_seconds": "sec"
+            "short_preview_seconds": "sec",
+            "official_platform_label": "Official chart platform",
+            "official_platform_desc": "Official charts at the top of the charts page are searched and played on this enabled source"
         },
         "download": {
             "subtitle": "Download Path, Format & Quality",
@@ -583,7 +585,17 @@
         "click_to_view": "Click to view full chart",
         "missing_info": "Missing chart info",
         "missing_info_desc": "Please enter from the charts page",
-        "search_placeholder": "Search this chart..."
+        "search_placeholder": "Search this chart...",
+        "official": "Official Charts",
+        "chart_billboard": "Billboard",
+        "chart_uk": "UK Singles",
+        "chart_oricon": "Oricon",
+        "chart_nrj": "NRJ",
+        "chart_tophit": "TopHit Russia",
+        "chart_beatport": "Beatport",
+        "official_updated": "Updated {{time}}",
+        "official_no_plugin": "No searchable source. Enable a platform first",
+        "official_not_found": "This song was not found on the selected platform"
     },
     "history": {
         "title": "Recently Played",

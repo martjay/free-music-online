@@ -48,12 +48,31 @@ pub fn install_taskbar_windows(app: &AppHandle) {
 }
 
 pub fn install_taskbar_window(window: &WebviewWindow) {
+    schedule_install(window, false);
+}
+
+/// 窗口收进托盘后，系统会拆掉缩略图按钮。先忘掉挂过的记录，避免下次只更新播放图标。
+pub fn detach_taskbar_window(window: &WebviewWindow) {
+    if let Some(hwnd) = root_hwnd(window) {
+        forget_added(hwnd);
+    }
+}
+
+/// 窗口从托盘重新出现时，任务栏会丢掉缩略图按钮。必须重新挂，不能只更新播放图标。
+pub fn reinstall_taskbar_window(window: &WebviewWindow) {
+    if let Some(hwnd) = root_hwnd(window) {
+        forget_added(hwnd);
+    }
+    schedule_install(window, true);
+}
+
+fn schedule_install(window: &WebviewWindow, reset_tab: bool) {
     let _ = TASKBAR_APP.set(window.app_handle().clone());
     let Some(hwnd) = root_hwnd(window) else {
         log::warn!("[taskbar] 取不到窗口句柄");
         return;
     };
-    if is_added(hwnd) {
+    if is_added(hwnd) && !reset_tab {
         let playing = PLAYING.load(Ordering::Acquire);
         let _ = window.run_on_main_thread(move || unsafe {
             let _ = update_play_button(hwnd_from(hwnd), playing);
@@ -65,7 +84,7 @@ pub fn install_taskbar_window(window: &WebviewWindow) {
     }
     let app = window.app_handle().clone();
     let _ = app.clone().run_on_main_thread(move || unsafe {
-        try_install(app, hwnd, 0);
+        try_install(app, hwnd, 0, reset_tab);
     });
 }
 
@@ -133,15 +152,22 @@ fn clear_pending(hwnd: isize) {
     }
 }
 
+fn forget_added(hwnd: isize) {
+    if let Ok(mut list) = ADDED.lock() {
+        list.retain(|item| *item != hwnd);
+    }
+    clear_pending(hwnd);
+}
+
 #[cfg(windows)]
-unsafe fn try_install(app: AppHandle, hwnd_bits: isize, attempt: u8) {
-    if is_added(hwnd_bits) {
+unsafe fn try_install(app: AppHandle, hwnd_bits: isize, attempt: u8, reset_tab: bool) {
+    if is_added(hwnd_bits) && !reset_tab {
         let _ = update_play_button(hwnd_from(hwnd_bits), PLAYING.load(Ordering::Acquire));
         return;
     }
     let hwnd = hwnd_from(hwnd_bits);
     let _ = subclass(hwnd);
-    match add_buttons(hwnd, PLAYING.load(Ordering::Acquire)) {
+    match add_buttons(hwnd, PLAYING.load(Ordering::Acquire), reset_tab || attempt > 0) {
         Ok(()) => {
             mark_added(hwnd_bits);
             log::info!("[taskbar] 缩略图按钮已挂上");
@@ -159,7 +185,7 @@ unsafe fn try_install(app: AppHandle, hwnd_bits: isize, attempt: u8) {
                 std::thread::sleep(Duration::from_millis(500));
                 let again = next.clone();
                 let _ = next.run_on_main_thread(move || unsafe {
-                    try_install(again, hwnd_bits, attempt + 1);
+                    try_install(again, hwnd_bits, attempt + 1, reset_tab);
                 });
             });
         }
@@ -167,10 +193,16 @@ unsafe fn try_install(app: AppHandle, hwnd_bits: isize, attempt: u8) {
 }
 
 #[cfg(windows)]
-unsafe fn add_buttons(hwnd: HWND, playing: bool) -> windows::core::Result<()> {
+unsafe fn add_buttons(hwnd: HWND, playing: bool, reset_tab: bool) -> windows::core::Result<()> {
     let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
     let taskbar: ITaskbarList3 = CoCreateInstance(&TaskbarList, None, CLSCTX_INPROC_SERVER)?;
     taskbar.HrInit()?;
+    // 缩略图按钮每个任务栏按钮只能挂一次。窗口藏进托盘后再出现，系统会拆掉旧按钮。
+    // 先从任务栏摘掉再挂回去，才能重新 ThumbBarAddButtons。
+    if reset_tab {
+        let _ = taskbar.DeleteTab(hwnd);
+        let _ = taskbar.AddTab(hwnd);
+    }
     let buttons = [
         thumb_button(BUTTON_PREV, icon_bits(0), "上一首"),
         thumb_button(BUTTON_PLAY, icon_bits(if playing { 2 } else { 1 }), if playing { "暂停" } else { "播放" }),
@@ -230,8 +262,11 @@ unsafe extern "system" fn subclass_proc(
     _data: usize,
 ) -> LRESULT {
     let created = TASKBAR_CREATED.load(Ordering::Acquire);
-    if created != 0 && msg == created && !is_added(hwnd.0 as isize) {
-        if add_buttons(hwnd, PLAYING.load(Ordering::Acquire)).is_ok() {
+    if created != 0 && msg == created {
+        let playing = PLAYING.load(Ordering::Acquire);
+        let added = add_buttons(hwnd, playing, false).is_ok()
+            || add_buttons(hwnd, playing, true).is_ok();
+        if added {
             mark_added(hwnd.0 as isize);
             log::info!("[taskbar] 任务栏图标出现后已挂上按钮");
         }

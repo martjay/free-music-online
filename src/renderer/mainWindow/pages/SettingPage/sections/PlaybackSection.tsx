@@ -5,6 +5,8 @@ import { SettingRow } from '../components/SettingRow';
 import { Select } from '@renderer/mainWindow/components/ui/Select';
 import { Toggle } from '@renderer/mainWindow/components/ui/Toggle';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
+import { useSortedSearchablePlugins } from '@infra/pluginManager/renderer/hooks';
+import { pluginPlatformLabel } from '@infra/pluginManager/common/pluginIdentity';
 import trackPlayer from '@renderer/mainWindow/core/trackPlayer';
 import appConfig from '@infra/appConfig/renderer';
 import { getFacets, type IRadioBrowserFacets } from '@infra/radioBrowser/renderer';
@@ -20,6 +22,12 @@ import type { IAudioOutputDevice } from '@appTypes/infra/appConfig';
 export function PlaybackSection() {
     const { t } = useTranslation();
     const [defaultQuality, setDefaultQuality] = useConfigValue('playMusic.defaultQuality');
+    const [officialChartPlugin, setOfficialChartPlugin] = useConfigValue(
+        'playMusic.officialChartPlugin',
+    );
+    const searchablePlugins = useSortedSearchablePlugins('music').filter((plugin) =>
+        plugin.supportedMethod.includes('getMediaSource'),
+    );
     const [rejectShortPreview, setRejectShortPreview] = useConfigValue(
         'playMusic.rejectShortPreview',
     );
@@ -173,6 +181,24 @@ export function PlaybackSection() {
         [setShortPreviewLimitSec],
     );
 
+    const officialPlatformOptions = useMemo(() => {
+        const labels = searchablePlugins.map((plugin) => pluginPlatformLabel(plugin));
+        return searchablePlugins.map((plugin, index) => {
+            const label = labels[index];
+            const duplicated = labels.filter((item) => item === label).length > 1;
+            return {
+                value: plugin.hash,
+                label: duplicated ? plugin.platform : label,
+            };
+        });
+    }, [searchablePlugins]);
+
+    const officialPlatformValue = officialPlatformOptions.some(
+        (option) => option.value === officialChartPlugin,
+    )
+        ? (officialChartPlugin ?? '')
+        : (officialPlatformOptions[0]?.value ?? '');
+
     const deviceOptions = useMemo(
         () => [
             { value: 'default', label: t('settings.playback.system_default') },
@@ -209,6 +235,19 @@ export function PlaybackSection() {
                                 { value: 'high', label: t('quality.high') },
                                 { value: 'super', label: t('quality.super') },
                             ]}
+                        />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.official_platform_label')}
+                    description={t('settings.playback.official_platform_desc')}
+                    control={
+                        <Select
+                            value={officialPlatformValue}
+                            disabled={officialPlatformOptions.length === 0}
+                            placeholder={t('toplist.official_no_plugin')}
+                            onChange={setOfficialChartPlugin}
+                            options={officialPlatformOptions}
                         />
                     }
                 />

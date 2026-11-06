@@ -17,6 +17,10 @@
     padding-top: var(--space-4);
     min-width: 0;
 
+    &__official {
+        margin-bottom: var(--space-6);
+    }
+
     &__tabs {
         margin-bottom: var(--space-6);
         min-width: 0;

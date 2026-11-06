@@ -7,12 +7,27 @@
  * 展示榜单封面信息 + 歌曲列表，支持分页加载。
  */
 
-import { useState, useMemo, useDeferredValue, useCallback, type MouseEvent } from 'react';
+import {
+    useState,
+    useMemo,
+    useDeferredValue,
+    useCallback,
+    useEffect,
+    type MouseEvent,
+} from 'react';
 import { useParams, useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { FolderPlus } from 'lucide-react';
 import { RequestStatus } from '@common/constant';
+import { useSortedSearchablePlugins } from '@infra/pluginManager/renderer/hooks';
 import trackPlayer from '@renderer/mainWindow/core/trackPlayer';
+import { showToast } from '../../components/ui/Toast';
+import {
+    nextOfficialPlay,
+    OFFICIAL_CHART_PLATFORM,
+    officialChartPlugin,
+    playOfficialChart,
+} from '../ToplistPage/officialCharts';
 import { MusicSheetHeader } from '../../components/ui/MusicSheetHeader';
 import { SongTable, type RowInteractionDetail } from '../../components/business/SongTable';
 import { FavoriteButton } from '../../components/business/FavoriteButton';
@@ -32,6 +47,8 @@ export default function ToplistDetailPage() {
     const platform = rawPlatform ? decodeURIComponent(rawPlatform) : '';
     const location = useLocation();
 
+    const openedAt = (location.state as { openedAt?: number } | null)?.openedAt ?? 0;
+
     const topListItem = useMemo<IMusic.IMusicSheetItem | null>(() => {
         const stateItem = (location.state as { topListItem?: IMusic.IMusicSheetItem })?.topListItem;
         if (!stateItem) return null;
@@ -44,28 +61,71 @@ export default function ToplistDetailPage() {
     const { sheetItem, musicList, requestStatus, isEnd, loadMore, retry } = useTopListDetail(
         topListItem,
         platform,
+        String(openedAt),
     );
+    const isOfficialChart = platform === OFFICIAL_CHART_PLATFORM;
+
+    useEffect(() => {
+        if (!isOfficialChart) return undefined;
+        return () => {
+            nextOfficialPlay();
+        };
+    }, [isOfficialChart]);
 
     // ── 本地搜索 ──
     const [searchValue, setSearchValue] = useState('');
     const deferredSearch = useDeferredValue(searchValue);
 
+    const searchablePlugins = useSortedSearchablePlugins('music');
+    const playbackPlugin = useMemo(() => {
+        if (!isOfficialChart || searchablePlugins.length === 0) return null;
+        return officialChartPlugin();
+    }, [isOfficialChart, searchablePlugins]);
+
     const filteredList = useMemo(() => {
         const keyword = deferredSearch.trim().toLowerCase();
-        if (!keyword) return musicList;
-        return musicList.filter(
+        const source = playbackPlugin?.platform;
+        const rows =
+            isOfficialChart && source
+                ? musicList.map((item) => ({ ...item, platform: source }))
+                : musicList;
+        if (!keyword) return rows;
+        return rows.filter(
             (item) =>
                 item.title.toLowerCase().includes(keyword) ||
                 (item.artist ?? '').toLowerCase().includes(keyword) ||
                 (item.album ?? '').toLowerCase().includes(keyword),
         );
-    }, [musicList, deferredSearch]);
+    }, [musicList, deferredSearch, isOfficialChart, playbackPlugin]);
 
-    // ── 操作回调 ──
+    const playOfficialSongs = useCallback(
+        async (list: IMusic.IMusicItem[], startItem?: IMusic.IMusicItem) => {
+            const result = await playOfficialChart(list, startItem);
+            if (result === 'no-plugin') {
+                showToast(t('toplist.official_no_plugin'), { type: 'warn' });
+            } else if (result === 'empty') {
+                showToast(t('toplist.official_not_found'), { type: 'warn' });
+            }
+        },
+        [t],
+    );
+
     const handlePlayAll = useCallback(() => {
         if (filteredList.length === 0) return;
+        if (isOfficialChart) {
+            void playOfficialSongs(filteredList);
+            return;
+        }
         trackPlayer.playMusicWithReplaceQueue(filteredList);
-    }, [filteredList]);
+    }, [filteredList, isOfficialChart, playOfficialSongs]);
+
+    const handleRowDoubleClick = useCallback(
+        ({ item }: RowInteractionDetail) => {
+            if (!isOfficialChart) return;
+            void playOfficialSongs(filteredList, item as IMusic.IMusicItem);
+        },
+        [filteredList, isOfficialChart, playOfficialSongs],
+    );
 
     const handleRowContextMenu = useCallback(
         ({ selectedItems }: RowInteractionDetail, e: MouseEvent) => {
@@ -99,7 +159,13 @@ export default function ToplistDetailPage() {
 
     return (
         <div className="p-toplist-detail">
-            <MusicSheetHeader musicSheet={sheetItem} />
+            <MusicSheetHeader
+                musicSheet={
+                    isOfficialChart
+                        ? { ...sheetItem, platform: playbackPlugin?.platform ?? '' }
+                        : sheetItem
+                }
+            />
 
             <div className="p-toplist-detail__toolbar">
                 <SongToolbar
@@ -129,6 +195,7 @@ export default function ToplistDetailPage() {
                 onLoadMore={loadMore}
                 onLoadMoreRetry={retry}
                 enableSelection
+                onRowDoubleClick={isOfficialChart ? handleRowDoubleClick : undefined}
                 statusColumn={(item) => (
                     <>
                         <FavoriteButton musicItem={item} size="sm" />

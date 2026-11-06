@@ -118,7 +118,7 @@ pub fn show_main_window(app: AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
-        super::taskbar_toolbar::install_taskbar_window(&window);
+        super::taskbar_toolbar::reinstall_taskbar_window(&window);
     }
 }
 

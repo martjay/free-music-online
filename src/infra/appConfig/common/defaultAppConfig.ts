@@ -9,6 +9,7 @@ const defaultAppConfig: IAppConfig = {
     '$schema-version': 1,
     'playMusic.whenQualityMissing': 'lower',
     'playMusic.defaultQuality': 'standard',
+    'playMusic.officialChartPlugin': '',
     'playMusic.clickMusicList': 'replace',
     'playMusic.caseSensitiveInSearch': false,
     'playMusic.playError': 'retry_with_source',
