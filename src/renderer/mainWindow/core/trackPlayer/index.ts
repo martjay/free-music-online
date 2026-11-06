@@ -213,6 +213,7 @@ class TrackPlayer {
     private lastProgressAt = 0;
     private lastProgressTime = 0;
     private stallRetryNotBefore = 0;
+    private stallArmedAt = 0;
     private static readonly STALL_SWITCH_MS = 4000;
     private static readonly SOURCE_UNHEALTHY_MS = 8 * 60 * 1000;
     private static readonly SOURCE_RESOLVE_TIMEOUT_MS = 5000;
@@ -835,6 +836,12 @@ class TrackPlayer {
             }
         });
 
+        this.audioController.on('waiting', () => {
+            const currentTime = store.get(progressAtom).currentTime;
+            if (currentTime < 1 || this.stallArmedAt) return;
+            this.stallArmedAt = Date.now();
+        });
+
         this.audioController.on('timeUpdate', (progress) => {
             store.set(progressAtom, progress);
             this.notePlaybackProgress(progress.currentTime);
@@ -1083,6 +1090,7 @@ class TrackPlayer {
         if (Math.abs(currentTime - this.lastProgressTime) > 0.2) {
             this.lastProgressTime = currentTime;
             this.lastProgressAt = Date.now();
+            this.stallArmedAt = 0;
         }
     }
 
@@ -1108,7 +1116,13 @@ class TrackPlayer {
                 this.lastProgressAt = Date.now();
                 return;
             }
-            if (Date.now() - this.lastProgressAt < TrackPlayer.STALL_SWITCH_MS) return;
+            const armedStall =
+                this.stallArmedAt > 0 &&
+                Date.now() - this.stallArmedAt >= TrackPlayer.STALL_SWITCH_MS;
+            if (!armedStall && Date.now() - this.lastProgressAt < TrackPlayer.STALL_SWITCH_MS) {
+                return;
+            }
+            this.stallArmedAt = 0;
             this.lastProgressAt = Date.now();
             void this.switchToAnotherSource(musicItem, {
                 resumeAt: progress.currentTime,
@@ -1137,6 +1151,9 @@ class TrackPlayer {
         fallbackFrom?: string;
         notify: boolean;
     } | null> {
+        const configured = await this.resolveConfiguredPlaybackSource(musicItem, attempt);
+        if (configured) return configured;
+
         const identity = this.sourceIdentity(musicItem);
         if (this.isSourceUnhealthy(identity.key)) {
             const alt = await this.findAlternativeSource(musicItem, attempt);
@@ -1228,12 +1245,53 @@ class TrackPlayer {
                     !this.isSourceUnhealthy(plugin.hash) &&
                     !this.previewSkipHashes.has(plugin.hash),
             );
-        if (!this.preferredFallbackHash) return plugins;
-        return [...plugins].sort((a, b) => {
-            if (a.hash === this.preferredFallbackHash) return -1;
-            if (b.hash === this.preferredFallbackHash) return 1;
-            return 0;
-        });
+        const configured = appConfig.getConfigByKey('playMusic.defaultPlaybackPlugin') ?? '';
+        return [...plugins].sort(
+            (a, b) => this.pluginRank(a.hash, configured) - this.pluginRank(b.hash, configured),
+        );
+    }
+
+    private pluginRank(hash: string, configured: string): number {
+        if (configured && hash === configured) return 0;
+        if (this.preferredFallbackHash && hash === this.preferredFallbackHash) return 1;
+        return 2;
+    }
+
+    /** 设置了默认播放平台，且它不是歌曲自带平台时，先用它搜可播放地址。 */
+    private async resolveConfiguredPlaybackSource(
+        musicItem: IMusic.IMusicItem,
+        attempt: number,
+    ): Promise<{
+        result: IPlugin.IMediaSourceResult;
+        musicItem: IMusic.IMusicItem;
+        fallbackFrom?: string;
+        notify: boolean;
+    } | null> {
+        const plugin = this.configuredPlaybackPlugin();
+        if (!plugin || plugin.hash === this.sourceIdentity(musicItem).hash) return null;
+        if (
+            this.isSourceUnhealthy(plugin.hash) ||
+            this.sourceRetryTriedHashes.has(plugin.hash) ||
+            this.previewSkipHashes.has(plugin.hash)
+        ) {
+            return null;
+        }
+        const hit = await this.withTimeout(this.resolvePluginSource(musicItem, plugin), 6000);
+        if (!hit || attempt !== this.playbackAttempt) return null;
+        return {
+            result: hit.result,
+            musicItem: hit.musicItem,
+            fallbackFrom: musicItem.platform,
+            notify: true,
+        };
+    }
+
+    private configuredPlaybackPlugin(): IPlugin.IPluginDelegate | null {
+        const hash = appConfig.getConfigByKey('playMusic.defaultPlaybackPlugin');
+        if (!hash) return null;
+        const plugin = pluginManager.getPluginByHash(hash);
+        if (!plugin?.supportedMethod.includes('getMediaSource')) return null;
+        return plugin;
     }
 
     private racePluginSources(

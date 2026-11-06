@@ -10,6 +10,7 @@ const defaultAppConfig: IAppConfig = {
     'playMusic.whenQualityMissing': 'lower',
     'playMusic.defaultQuality': 'standard',
     'playMusic.officialChartPlugin': '',
+    'playMusic.defaultPlaybackPlugin': '',
     'playMusic.clickMusicList': 'replace',
     'playMusic.caseSensitiveInSearch': false,
     'playMusic.playError': 'retry_with_source',

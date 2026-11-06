@@ -25,6 +25,9 @@ export function PlaybackSection() {
     const [officialChartPlugin, setOfficialChartPlugin] = useConfigValue(
         'playMusic.officialChartPlugin',
     );
+    const [defaultPlaybackPlugin, setDefaultPlaybackPlugin] = useConfigValue(
+        'playMusic.defaultPlaybackPlugin',
+    );
     const searchablePlugins = useSortedSearchablePlugins('music').filter((plugin) =>
         plugin.supportedMethod.includes('getMediaSource'),
     );
@@ -193,6 +196,19 @@ export function PlaybackSection() {
         });
     }, [searchablePlugins]);
 
+    const defaultPlatformOptions = useMemo(
+        () => [
+            { value: '', label: t('settings.playback.follow_song_platform') },
+            ...officialPlatformOptions,
+        ],
+        [officialPlatformOptions, t],
+    );
+    const defaultPlatformValue = defaultPlatformOptions.some(
+        (option) => option.value === defaultPlaybackPlugin,
+    )
+        ? (defaultPlaybackPlugin ?? '')
+        : '';
+
     const officialPlatformValue = officialPlatformOptions.some(
         (option) => option.value === officialChartPlugin,
     )
@@ -235,6 +251,19 @@ export function PlaybackSection() {
                                 { value: 'high', label: t('quality.high') },
                                 { value: 'super', label: t('quality.super') },
                             ]}
+                        />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.default_platform_label')}
+                    description={t('settings.playback.default_platform_desc')}
+                    control={
+                        <Select
+                            value={defaultPlatformValue}
+                            disabled={officialPlatformOptions.length === 0}
+                            placeholder={t('toplist.official_no_plugin')}
+                            onChange={setDefaultPlaybackPlugin}
+                            options={defaultPlatformOptions}
                         />
                     }
                 />

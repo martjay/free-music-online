@@ -115,9 +115,13 @@
 
     &__row {
         display: grid;
-        grid-template-columns: minmax(220px, auto) 1fr;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: var(--space-6);
         align-items: center;
+
+        > div:first-child {
+            min-width: 0;
+        }
     }
 
     &__row-label {
@@ -131,7 +135,6 @@
         color: var(--color-text-secondary);
         margin-top: var(--space-1);
         line-height: var(--text-caption-leading);
-        white-space: nowrap;
     }
 
     &__row-control {

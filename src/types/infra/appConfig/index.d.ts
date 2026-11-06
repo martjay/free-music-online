@@ -30,6 +30,8 @@ interface _IAppConfig {
     'playMusic.defaultQuality': IMusic.IQualityKey;
     /** 官方榜用来搜索播放的插件 hash */
     'playMusic.officialChartPlugin': string;
+    /** 搜索、歌手、歌单播放时优先使用的插件 hash，空表示跟随歌曲自己的平台 */
+    'playMusic.defaultPlaybackPlugin': string;
     /** 默认播放音质缺失时 */
     'playMusic.whenQualityMissing': 'higher' | 'lower' | 'skip';
     /** 双击音乐列表时 */

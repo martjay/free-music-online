@@ -24,6 +24,8 @@ export interface IAudioControllerEvents {
     ended: () => void;
     /** 播放错误 */
     error: (reason: ErrorReason, detail?: any) => void;
+    /** 缓冲卡住，进度没有继续往前 */
+    waiting: () => void;
     /** 音量变化 */
     volumeChange: (volume: number) => void;
     /** 速度变化 */
@@ -286,6 +288,14 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
     private bindEvents(): void {
         this.audio.onloadedmetadata = () => {
             this.applyPlaybackPrefs();
+        };
+
+        this.audio.onwaiting = () => {
+            this.emit('waiting');
+        };
+
+        this.audio.onstalled = () => {
+            this.emit('waiting');
         };
 
         this.audio.onplaying = () => {

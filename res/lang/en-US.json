@@ -397,6 +397,9 @@
             "short_preview_limit_desc": "Set minutes and seconds. The default of 1:05 catches one-minute previews",
             "short_preview_minutes": "min",
             "short_preview_seconds": "sec",
+            "default_platform_label": "Default playback platform",
+            "default_platform_desc": "Search and playlists use this source; stall auto-switches",
+            "follow_song_platform": "Use the song source",
             "official_platform_label": "Official chart platform",
             "official_platform_desc": "Official charts at the top of the charts page are searched and played on this enabled source"
         },

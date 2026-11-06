@@ -397,6 +397,9 @@
             "short_preview_limit_desc": "按分和秒設定。預設 1 分 05 秒，用來避開一分鐘試聽",
             "short_preview_minutes": "分",
             "short_preview_seconds": "秒",
+            "default_platform_label": "預設播放平台",
+            "default_platform_desc": "搜尋和歌單優先用這個音源，卡頓自動換源續播",
+            "follow_song_platform": "跟隨歌曲來源",
             "official_platform_label": "官方榜播放平台",
             "official_platform_desc": "排行榜最前面的官方榜，用這個已打開的音源搜尋並播放"
         },

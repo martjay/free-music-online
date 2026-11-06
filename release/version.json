@@ -1,7 +1,7 @@
 {
-    "version": "1.0.45",
+    "version": "1.0.46",
     "changeLog": [
-        "播放卡顿时可以手动换源，进度停住约 4 秒也会自动换到其他插件并从原进度继续播放"
+        "设置里可以指定默认播放平台。搜索和歌单会优先用它，卡住时自动换源并从原进度继续播放"
     ],
     "download": ["https://github.com/martjay/free-music-online/releases/latest"]
 }
