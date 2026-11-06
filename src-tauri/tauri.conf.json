@@ -82,6 +82,7 @@
         "targets": "all",
         "windows": {
             "nsis": {
+                "template": "./windows/installer.nsi",
                 "installerHooks": "./windows/hooks.nsh"
             }
         },

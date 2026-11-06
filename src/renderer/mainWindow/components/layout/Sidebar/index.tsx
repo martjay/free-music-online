@@ -2,7 +2,7 @@
 // Sidebar — 侧边栏
 // ============================================================================
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useAtomValue } from 'jotai/react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -30,6 +30,7 @@ import Badge from '../../ui/Badge';
 import { RoutePaths } from '../../../routes';
 import type { RoutePath } from '../../../routes';
 import { pendingUpdateAtom } from '@renderer/mainWindow/common/updateNotice';
+import { checkAppUpdate } from '@renderer/bootstrap/postBootstrap';
 import LocalSheetNavItem from './LocalSheetNavItem';
 import StarredSheetNavItem from './StarredSheetNavItem';
 import './index.scss';
@@ -48,6 +49,10 @@ export default function Sidebar() {
     const sheets = useMusicSheetList();
     const starredSheets = useStarredSheets();
     const pendingUpdate = useAtomValue(pendingUpdateAtom);
+
+    useEffect(() => {
+        checkAppUpdate();
+    }, []);
 
     /** 当前路径的第一段，用于匹配静态导航项高亮 */
     const activeSegment = location.pathname.split('/')[1] ?? '';

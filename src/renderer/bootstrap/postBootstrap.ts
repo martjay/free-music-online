@@ -30,9 +30,8 @@ function autoUpdatePlugins(): void {
     });
 }
 
-/** 检查软件更新 */
-function checkAppUpdate(): void {
-    if (__DEV__) return;
+/** 检查软件更新，并点亮左上角角标。关于页和启动检查走同一条结果。 */
+export function checkAppUpdate(): void {
     if (!(appConfig.getConfigByKey('normal.checkUpdate') ?? true)) return;
 
     systemUtil

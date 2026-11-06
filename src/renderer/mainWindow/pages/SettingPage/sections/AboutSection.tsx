@@ -6,6 +6,7 @@ import { A } from '@renderer/mainWindow/components/ui/A';
 import { OFFICIAL_SITE_URL } from '@common/constant';
 import systemUtil from '@infra/systemUtil/renderer';
 import { showModal } from '@renderer/mainWindow/components/ui/Modal/modalManager';
+import { setPendingUpdate } from '@renderer/mainWindow/common/updateNotice';
 import { Github, type LucideIcon } from 'lucide-react';
 
 const GITHUB_REPO = 'https://github.com/martjay/free-music-online';
@@ -31,6 +32,7 @@ export function AboutSection() {
         try {
             const info = await systemUtil.checkUpdate();
             if (info.update) {
+                setPendingUpdate(info.update);
                 showModal('UpdateModal', { updateInfo: info.update });
             } else {
                 setUpdateStatus(t('settings.about.already_latest_v2'));

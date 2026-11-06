@@ -67,7 +67,10 @@ pub fn app_update_installer_valid(installer_path: String) -> bool {
     installer_is_exe(std::path::Path::new(&installer_path))
 }
 
-/// 退出当前程序后静默安装，再把新版本拉起来。
+/// 退出当前程序后打开安装包窗口。
+///
+/// 不能用 cmd 包一层再 ping：DETACHED_PROCESS 会强制弹出控制台，/S 又是静默安装，
+/// 用户只能看到终端一闪，安装界面不会出现。
 #[tauri::command]
 pub fn apply_app_update(app: AppHandle, installer_path: String) -> Result<(), String> {
     let installer = std::path::PathBuf::from(&installer_path);
@@ -82,27 +85,16 @@ pub fn apply_app_update(app: AppHandle, installer_path: String) -> Result<(), St
     if extension != "exe" {
         return Err("只能安装 exe 安装包".to_string());
     }
-    let current = std::env::current_exe().map_err(|err| err.to_string())?;
-    let script = format!(
-        "ping 127.0.0.1 -n 3 >nul & \"{}\" /S & start \"\" \"{}\"",
-        installer.display(),
-        current.display()
-    );
 
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        const DETACHED_PROCESS: u32 = 0x0000_0008;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        std::process::Command::new("cmd")
-            .args(["/C", &script])
-            .creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW)
+        // 安装包本身是窗口程序，直接打开就会出现安装界面。
+        std::process::Command::new(&installer)
             .spawn()
             .map_err(|err| err.to_string())?;
     }
     #[cfg(not(windows))]
     {
-        let _ = script;
         return Err("仅支持在 Windows 上安装更新".to_string());
     }
 
