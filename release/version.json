@@ -1,7 +1,8 @@
 {
-    "version": "1.0.46",
+    "version": "1.0.47",
     "changeLog": [
-        "设置里可以指定默认播放平台。搜索和歌单会优先用它，卡住时自动换源并从原进度继续播放"
+        "搜索结果可以播放全部，按钮在标题右侧",
+        "修复网易云登录点了没有弹出登录窗口"
     ],
     "download": ["https://github.com/martjay/free-music-online/releases/latest"]
 }

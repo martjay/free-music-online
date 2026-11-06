@@ -8,58 +8,73 @@ import type {
     INeteaseRadarResult,
 } from '@appTypes/infra/neteaseAccount';
 
-// Tauri bridge 在入口模块加载时同步注入
-const mod = (typeof window !== 'undefined'
-    ? (window as any)[CONTEXT_BRIDGE_KEY]
-    : undefined) as unknown as INeteaseAccountBridge | undefined;
+/**
+ * 下载模块会在桥接注册之前引用本文件。
+ * 这里不能在模块加载时把 window 上的桥接存下来，否则登录会一直被当成取消。
+ */
+function neteaseBridge(): INeteaseAccountBridge | undefined {
+    if (typeof window === 'undefined') return undefined;
+    return (window as unknown as Record<string, INeteaseAccountBridge | undefined>)[
+        CONTEXT_BRIDGE_KEY
+    ];
+}
 
 class NeteaseAccountRenderer {
     public async getStatus(force?: boolean): Promise<INeteaseAccountStatus> {
-        if (!mod) return { connected: false, profile: null };
-        return mod.getStatus(force);
+        const bridge = neteaseBridge();
+        if (!bridge) return { connected: false, profile: null };
+        return bridge.getStatus(force);
     }
 
     public async openLogin(): Promise<'connected' | 'cancelled'> {
-        if (!mod) return 'cancelled';
-        return mod.openLogin();
+        const bridge = neteaseBridge();
+        if (!bridge) return 'cancelled';
+        return bridge.openLogin();
     }
 
     public async logout(): Promise<boolean> {
-        if (!mod) return false;
-        return mod.logout();
+        const bridge = neteaseBridge();
+        if (!bridge) return false;
+        return bridge.logout();
     }
 
     public async getDailyRecommendSongs(): Promise<IMusic.IMusicItem[]> {
-        if (!mod) return [];
-        return mod.getDailyRecommendSongs();
+        const bridge = neteaseBridge();
+        if (!bridge) return [];
+        return bridge.getDailyRecommendSongs();
     }
 
     public async getPrivateFmSongs(): Promise<IMusic.IMusicItem[]> {
-        if (!mod) return [];
-        return mod.getPrivateFmSongs();
+        const bridge = neteaseBridge();
+        if (!bridge) return [];
+        return bridge.getPrivateFmSongs();
     }
 
     public async getPrivateRadarSongs(): Promise<INeteaseRadarResult> {
-        if (!mod) return { songs: [] };
-        return mod.getPrivateRadarSongs();
+        const bridge = neteaseBridge();
+        if (!bridge) return { songs: [] };
+        return bridge.getPrivateRadarSongs();
     }
 
     public async getMusicUrl(
         songId: string,
         quality?: IMusic.IQualityKey,
     ): Promise<INeteaseMediaSource | null> {
-        if (!mod) return null;
-        return mod.getMusicUrl(songId, quality);
+        const bridge = neteaseBridge();
+        if (!bridge) return null;
+        return bridge.getMusicUrl(songId, quality);
     }
 
     public async getLyric(songId: string): Promise<INeteaseLyricResult | null> {
-        if (!mod) return null;
-        return mod.getLyric(songId);
+        const bridge = neteaseBridge();
+        if (!bridge) return null;
+        return bridge.getLyric(songId);
     }
 
     public onStatusChanged(callback: (status: INeteaseAccountStatus) => void): () => void {
-        if (!mod) return () => {};
-        return mod.onStatusChanged(callback);
+        const bridge = neteaseBridge();
+        if (!bridge) return () => {};
+        return bridge.onStatusChanged(callback);
     }
 }
 

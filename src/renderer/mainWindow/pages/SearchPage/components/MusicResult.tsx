@@ -8,12 +8,12 @@
 import { useCallback } from 'react';
 import { useAtomValue } from 'jotai/react';
 import { RequestStatus } from '@common/constant';
+import { showContextMenu } from '@renderer/mainWindow/components/ui/ContextMenu/contextMenuManager';
 import { SongTable } from '../../../components/business/SongTable';
 import { FavoriteButton } from '../../../components/business/FavoriteButton';
 import { DownloadButton } from '../../../components/business/DownloadButton';
 import { searchResultsAtom, type SearchMediaType } from '../store';
 import { useSearch } from '../useSearch';
-import { showContextMenu } from '@renderer/mainWindow/components/ui/ContextMenu/contextMenuManager';
 
 interface MusicResultProps {
     pluginHash: string;

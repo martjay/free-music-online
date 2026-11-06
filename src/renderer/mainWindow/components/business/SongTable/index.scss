@@ -61,6 +61,25 @@
     &--right {
         text-align: right;
     }
+
+    &--status {
+        box-sizing: border-box;
+        padding-right: var(--space-2);
+        padding-left: var(--space-2);
+    }
+
+    &--index {
+        box-sizing: border-box;
+        width: 36px;
+        max-width: 36px;
+        padding-right: var(--space-1);
+        padding-left: 0;
+        text-align: right;
+    }
+
+    &--title {
+        padding-left: var(--space-2);
+    }
 }
 
 // ── 数据行 ──
@@ -125,6 +144,7 @@
 
     // ── 标题列：白色 + medium 字重 ──
     &--title {
+        padding-left: var(--space-2);
         color: var(--color-text-primary);
         font-weight: var(--font-weight-medium);
 
@@ -136,13 +156,19 @@
 
     // ── 序号列：等宽数字，居中，不截断 ──
     &--index {
+        box-sizing: border-box;
+        width: 36px;
+        max-width: 36px;
+        padding-right: var(--space-1);
+        padding-left: 0;
         font-variant-numeric: tabular-nums;
         font-size: var(--text-label-size); // 13px，比 body 略小以容纳更多位数
+        text-align: right;
 
         .song-table__cell-content {
             overflow: visible;
             text-overflow: unset;
-            text-align: center;
+            text-align: right;
         }
     }
 
@@ -156,6 +182,10 @@
 
     // ── 状态列 ──
     &--status {
+        box-sizing: border-box;
+        padding-right: var(--space-2);
+        padding-left: var(--space-2);
+
         .song-table__cell-content {
             display: flex;
             align-items: center;

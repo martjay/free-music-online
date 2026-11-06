@@ -15,10 +15,13 @@
 import { useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
+import { Play } from 'lucide-react';
 import { useAtomValue, useSetAtom } from 'jotai/react';
 import { useSortedSearchablePlugins } from '@infra/pluginManager/renderer/hooks';
+import trackPlayer from '@renderer/mainWindow/core/trackPlayer';
 import { PluginFeatureUnavailable } from '../../components/business/PluginFeatureUnavailable';
 import { PluginSourceNav } from '../../components/business/PluginSourceNav';
+import { Button } from '../../components/ui/Button';
 import { TabBar } from '../../components/ui/TabBar';
 import { MusicResult } from './components/MusicResult';
 import { AlbumResult } from './components/AlbumResult';
@@ -54,6 +57,7 @@ export default function SearchPage() {
     const { query } = useParams<{ query: string }>();
     // react-router 已对 URL 参数自动解码，无需再调用 decodeURIComponent
 
+    const results = useAtomValue(searchResultsAtom);
     const activeType = useAtomValue(activeMediaTypeAtom);
     const pluginPerType = useAtomValue(activePluginPerTypeAtom);
     const setActiveType = useSetAtom(activeMediaTypeAtom);
@@ -132,6 +136,16 @@ export default function SearchPage() {
     // ── 渲染 ──
     const ResultComponent = RESULT_COMPONENTS[activeType];
 
+    const musicList =
+        activeType === 'music' && activePluginHash
+            ? (results.music[activePluginHash]?.data ?? [])
+            : [];
+
+    const handlePlayAll = useCallback(() => {
+        if (musicList.length === 0) return;
+        trackPlayer.playMusicWithReplaceQueue(musicList);
+    }, [musicList]);
+
     const tabItems = useMemo(
         () =>
             SEARCH_MEDIA_TYPES.map((key) => ({
@@ -145,10 +159,22 @@ export default function SearchPage() {
         <div className="p-search">
             {/* 标题 */}
             <div className="p-search__header">
-                <h2 className="p-search__title">
-                    <span className="p-search__title-keyword">「{query}」</span>
-                    {t('search.result_title')}
-                </h2>
+                <div className="p-search__title-row">
+                    <h2 className="p-search__title">
+                        <span className="p-search__title-keyword">「{query}」</span>
+                        {t('search.result_title')}
+                    </h2>
+                    {musicList.length > 0 && (
+                        <Button
+                            variant="primary"
+                            size="md"
+                            icon={<Play size={16} fill="currentColor" />}
+                            onClick={handlePlayAll}
+                        >
+                            {t('playback.play_all')}
+                        </Button>
+                    )}
+                </div>
 
                 <div className="p-search__filters">
                     {/* Tab Bar */}

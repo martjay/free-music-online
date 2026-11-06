@@ -138,6 +138,8 @@ export interface SongTableProps {
 
     /** 需要隐藏的列（标题列不可隐藏） */
     hideColumns?: HideableColumn[];
+    /** 序号列表头。搜索结果这块不放井号 */
+    showIndexHeader?: boolean;
 
     /**
      * 传入后标题、歌手、专辑、来源可以拖右边缘改列宽，宽度记在本地。
@@ -331,9 +333,10 @@ export function SongTable({
     onRowContextMenu: externalOnRowContextMenu,
     statusColumn,
     statusColumnHeader,
-    statusColumnWidth = 72,
+    statusColumnWidth = 56,
     showActiveIndicator = true,
     hideColumns = appConfig.getConfigByKey('normal.musicListHideColumns'),
+    showIndexHeader = true,
     columnLayoutKey,
     defaultColumnWidths,
     extraColumns,
@@ -411,9 +414,9 @@ export function SongTable({
         if (!hideSet.has('index')) {
             cols.push({
                 id: 'index',
-                header: '#',
-                width: 56,
-                align: 'center',
+                header: showIndexHeader ? '#' : '',
+                width: 36,
+                align: 'right',
                 cellClassName: 'song-table__cell--index',
                 render: (_item, index) => index + 1,
             });
@@ -493,7 +496,7 @@ export function SongTable({
         }
 
         return cols;
-    }, [hideSet, t, defaultColumnWidths, extraColumns]);
+    }, [hideSet, t, defaultColumnWidths, extraColumns, showIndexHeader]);
 
     // ── colgroup（控制列宽） ──
     const colGroup = useMemo(
@@ -692,7 +695,10 @@ export function SongTable({
         () => (
             <tr className="song-table__header-row">
                 {hasStatusColumn && (
-                    <th key="__status" className="song-table__header-cell">
+                    <th
+                        key="__status"
+                        className="song-table__header-cell song-table__header-cell--status"
+                    >
                         {statusColumnHeader}
                     </th>
                 )}
@@ -701,6 +707,8 @@ export function SongTable({
                         key={col.id}
                         className={cn(
                             'song-table__header-cell',
+                            col.id === 'index' && 'song-table__header-cell--index',
+                            col.id === 'title' && 'song-table__header-cell--title',
                             col.align && `song-table__header-cell--${col.align}`,
                         )}
                     >
