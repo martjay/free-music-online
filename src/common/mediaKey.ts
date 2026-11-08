@@ -6,13 +6,29 @@ export function compositeKey(platform: string, id: string): string {
     return `${platform}\0${String(id)}`;
 }
 
-/** 判断两个媒体资源是否为同一首（platform + id 相等） */
+/** 判断两个媒体资源是否为同一条记录（platform + id 相等） */
 export function isSameMedia(
     a: IMedia.IMediaBase | null | undefined,
     b: IMedia.IMediaBase | null | undefined,
 ): boolean {
     if (!a || !b) return false;
     return a.platform === b.platform && String(a.id) === String(b.id);
+}
+
+/**
+ * 歌单、排行榜和换源后的播放条目编号经常不同。
+ * 编号相同，或歌名（去掉括号）一致且歌手有重叠，就视为同一首歌。
+ */
+export function isSameSong(
+    a: IMedia.IMediaBase | null | undefined,
+    b: IMedia.IMediaBase | null | undefined,
+): boolean {
+    if (!a || !b) return false;
+    if (isSameMedia(a, b)) return true;
+    const left = compactTitle(String(a.title ?? ''));
+    const right = compactTitle(String(b.title ?? ''));
+    if (left.length < 2 || left !== right) return false;
+    return artistOverlaps(String(a.artist ?? ''), String(b.artist ?? ''));
 }
 
 function compactTitle(value: string): string {

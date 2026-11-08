@@ -1,9 +1,7 @@
 {
-    "version": "1.0.50",
+    "version": "1.0.51",
     "changeLog": [
-        "插件可以按订阅链接和音源目录检查并更新版本",
-        "插件列表默认收起，显示已启用平台数和更新日期，并可一次检测该插件的全部平台",
-        "播放栏、歌词、歌曲列表和歌单封面的文字显示更整齐"
+        "同一首歌在歌单和排行榜里会一起记住正在播放和收藏状态"
     ],
     "download": [
         "https://github.com/martjay/free-music-online/releases/latest"

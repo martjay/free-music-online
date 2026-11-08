@@ -29,7 +29,7 @@ import { ListFooter } from '../../ui/ListFooter';
 import { StatusPlaceholder } from '../../ui/StatusPlaceholder';
 import './index.scss';
 import { isDisliked, parseDislikeRules } from '@common/dislikeRules';
-import { isOfficialChartNowPlaying, isSameMedia } from '@common/mediaKey';
+import { isSameSong } from '@common/mediaKey';
 import formatDuration from '@common/formatDuration';
 import appConfig from '@infra/appConfig/renderer';
 import trackPlayer from '../../../core/trackPlayer';
@@ -871,9 +871,7 @@ export function SongTable({
             if (!item) return <tr {...trProps} />;
 
             const playing = currentMusicRef.current;
-            const isActive = showActiveIndicator
-                ? isSameMedia(item, playing) || isOfficialChartNowPlaying(item, playing)
-                : false;
+            const isActive = showActiveIndicator ? isSameSong(item, playing) : false;
             const isSelected = selectedIdsRef.current.has(item.id);
 
             const onClick = (e: ReactMouseEvent) => handleRowClickRef.current(item, index, e);

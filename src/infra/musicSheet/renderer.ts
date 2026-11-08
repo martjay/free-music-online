@@ -22,7 +22,7 @@ import type {
     IStarredSheetItem,
 } from '@appTypes/infra/musicSheet';
 
-import { compositeKey } from '@common/mediaKey';
+import { compositeKey, isSameSong } from '@common/mediaKey';
 import {
     isRadioBrowserMedia,
     isSafeRadioRemoteUrl,
@@ -121,6 +121,8 @@ class MusicSheetRenderer {
 
     public readonly events = new EventEmitter<IRendererEvents>();
     private favoriteIdSet = new Set<string>();
+    /** 收藏曲目的歌名和歌手。歌单和排行榜编号不同，红心按同一首歌对齐。 */
+    private favoriteSongs: IMusicItemSlim[] = [];
     private radioFavoriteIdSet = new Set<string>();
     private starredIdSet = new Set<string>();
     private currentSheetId: string | null = null;
@@ -213,6 +215,7 @@ class MusicSheetRenderer {
         }
         if (sheetId === DEFAULT_FAVORITE_SHEET_ID) {
             this.favoriteIdSet.clear();
+            this.favoriteSongs = [];
             this.events.emit('favoriteChange');
         } else if (sheetId === RADIO_FAVORITE_SHEET_ID) {
             this.radioFavoriteIdSet.clear();
@@ -229,7 +232,12 @@ class MusicSheetRenderer {
         sheetId: string,
     ): void {
         const items = Array.isArray(musicItems) ? musicItems : [musicItems];
-        const slimItems = items.map(musicItemToSlim);
+        const accepted =
+            sheetId === DEFAULT_FAVORITE_SHEET_ID
+                ? items.filter((item) => !this.isFavoriteMusic(item))
+                : items;
+        if (sheetId === DEFAULT_FAVORITE_SHEET_ID && accepted.length === 0) return;
+        const slimItems = accepted.map(musicItemToSlim);
 
         // 乐观更新：本地数组
         if (this.currentSheetId === sheetId) {
@@ -250,13 +258,14 @@ class MusicSheetRenderer {
 
         // 乐观更新：favorite Set
         if (sheetId === DEFAULT_FAVORITE_SHEET_ID) {
-            for (const m of slimItems) {
-                this.favoriteIdSet.add(compositeKey(m.platform, m.id));
+            for (const item of slimItems) {
+                this.favoriteIdSet.add(compositeKey(item.platform, item.id));
+                this.favoriteSongs.push(item);
             }
             this.events.emit('favoriteChange');
         }
 
-        this.mutationQueue.enqueue(() => mod.addMusic(sheetId, items).then(() => {}));
+        this.mutationQueue.enqueue(() => mod.addMusic(sheetId, accepted).then(() => {}));
     }
 
     addMusicToFavorite(
@@ -270,22 +279,33 @@ class MusicSheetRenderer {
         sheetId: string,
     ): void {
         const items = Array.isArray(musicItems) ? musicItems : [musicItems];
-        const removeSet = new Set(items.map((it) => compositeKey(it.platform, it.id)));
+        const removeKeys = new Set(items.map((it) => compositeKey(it.platform, String(it.id))));
+        if (sheetId === DEFAULT_FAVORITE_SHEET_ID) {
+            for (const song of this.favoriteSongs) {
+                if (items.some((item) => isSameSong(song, item))) {
+                    removeKeys.add(compositeKey(song.platform, song.id));
+                }
+            }
+        }
 
         if (this.currentSheetId === sheetId) {
             store.set(musicListAtom, (prev) =>
-                prev.filter((m) => !removeSet.has(compositeKey(m.platform, m.id))),
+                prev.filter((m) => !removeKeys.has(compositeKey(m.platform, m.id))),
             );
         }
 
         if (sheetId === DEFAULT_FAVORITE_SHEET_ID) {
-            for (const it of items) {
-                this.favoriteIdSet.delete(compositeKey(it.platform, it.id));
-            }
+            for (const key of removeKeys) this.favoriteIdSet.delete(key);
+            this.favoriteSongs = this.favoriteSongs.filter(
+                (song) => !removeKeys.has(compositeKey(song.platform, song.id)),
+            );
             this.events.emit('favoriteChange');
         }
 
-        const bases = items.map((it) => ({ platform: it.platform, id: it.id }));
+        const bases = [...removeKeys].map((key) => {
+            const splitAt = key.indexOf('\0');
+            return { platform: key.slice(0, splitAt), id: key.slice(splitAt + 1) };
+        });
         this.mutationQueue.enqueue(() => mod.removeMusic(sheetId, bases));
     }
 
@@ -372,6 +392,9 @@ class MusicSheetRenderer {
         for (const it of items) {
             this.favoriteIdSet.delete(compositeKey(it.platform, it.id));
         }
+        this.favoriteSongs = this.favoriteSongs.filter(
+            (song) => !removeSet.has(compositeKey(song.platform, song.id)),
+        );
         this.events.emit('favoriteChange');
 
         const bases = items.map((it) => ({ platform: it.platform, id: it.id }));
@@ -452,8 +475,14 @@ class MusicSheetRenderer {
 
     // ─── Favorite（同步 O(1)） ───
 
-    isFavoriteMusic(item: { platform: string; id: string }): boolean {
-        return this.favoriteIdSet.has(compositeKey(item.platform, item.id));
+    isFavoriteMusic(item: {
+        platform: string;
+        id: string;
+        title?: string;
+        artist?: string;
+    }): boolean {
+        if (this.favoriteIdSet.has(compositeKey(item.platform, String(item.id)))) return true;
+        return this.favoriteSongs.some((song) => isSameSong(song, item));
     }
 
     /** 通过 compositeKey 查询收藏状态（O(1)，供 useSyncExternalStore 使用） */
@@ -533,6 +562,7 @@ class MusicSheetRenderer {
 
         const changed = hasNewKey || newSet.size !== this.favoriteIdSet.size;
         this.favoriteIdSet = newSet;
+        this.favoriteSongs = detail.musicList;
         if (changed) {
             this.events.emit('favoriteChange');
         }
@@ -576,10 +606,22 @@ export function useCurrentMusicList(): IMusicItemSlim[] {
 }
 
 /** 某首歌曲是否收藏 — 同步 O(1) 判断，仅在该歌曲收藏状态实际变化时触发 re-render */
-export function useMusicIsFavorite(musicItem: { platform: string; id: string }): boolean {
-    const key = musicItem ? compositeKey(musicItem.platform, String(musicItem.id)) : null;
+export function useMusicIsFavorite(musicItem: {
+    platform: string;
+    id: string;
+    title?: string;
+    artist?: string;
+}): boolean {
+    const platform = musicItem?.platform ?? '';
+    const id = musicItem ? String(musicItem.id) : '';
+    const title = musicItem?.title ?? '';
+    const artist = musicItem?.artist ?? '';
 
-    const getSnapshot = useCallback(() => (key ? musicSheet.isFavoriteByKey(key) : false), [key]);
+    const getSnapshot = useCallback(
+        () =>
+            platform && id ? musicSheet.isFavoriteMusic({ platform, id, title, artist }) : false,
+        [platform, id, title, artist],
+    );
 
     return useSyncExternalStore(musicSheet.subscribeFavoriteChange, getSnapshot);
 }
