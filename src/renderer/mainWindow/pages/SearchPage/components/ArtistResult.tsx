@@ -95,7 +95,7 @@ export function ArtistResult({ pluginHash }: ArtistResultProps) {
                 />
             );
         }
-        if (status === RequestStatus.Done || status === RequestStatus.Idle) {
+        if (status === RequestStatus.Done) {
             return (
                 <StatusPlaceholder
                     status={RequestStatus.Done}

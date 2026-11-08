@@ -427,27 +427,19 @@ export function PlaybackSection() {
                     label={t('settings.playback.startup_autoplay_label')}
                     description={t('settings.playback.startup_autoplay_desc')}
                     control={
-                        <Toggle
-                            checked={startupAutoPlay ?? false}
-                            onChange={setStartupAutoPlay}
-                        />
+                        <Toggle checked={startupAutoPlay ?? false} onChange={setStartupAutoPlay} />
                     }
                 />
                 <SettingRow
                     label={t('settings.playback.prevent_sleep_label')}
                     description={t('settings.playback.prevent_sleep_desc')}
-                    control={
-                        <Toggle checked={preventSleep ?? false} onChange={setPreventSleep} />
-                    }
+                    control={<Toggle checked={preventSleep ?? false} onChange={setPreventSleep} />}
                 />
                 <SettingRow
                     label={t('settings.playback.auto_clean_label')}
                     description={t('settings.playback.auto_clean_desc')}
                     control={
-                        <Toggle
-                            checked={autoCleanPlayed ?? false}
-                            onChange={setAutoCleanPlayed}
-                        />
+                        <Toggle checked={autoCleanPlayed ?? false} onChange={setAutoCleanPlayed} />
                     }
                 />
                 <SettingRow
@@ -467,9 +459,14 @@ export function PlaybackSection() {
                         />
                     }
                 />
+            </SettingsCard>
+
+            <SettingsCard
+                title={t('settings.playback.sleep_timer_label')}
+                subtitle={t('settings.playback.sleep_timer_desc')}
+            >
                 <SettingRow
                     label={t('settings.playback.sleep_timer_label')}
-                    description={t('settings.playback.sleep_timer_desc')}
                     control={
                         <div className="p-setting__duration">
                             <input
@@ -501,9 +498,14 @@ export function PlaybackSection() {
                         </div>
                     }
                 />
+            </SettingsCard>
+
+            <SettingsCard
+                title={t('settings.playback.dislike_label')}
+                subtitle={t('settings.playback.dislike_desc')}
+            >
                 <SettingRow
                     label={t('settings.playback.dislike_label')}
-                    description={t('settings.playback.dislike_desc')}
                     control={
                         <textarea
                             className="p-setting__rules"
@@ -530,8 +532,7 @@ export function PlaybackSection() {
                     description={t('settings.playback.openapi_port_desc')}
                     control={
                         <input
-                            className="p-setting__duration-input"
-                            style={{ width: 88 }}
+                            className="p-setting__port-input"
                             type="number"
                             min={1}
                             max={65535}

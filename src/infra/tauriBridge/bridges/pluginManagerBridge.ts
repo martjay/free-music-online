@@ -166,6 +166,77 @@ interface ILoadedPlugin {
 
 // ─── 服务实现 ───
 
+interface IPluginVersionChange {
+    name: string;
+    from: string;
+    to: string;
+}
+
+interface IPluginVersionReport {
+    updated: IPluginVersionChange[];
+    failed: number;
+    /** 是否读到了音源目录。读不到时不要把结果说成“已是最新”。 */
+    catalog: boolean;
+}
+
+function scriptKey(name: string): string {
+    return name.replace(/\s+/g, '').toLowerCase();
+}
+
+function comparableVersion(version?: string): string | undefined {
+    if (!version) return undefined;
+    return version.match(/\d+(?:\.\d+){1,3}/)?.[0] ?? version.match(/\d{4,}/)?.[0];
+}
+
+function isVersionNewer(current?: string, next?: string): boolean {
+    const from = comparableVersion(current);
+    const to = comparableVersion(next);
+    if (!from || !to || from === to) return false;
+    try {
+        return compare(from, to, '<');
+    } catch {
+        return false;
+    }
+}
+
+function readScriptHeader(code: string): { name?: string; version?: string } {
+    const match = code.match(/\/\*[!*]([\s\S]*?)\*\//);
+    if (!match) return {};
+    const meta: Record<string, string> = {};
+    for (const line of match[1].split(/\r?\n/)) {
+        const item = line.match(/^\s*\*\s*@([\w-]+)\s+(.+?)\s*$/);
+        if (item) meta[item[1].toLowerCase()] = item[2];
+    }
+    return { name: meta.name, version: meta.version };
+}
+
+function scriptMirrors(url: string): string[] {
+    const mirrors = [url];
+    const raw = url.match(
+        /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/,
+    );
+    if (raw) {
+        mirrors.push(`https://cdn.jsdelivr.net/gh/${raw[1]}/${raw[2]}@${raw[3]}/${raw[4]}`);
+    }
+    return mirrors;
+}
+
+async function mapLimit<T>(
+    items: T[],
+    limit: number,
+    worker: (item: T) => Promise<void>,
+): Promise<void> {
+    let index = 0;
+    const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (index < items.length) {
+            const current = items[index];
+            index += 1;
+            await worker(current);
+        }
+    });
+    await Promise.all(runners);
+}
+
 class TauriPluginManagerService {
     /** hash → ILoadedPlugin */
     private plugins = new Map<string, ILoadedPlugin>();
@@ -190,6 +261,9 @@ class TauriPluginManagerService {
 
     /** 异步初始化完成的 Promise */
     private pluginsReadyPromise: Promise<void>;
+
+    /** 版本检查进行中时复用同一次结果 */
+    private versionCheck: Promise<IPluginVersionReport> | null = null;
 
     /** 榜单和歌单目录。不进入插件列表，也不受平台开关影响。 */
     private catalogHost: LxPluginHost | null = null;
@@ -347,6 +421,10 @@ class TauriPluginManagerService {
                 }
             }
 
+            if (this.bindSubscriptionUrls()) {
+                await this.saveMeta();
+            }
+
             console.log(`[PluginManager] Loaded ${this.plugins.size} plugins`);
         } catch (err) {
             console.error('[PluginManager] Failed to load plugins:', err);
@@ -491,9 +569,13 @@ class TauriPluginManagerService {
         try {
             let code: string;
 
-            if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')) {
+            const subscribeUrl =
+                urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')
+                    ? urlOrPath
+                    : undefined;
+            if (subscribeUrl) {
                 // 远程下载（添加随机参数防止缓存）
-                code = await this.downloadText(this.addRandomHash(urlOrPath));
+                code = await this.downloadText(this.addRandomHash(subscribeUrl));
             } else {
                 // 本地文件
                 const content = await fsReadText(urlOrPath);
@@ -503,7 +585,7 @@ class TauriPluginManagerService {
                 code = content;
             }
 
-            return await this.installCode(code);
+            return await this.installCode(code, subscribeUrl);
         } catch (err: any) {
             console.error('[PluginManager] Install failed:', err);
             return { success: false, message: err?.message ?? 'Unknown error' };
@@ -525,14 +607,24 @@ class TauriPluginManagerService {
     }
 
     /** 安装核心：校验哈希/平台冲突、写盘、解析、注册 */
-    private async installCode(code: string): Promise<{ success: boolean; message?: string }> {
+    private async installCode(
+        code: string,
+        subscribeUrl?: string,
+    ): Promise<{ success: boolean; message?: string }> {
         const sourceHash = await computeHash(code);
         if (!sourceHash) {
             return { success: false, message: 'Empty plugin code' };
         }
 
-        // 检查是否已安装相同哈希的插件
-        if (this.getPluginsBySourceHash(sourceHash).length > 0) {
+        // 内容没变时仍记下订阅地址，下次启动才能按这个链接更新
+        const alreadyInstalled = this.getPluginsBySourceHash(sourceHash);
+        if (alreadyInstalled.length > 0) {
+            if (subscribeUrl) {
+                this.bindSubscriptionUrls(subscribeUrl, alreadyInstalled);
+                await this.saveMeta();
+                this.onPluginListChanged();
+                return { success: true };
+            }
             return { success: false, message: 'Plugin already installed' };
         }
 
@@ -566,9 +658,10 @@ class TauriPluginManagerService {
                         sameScriptSource(existingEntry.delegate, loaded.delegate),
                     );
                     if (
-                        existingEntry.delegate.version &&
-                        nextEntry?.delegate.version &&
-                        compare(existingEntry.delegate.version, nextEntry.delegate.version, '>')
+                        this.isNewerVersion(
+                            existingEntry.delegate.version,
+                            nextEntry?.delegate.version,
+                        )
                     ) {
                         loadedPlugins[0].host?.terminate();
                         await fsRemove(filePath);
@@ -589,8 +682,19 @@ class TauriPluginManagerService {
         }
 
         for (const loaded of loadedPlugins) {
+            const previous = sameScript.find((item) =>
+                sameScriptSource(item.delegate, loaded.delegate),
+            );
+            if (previous?.hash && this.pluginMeta[previous.hash]) {
+                this.pluginMeta[loaded.hash] = { ...this.pluginMeta[previous.hash] };
+                if (previous.hash !== loaded.hash) {
+                    delete this.pluginMeta[previous.hash];
+                }
+            }
             this.plugins.set(loaded.hash, loaded);
         }
+        this.bindSubscriptionUrls(subscribeUrl, loadedPlugins);
+        await this.saveMeta();
 
         this.onPluginListChanged();
         return { success: true };
@@ -635,7 +739,9 @@ class TauriPluginManagerService {
         }
 
         const sourceGroup = this.getPluginsBySourceHash(loaded.sourceHash);
-        const srcUrl = sourceGroup.find((it) => it.delegate.srcUrl)?.delegate.srcUrl;
+        const srcUrl =
+            sourceGroup.find((it) => it.delegate.srcUrl)?.delegate.srcUrl ||
+            sourceGroup.map((it) => this.pluginMeta[it.hash]?.srcUrl).find(Boolean);
         if (!srcUrl) {
             return { success: false, message: 'Plugin has no srcUrl for update' };
         }
@@ -664,11 +770,7 @@ class TauriPluginManagerService {
                     const next = testPlugins.find((it) =>
                         sameScriptSource(current.delegate, it.delegate),
                     );
-                    if (
-                        current.delegate.version &&
-                        next?.delegate.version &&
-                        compare(current.delegate.version, next.delegate.version, '>=')
-                    ) {
+                    if (this.isNewerVersion(current.delegate.version, next?.delegate.version)) {
                         testPlugins[0].host?.terminate();
                         return {
                             success: false,
@@ -698,6 +800,7 @@ class TauriPluginManagerService {
                 }
                 this.plugins.set(next.hash, next);
             }
+            this.bindSubscriptionUrls(srcUrl, testPlugins);
             await this.saveMeta();
 
             this.onPluginListChanged();
@@ -706,6 +809,19 @@ class TauriPluginManagerService {
             console.error('[PluginManager] Update failed:', err);
             return { success: false, message: err?.message ?? 'Unknown error' };
         }
+    }
+
+    /**
+     * 检查已安装插件的版本。
+     * 先按订阅链接更新，再和音源目录里同名脚本比较，目录版本更高就换上。
+     */
+    public checkPluginVersions(): Promise<IPluginVersionReport> {
+        if (!this.versionCheck) {
+            this.versionCheck = this.runVersionCheck().finally(() => {
+                this.versionCheck = null;
+            });
+        }
+        return this.versionCheck;
     }
 
     /** 批量更新全部插件 */
@@ -733,7 +849,10 @@ class TauriPluginManagerService {
             const result = await this.updatePlugin(loaded.hash);
             if (result.success) {
                 updated++;
-            } else {
+            } else if (
+                result.message !== 'No update available' &&
+                !result.message?.startsWith('Current ')
+            ) {
                 failed++;
             }
         }
@@ -1051,12 +1170,146 @@ class TauriPluginManagerService {
         }
     }
 
+    private async runVersionCheck(): Promise<IPluginVersionReport> {
+        await this.pluginsReadyPromise;
+        const updated: IPluginVersionChange[] = [];
+        let failed = 0;
+
+        const subscribed = [...this.plugins.values()].filter(
+            (loaded) => loaded.delegate.srcUrl && !this.isBuiltinPlugin(loaded),
+        );
+        const seenSourceHashes = new Set<string>();
+        for (const loaded of subscribed) {
+            if (seenSourceHashes.has(loaded.sourceHash)) continue;
+            seenSourceHashes.add(loaded.sourceHash);
+            const name = loaded.delegate.scriptName?.trim() || loaded.delegate.platform;
+            const from = loaded.delegate.version ?? '';
+            const result = await this.updatePlugin(loaded.hash);
+            if (result.success) {
+                const next = [...this.plugins.values()].find(
+                    (item) => (item.delegate.scriptName?.trim() || item.delegate.platform) === name,
+                );
+                updated.push({ name, from, to: next?.delegate.version ?? from });
+            } else if (
+                result.message !== 'No update available' &&
+                !result.message?.startsWith('Current ')
+            ) {
+                failed++;
+            }
+        }
+
+        const catalog = await this.loadSourceCatalog();
+        const installed = new Map<string, { name: string; version: string; hash: string }>();
+        for (const loaded of this.plugins.values()) {
+            if (this.isBuiltinPlugin(loaded)) continue;
+            const name = loaded.delegate.scriptName?.trim();
+            if (!name || installed.has(scriptKey(name))) continue;
+            installed.set(scriptKey(name), {
+                name,
+                version: loaded.delegate.version ?? '',
+                hash: loaded.hash,
+            });
+        }
+
+        const newest = new Map<string, { url: string; version: string }>();
+        await mapLimit(catalog, 4, async (url) => {
+            const head = await this.downloadScriptHead(url);
+            if (!head?.name || !head.version) return;
+            const key = scriptKey(head.name);
+            if (!installed.has(key)) return;
+            const current = newest.get(key);
+            const better =
+                !current ||
+                isVersionNewer(current.version, head.version) ||
+                (current.version === head.version && url.includes('/latest.js'));
+            if (better) newest.set(key, { url, version: head.version });
+        });
+
+        for (const [key, candidate] of newest) {
+            const current = installed.get(key);
+            if (!current || !isVersionNewer(current.version, candidate.version)) continue;
+            const result = await this.installPlugin(candidate.url);
+            if (result.success) {
+                updated.push({ name: current.name, from: current.version, to: candidate.version });
+            } else {
+                failed++;
+            }
+        }
+
+        return { updated, failed, catalog: catalog.length > 0 };
+    }
+
+    /** 音源目录：稳定订阅链接，以及状态页收集的脚本快照 */
+    private async loadSourceCatalog(): Promise<string[]> {
+        const urls = new Set<string>();
+        const remoteMirrors = [
+            'https://cdn.jsdelivr.net/gh/raclen/cf-anheplayer@main/sources/remote.json',
+            'https://raw.githubusercontent.com/raclen/cf-anheplayer/main/sources/remote.json',
+        ];
+        for (const remoteUrl of remoteMirrors) {
+            try {
+                const list = JSON.parse(await this.downloadText(remoteUrl)) as Array<{
+                    url?: string;
+                }>;
+                for (const item of list) {
+                    if (item?.url) urls.add(item.url);
+                }
+                break;
+            } catch {
+                /* 换下一个镜像 */
+            }
+        }
+
+        const folders = ['sources/优质', 'sources/一般'];
+        for (const folder of folders) {
+            try {
+                const listing = JSON.parse(
+                    await this.downloadText(
+                        `https://api.github.com/repos/raclen/cf-anheplayer/contents/${encodeURIComponent(folder).replace(/%2F/g, '/')}`,
+                        {
+                            Accept: 'application/vnd.github+json',
+                            'User-Agent': 'AnhePlayer',
+                        },
+                    ),
+                ) as Array<{ name?: string; download_url?: string }>;
+                if (!Array.isArray(listing)) continue;
+                for (const file of listing) {
+                    if (file.name?.toLowerCase().endsWith('.js') && file.download_url) {
+                        urls.add(file.download_url);
+                    }
+                }
+            } catch {
+                /* 目录读不到时仍保留 remote.json */
+            }
+        }
+        return [...urls];
+    }
+
+    /** 只取脚本头，用来比较名字和版本 */
+    private async downloadScriptHead(
+        url: string,
+    ): Promise<{ name?: string; version?: string } | null> {
+        for (const candidate of scriptMirrors(url)) {
+            try {
+                const text = await this.downloadText(candidate, {
+                    Range: 'bytes=0-4095',
+                    'User-Agent': 'AnhePlayer',
+                });
+                const meta = readScriptHeader(text);
+                if (meta.name || meta.version) return meta;
+            } catch {
+                /* 试镜像 */
+            }
+        }
+        return null;
+    }
+
     /** 下载文本（优先 Tauri http_request，回退原生 fetch） */
-    private async downloadText(url: string): Promise<string> {
+    private async downloadText(url: string, headers?: Record<string, string>): Promise<string> {
         try {
             const res = await tauriInvoke<{ statusCode: number; body: string } | null>(
                 'http_request',
-                { url, options: { method: 'GET' } },
+                { url, options: { method: 'GET', headers } },
             );
             if (res && typeof res.body === 'string' && res.statusCode < 400) {
                 return res.body;
@@ -1065,7 +1318,7 @@ class TauriPluginManagerService {
             /* 回退 fetch */
         }
 
-        const resp = await fetch(url);
+        const resp = await fetch(url, { headers });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return await resp.text();
     }
@@ -1079,6 +1332,39 @@ class TauriPluginManagerService {
         } catch {
             // 非法 URL，原样返回
             return url;
+        }
+    }
+
+    /**
+     * 记住订阅地址。脚本头里的更新地址优先，没有时用安装时粘贴的 https 链接。
+     * 返回 meta 是否有变化。
+     */
+    private bindSubscriptionUrls(subscribeUrl?: string, only?: ILoadedPlugin[]): boolean {
+        const targets = only ?? [...this.plugins.values()];
+        let changed = false;
+        for (const loaded of targets) {
+            if (this.isBuiltinPlugin(loaded)) continue;
+            const meta = this.pluginMeta[loaded.hash] ?? {};
+            const srcUrl = (loaded.delegate.srcUrl || subscribeUrl || meta.srcUrl || '').trim();
+            if (!srcUrl) continue;
+            if (loaded.delegate.srcUrl !== srcUrl) {
+                loaded.delegate.srcUrl = srcUrl;
+            }
+            if (meta.srcUrl !== srcUrl) {
+                this.pluginMeta[loaded.hash] = { ...meta, srcUrl };
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /** 当前版本是否比下一版新。版本号无法比较时不拦截，内容变了就更新。 */
+    private isNewerVersion(current?: string, next?: string): boolean {
+        if (!current || !next) return false;
+        try {
+            return compare(current, next, '>');
+        } catch {
+            return false;
         }
     }
 
@@ -1106,6 +1392,7 @@ export function registerTauriPluginManagerBridge(): void {
         uninstallPlugin: (hash: string) => service.uninstallPlugin(hash),
         updatePlugin: (hash: string) => service.updatePlugin(hash),
         updateAllPlugins: () => service.updateAllPlugins(),
+        checkPluginVersions: () => service.checkPluginVersions(),
         getAllPlugins: () => service.getAllPlugins(),
         setPluginMeta: (hash: string, meta: Partial<IPlugin.IPluginMeta>) =>
             service.setPluginMeta(hash, meta),

@@ -79,6 +79,8 @@
         "empty_album": "暫無相關專輯",
         "empty_sheet": "暫無相關歌單",
         "empty_artist": "暫無相關作者",
+        "empty_music": "沒有找到相關歌曲",
+        "load_error": "搜尋失敗，請重試",
         "load_artist_error": "獲取作者失敗"
     },
     "playlist": {
@@ -278,6 +280,10 @@
         "version_label": "v{{version}}",
         "plugin_count": "共 {{plugins}} 個插件，{{platforms}} 個平台",
         "platform_count": "{{count}} 個平台",
+        "active_platform_count": "已啟用 {{active}}/{{total}}",
+        "updated_at": "更新於 {{date}}",
+        "check_plugin_platforms": "檢測全部平台",
+        "check_plugin_platforms_progress": "檢測中 {{done}}/{{total}}",
         "collapse_sources": "收起音源",
         "expand_sources": "展開音源",
         "toggle_hint": "關閉後，該平台不參與搜尋、自動換源和批量檢測。已經屬於該平台的歌曲仍可播放和下載。",
@@ -292,6 +298,11 @@
         "source_redirect_no_target": "沒有可用的重定向插件",
         "user_variable_success": "設置成功~",
         "check_source": "檢測",
+        "check_plugin_update": "檢查更新",
+        "check_plugin_update_progress": "正在檢查更新",
+        "plugin_update_summary": "已更新 {{count}} 個插件：{{detail}}",
+        "plugin_update_none": "這些插件已是音源目錄裡的最新版本",
+        "plugin_update_offline": "連不上音源目錄，暫時無法檢查版本",
         "source_available": "可用",
         "source_unavailable": "不可用",
         "source_checking": "檢測中",
@@ -508,7 +519,7 @@
         "plugin": {
             "subtitle": "插件行為與更新策略",
             "auto_update_label": "自動更新插件",
-            "auto_update_desc": "啟用後會在啟動時檢查插件更新",
+            "auto_update_desc": "啟動時按新增插件的連結，或腳本裡的更新地址，自動檢查並更新",
             "skip_version_check_label": "不檢測插件版本",
             "skip_version_check_desc": "允許安裝不相容版本的插件"
         },

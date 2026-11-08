@@ -387,6 +387,33 @@ function readPluginHeader(code: string): Record<string, string> {
     return meta;
 }
 
+/** 文件头键名大小写不统一，@updateURL / @update_url 都认 */
+function readHeaderValue(meta: Record<string, string>, ...keys: string[]): string | undefined {
+    const folded = new Map(
+        Object.entries(meta).map(([key, value]) => [key.toLowerCase(), value.trim()]),
+    );
+    for (const key of keys) {
+        const value = folded.get(key.toLowerCase());
+        if (value) return value;
+    }
+    return undefined;
+}
+
+/** 从文件头取出更新日期。@update 有时是更新说明，只接受日期。 */
+function scriptUpdateDate(meta: Record<string, string>): string | undefined {
+    const candidates = [
+        readHeaderValue(meta, 'lastupdate', 'last_update', 'last-update'),
+        readHeaderValue(meta, 'update', 'updated', 'date'),
+        readHeaderValue(meta, 'version'),
+    ];
+    for (const value of candidates) {
+        const match = value?.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+        if (!match) continue;
+        return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+    }
+    return undefined;
+}
+
 function extractLxMusicInfo(musicItem: IMusic.IMusicItemPartial): Record<string, any> {
     const raw = (musicItem as any)?.raw ?? (musicItem as any)?.musicInfo ?? {};
     return {
@@ -3242,7 +3269,7 @@ export async function executeLxPluginCode(
     const meta = readPluginHeader(code);
     const requestHandlers: ILxRequestHandler[] = [];
     let initedPayload: ILxInitedPayload | null = null;
-    let updateUrl = meta.update_url;
+    let updateUrl = readHeaderValue(meta, 'updateurl', 'update_url', 'update-url');
 
     const lx = {
         EVENT_NAMES: LX_EVENT_NAMES,
@@ -3402,6 +3429,7 @@ export async function executeLxPluginCode(
                 scriptName: meta.name,
                 sourceKey,
                 version: meta.version,
+                updatedAt: scriptUpdateDate(meta),
                 author: meta.author,
                 description: meta.description,
                 srcUrl: updateUrl,

@@ -124,11 +124,7 @@ export function MediaGrid<T extends IMediaGridItem = IMusic.IMusicSheetItem>({
                 />
             );
         }
-        if (
-            !requestStatus ||
-            requestStatus === RequestStatus.Done ||
-            requestStatus === RequestStatus.Idle
-        ) {
+        if (requestStatus === RequestStatus.Done) {
             return (
                 <StatusPlaceholder
                     status={RequestStatus.Done}

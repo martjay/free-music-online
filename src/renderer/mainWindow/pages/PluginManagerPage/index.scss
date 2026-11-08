@@ -155,6 +155,19 @@
         min-width: 0;
     }
 
+    &__group-meta {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: unset;
+    }
+
+    &__group-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        flex-shrink: 0;
+    }
+
     &__group-toggle {
         @include btn-reset;
 

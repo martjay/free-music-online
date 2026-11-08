@@ -263,7 +263,7 @@
         padding: var(--space-3) 0;
         font-weight: var(--font-weight-semibold);
         color: var(--color-text-placeholder);
-        line-height: var(--text-title-leading);
+        line-height: 1.35;
         transition:
             color var(--duration-moderate) var(--ease-standard),
             filter var(--duration-moderate) var(--ease-standard);
@@ -279,17 +279,18 @@
     }
 
     &__lyric-text {
-        line-height: var(--text-title-leading);
+        line-height: 1.35;
     }
 
     &__lyric-trans {
         margin-top: var(--space-1);
-        font-size: 0.6em;
+        font-size: 0.62em;
         font-weight: var(--font-weight-normal);
+        line-height: 1.35;
         color: var(--color-text-muted);
 
         .is-active & {
-            color: var(--color-text-brand);
+            color: color-mix(in srgb, var(--color-text-brand) 70%, var(--color-text-secondary));
         }
     }
 

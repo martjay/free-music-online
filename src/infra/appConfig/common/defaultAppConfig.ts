@@ -44,6 +44,8 @@ const defaultAppConfig: IAppConfig = {
     'lyric.fontSize': 48,
     'lyric.autoMatch': true,
     'lyric.traditional': false,
+    'plugin.autoUpdatePlugin': true,
+    'plugin.notCheckPluginVersion': false,
     'openApi.enable': false,
     'openApi.port': 23330,
     'openApi.allowLan': false,

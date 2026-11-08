@@ -62,8 +62,7 @@ const LyricPanel = memo(function LyricPanel({ fontScale, showTranslation }: Lyri
     const parser = lyricState?.parser;
     const currentLrc = lyricState?.currentLrc;
     const lyricItems = parser?.getLyricItems() ?? [];
-    const showText = (text: string) =>
-        traditional === true ? toTraditional(text) : text;
+    const showText = (text: string) => (traditional === true ? toTraditional(text) : text);
     const activeIndex = currentLrc?.index ?? -1;
 
     /** 标记用户正在手动滚动，暂停自动跟随 */
@@ -237,11 +236,11 @@ const LyricPanel = memo(function LyricPanel({ fontScale, showTranslation }: Lyri
                         onClick={() => handleLyricClick(item)}
                     >
                         <div className="l-fullscreen-player__lyric-text">{showText(item.lrc)}</div>
-                        {showTranslation && item.translation && (
+                        {showTranslation && item.translation?.trim() ? (
                             <div className="l-fullscreen-player__lyric-trans">
-                                {showText(item.translation)}
+                                {showText(item.translation.trim())}
                             </div>
-                        )}
+                        ) : null}
                     </div>
                 );
             })}

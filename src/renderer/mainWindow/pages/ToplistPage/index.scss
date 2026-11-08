@@ -36,6 +36,9 @@
         font-weight: var(--font-weight-semibold);
         color: var(--color-text-primary);
         margin-bottom: var(--space-3);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     &__grid {

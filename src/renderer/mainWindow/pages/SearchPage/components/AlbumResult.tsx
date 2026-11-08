@@ -65,6 +65,7 @@ export function AlbumResult({ pluginHash }: AlbumResultProps) {
             onLoadMore={handleLoadMore}
             onLoadMoreRetry={handleLoadMore}
             emptyTitle={t('search.empty_album')}
+            errorTitle={t('search.load_error')}
         />
     );
 }

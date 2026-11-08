@@ -109,6 +109,9 @@ export default function PlayerBar() {
                                 {/* 第一行: 歌名 · 歌手 · 来源 — 点击打开全屏播放器 */}
                                 <Marquee
                                     className="l-player-bar__info-row"
+                                    title={[currentMusic.title, currentMusic.artist]
+                                        .filter(Boolean)
+                                        .join(' · ')}
                                     onClick={openFullscreenPlayer}
                                 >
                                     <span className="l-player-bar__title">

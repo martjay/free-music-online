@@ -88,7 +88,9 @@
     height: 48px;
     cursor: default;
     color: var(--color-text-secondary); // 默认灰色 — 序号、歌手、专辑、时长
-    transition: background-color var(--duration-fast) var(--ease-standard);
+    transition:
+        background-color var(--duration-fast) var(--ease-standard),
+        color var(--duration-fast) var(--ease-standard);
 
     &:hover {
         background-color: var(--color-bg-surface);
@@ -245,9 +247,13 @@
     line-height: var(--text-badge-leading);
     color: color-mix(in srgb, var(--color-text-primary) 40%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+    max-width: 100%;
     padding: var(--space-0-5) var(--space-2); // 2px 8px
     border-radius: var(--radius-badge); // 4px
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
 }
 
 // ── 状态图标 ──

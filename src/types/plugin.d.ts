@@ -81,6 +81,8 @@ declare namespace IPlugin {
         appVersion?: string;
         /** 插件版本 */
         version?: string;
+        /** 脚本头里的更新日期，形如 2026-08-19 */
+        updatedAt?: string;
         /** 远程更新的url */
         srcUrl?: string;
         /** 主键，会被存储到mediameta中 */
@@ -167,6 +169,8 @@ declare namespace IPlugin {
         enabled?: boolean;
         /** 音源重定向：目标插件的 platform 名，null/undefined 表示不重定向 */
         sourceRedirectPlatform?: string | null;
+        /** 订阅地址：安装时粘贴的 https 链接，或脚本头里的更新地址 */
+        srcUrl?: string;
     };
 
     export type IPluginDelegate = {

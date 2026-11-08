@@ -82,6 +82,8 @@
         "empty_album": "暂无相关专辑",
         "empty_sheet": "暂无相关歌单",
         "empty_artist": "暂无相关作者",
+        "empty_music": "没有找到相关歌曲",
+        "load_error": "搜索失败，请重试",
         "load_artist_error": "获取作者失败"
     },
     "radio": {
@@ -345,6 +347,10 @@
         "version_label": "v{{version}}",
         "plugin_count": "共 {{plugins}} 个插件，{{platforms}} 个平台",
         "platform_count": "{{count}} 个平台",
+        "active_platform_count": "已启用 {{active}}/{{total}}",
+        "updated_at": "更新于 {{date}}",
+        "check_plugin_platforms": "检测全部平台",
+        "check_plugin_platforms_progress": "检测中 {{done}}/{{total}}",
         "collapse_sources": "收起音源",
         "expand_sources": "展开音源",
         "toggle_hint": "关闭后，该平台不参与搜索、自动换源和批量检测。已经属于该平台的歌曲仍可播放和下载。",
@@ -359,6 +365,11 @@
         "source_redirect_no_target": "没有可用的重定向插件",
         "user_variable_success": "设置成功~",
         "check_source": "检测",
+        "check_plugin_update": "检查更新",
+        "check_plugin_update_progress": "正在检查更新",
+        "plugin_update_summary": "已更新 {{count}} 个插件：{{detail}}",
+        "plugin_update_none": "这些插件已是音源目录里的最新版本",
+        "plugin_update_offline": "连不上音源目录，暂时无法检查版本",
         "source_available": "可用",
         "source_unavailable": "不可用",
         "source_checking": "检测中",
@@ -583,7 +594,7 @@
         "plugin": {
             "subtitle": "插件行为与更新策略",
             "auto_update_label": "自动更新插件",
-            "auto_update_desc": "启用后会在启动时检查插件更新",
+            "auto_update_desc": "启动时按添加插件的链接，或脚本里的更新地址，自动检查并更新",
             "skip_version_check_label": "不检测插件版本",
             "skip_version_check_desc": "允许安装不兼容版本的插件"
         },

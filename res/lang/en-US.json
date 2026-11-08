@@ -79,6 +79,8 @@
         "empty_album": "No related albums",
         "empty_sheet": "No related playlists",
         "empty_artist": "No related artists",
+        "empty_music": "No matching songs",
+        "load_error": "Search failed. Try again.",
         "load_artist_error": "Failed to load artists"
     },
     "playlist": {
@@ -278,6 +280,10 @@
         "version_label": "v{{version}}",
         "plugin_count": "{{plugins}} plugins, {{platforms}} platforms",
         "platform_count": "{{count}} platforms",
+        "active_platform_count": "{{active}}/{{total}} enabled",
+        "updated_at": "Updated {{date}}",
+        "check_plugin_platforms": "Check all platforms",
+        "check_plugin_platforms_progress": "Checking {{done}}/{{total}}",
         "collapse_sources": "Collapse sources",
         "expand_sources": "Expand sources",
         "toggle_hint": "When off, this platform is left out of search, automatic source switching, and bulk checks. Tracks that already belong to it can still play and download.",
@@ -292,6 +298,11 @@
         "source_redirect_no_target": "No available redirect plugins",
         "user_variable_success": "Setting Successful~",
         "check_source": "Check",
+        "check_plugin_update": "Check updates",
+        "check_plugin_update_progress": "Checking updates",
+        "plugin_update_summary": "Updated {{count}} plugins: {{detail}}",
+        "plugin_update_none": "Installed plugins already match the newest versions in the source list",
+        "plugin_update_offline": "Can't reach the source list, so versions couldn't be checked",
         "source_available": "Available",
         "source_unavailable": "Unavailable",
         "source_checking": "Checking",
@@ -508,7 +519,7 @@
         "plugin": {
             "subtitle": "Plugin Behavior & Update Policy",
             "auto_update_label": "Auto-update plugins",
-            "auto_update_desc": "Check for plugin updates on startup",
+            "auto_update_desc": "On startup, update plugins from the link you added or the script's update URL",
             "skip_version_check_label": "Skip version check",
             "skip_version_check_desc": "Allow installing incompatible plugin versions"
         },

@@ -1,4 +1,4 @@
-import { Activity, Plus } from 'lucide-react';
+import { Activity, ArrowUpCircle, Plus } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@renderer/mainWindow/components/ui/Button';
@@ -26,7 +26,31 @@ export default function PluginManagerPage() {
     );
     const scriptCount = useMemo(() => new Set(installed.map(pluginGroupKey)).size, [installed]);
     const [checking, setChecking] = useState(false);
+    const [updatingPlugins, setUpdatingPlugins] = useState(false);
     const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+    const handleCheckVersions = useCallback(async () => {
+        setUpdatingPlugins(true);
+        try {
+            const report = await pluginManager.checkPluginVersions();
+            if (report.updated.length > 0) {
+                const detail = report.updated
+                    .map((item) => `${item.name} ${item.from} → ${item.to}`)
+                    .join('，');
+                showToast(
+                    t('plugin.plugin_update_summary', { count: report.updated.length, detail }),
+                );
+            } else if (!report.catalog) {
+                showToast(t('plugin.plugin_update_offline'), { type: 'warn' });
+            } else {
+                showToast(t('plugin.plugin_update_none'));
+            }
+        } catch {
+            showToast(t('plugin.plugin_update_offline'), { type: 'warn' });
+        } finally {
+            setUpdatingPlugins(false);
+        }
+    }, [t]);
 
     /** 检测已开启的平台。关闭的平台由检测函数跳过。 */
     const handleCheckSources = useCallback(async () => {
@@ -78,9 +102,21 @@ export default function PluginManagerPage() {
                         <Button
                             variant="secondary"
                             size="md"
+                            icon={<ArrowUpCircle size={16} />}
+                            loading={updatingPlugins}
+                            disabled={installed.length === 0 || checking}
+                            onClick={handleCheckVersions}
+                        >
+                            {updatingPlugins
+                                ? t('plugin.check_plugin_update_progress')
+                                : t('plugin.check_plugin_update')}
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="md"
                             icon={<Activity size={16} />}
                             loading={checking}
-                            disabled={installed.length === 0}
+                            disabled={installed.length === 0 || updatingPlugins}
                             onClick={handleCheckSources}
                         >
                             {checkLabel}

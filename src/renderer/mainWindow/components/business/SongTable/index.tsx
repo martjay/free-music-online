@@ -77,6 +77,10 @@ export interface SongTableProps {
     requestStatus?: RequestStatus;
     /** 首次加载失败时的重试回调（传入后 StatusPlaceholder 展示"重试"按钮） */
     onRetry?: () => void;
+    /** 空列表文案，默认「暂无歌曲」 */
+    emptyTitle?: string;
+    /** 加载失败文案 */
+    errorTitle?: string;
 
     // ── 底部加载更多 ──
     /** 是否启用滚动到底部自动加载 @default false */
@@ -323,6 +327,8 @@ export function SongTable({
     rowHeight = DEFAULT_ROW_HEIGHT,
     requestStatus,
     onRetry,
+    emptyTitle,
+    errorTitle,
     enableLoadMore = false,
     loadMoreStatus,
     onLoadMore,
@@ -972,7 +978,8 @@ export function SongTable({
             <StatusPlaceholder
                 status={requestStatus}
                 isEmpty={requestStatus === RequestStatus.Done}
-                emptyTitle={t('media.no_songs')}
+                emptyTitle={emptyTitle ?? t('media.no_songs')}
+                errorTitle={errorTitle}
                 onRetry={onRetry}
             />
         );

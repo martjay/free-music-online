@@ -15,7 +15,7 @@ export function useRecommendTags(platform: string) {
         () => recommendTagCache[platform] ?? null,
     );
     const [status, setStatus] = useState<RequestStatus>(() =>
-        recommendTagCache[platform] ? RequestStatus.Done : RequestStatus.Idle,
+        recommendTagCache[platform] ? RequestStatus.Done : RequestStatus.Pending,
     );
 
     const fetch = useCallback(async () => {
@@ -48,7 +48,7 @@ export function useRecommendTags(platform: string) {
             setStatus(RequestStatus.Done);
         } else {
             setTags(null);
-            setStatus(RequestStatus.Idle);
+            setStatus(RequestStatus.Pending);
         }
         fetch();
     }, [platform, fetch]);

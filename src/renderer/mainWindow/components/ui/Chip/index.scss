@@ -89,6 +89,9 @@
     }
 
     &__label {
-        // 文本不截断，由容器控制
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 }

@@ -20,15 +20,11 @@ function sheetCacheKey(platform: string, tagId: string, sortId: string): string 
  *
  * 支持分页加载。当 tag 变更时，自动重置并加载首页。
  */
-export function useRecommendSheets(
-    platform: string,
-    tag: IMedia.IUnique | null,
-    sortId = '',
-) {
+export function useRecommendSheets(platform: string, tag: IMedia.IUnique | null, sortId = '') {
     const initial = sheetListCache.get(sheetCacheKey(platform, tag?.id ?? '', sortId));
     const [sheets, setSheets] = useState<IMusic.IMusicSheetItem[]>(() => initial?.sheets ?? []);
     const [requestStatus, setRequestStatus] = useState<RequestStatus>(
-        initial ? RequestStatus.Done : RequestStatus.Idle,
+        initial ? RequestStatus.Done : RequestStatus.Pending,
     );
     const [isEnd, setIsEnd] = useState(initial?.isEnd ?? false);
 

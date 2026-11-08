@@ -108,6 +108,7 @@ export function RecommendSheetsBody({ source }: RecommendSheetsBodyProps) {
                 onLoadMore={loadMore}
                 onLoadMoreRetry={retry}
                 emptyTitle={t('playlist.recommend_empty')}
+                errorTitle={t('status.load_error')}
             />
         </div>
     );

@@ -32,6 +32,11 @@ interface IMod {
     uninstallPlugin(hash: string): Promise<{ success: boolean; message?: string }>;
     updatePlugin(hash: string): Promise<{ success: boolean; message?: string }>;
     updateAllPlugins(): Promise<{ updated: number; failed: number }>;
+    checkPluginVersions(): Promise<{
+        updated: Array<{ name: string; from: string; to: string }>;
+        failed: number;
+        catalog: boolean;
+    }>;
     getAllPlugins(): Promise<IPlugin.IPluginDelegate[]>;
     setPluginMeta(hash: string, meta: Partial<IPlugin.IPluginMeta>): Promise<void>;
     batchSetPluginMeta(
@@ -138,6 +143,15 @@ async function updatePlugin(hash: string): Promise<{ success: boolean; message?:
 /** 批量更新全部插件 */
 async function updateAllPlugins(): Promise<{ updated: number; failed: number }> {
     return mod.updateAllPlugins();
+}
+
+/** 按订阅链接和音源目录检查插件版本，有更高版本就替换 */
+async function checkPluginVersions(): Promise<{
+    updated: Array<{ name: string; from: string; to: string }>;
+    failed: number;
+    catalog: boolean;
+}> {
+    return mod.checkPluginVersions();
 }
 
 /** 设置插件 meta（排序、用户变量等） */
@@ -616,6 +630,7 @@ const pluginManager = {
     uninstallPlugin,
     updatePlugin,
     updateAllPlugins,
+    checkPluginVersions,
     setPluginMeta,
     batchSetPluginMeta,
     getPlugins,

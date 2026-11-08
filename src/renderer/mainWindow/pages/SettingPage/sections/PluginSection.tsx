@@ -22,7 +22,7 @@ export function PluginSection() {
             <SettingRow
                 label={t('settings.plugin.auto_update_label')}
                 description={t('settings.plugin.auto_update_desc')}
-                control={<Toggle checked={autoUpdate ?? false} onChange={setAutoUpdate} />}
+                control={<Toggle checked={autoUpdate ?? true} onChange={setAutoUpdate} />}
             />
             <SettingRow
                 label={t('settings.plugin.skip_version_check_label')}

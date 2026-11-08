@@ -6,6 +6,7 @@
  */
 
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAtomValue } from 'jotai/react';
 import { RequestStatus } from '@common/constant';
 import { showContextMenu } from '@renderer/mainWindow/components/ui/ContextMenu/contextMenuManager';
@@ -20,6 +21,7 @@ interface MusicResultProps {
 }
 
 export function MusicResult({ pluginHash }: MusicResultProps) {
+    const { t } = useTranslation();
     const results = useAtomValue(searchResultsAtom);
     const type: SearchMediaType = 'music';
     const record = results[type][pluginHash];
@@ -63,6 +65,8 @@ export function MusicResult({ pluginHash }: MusicResultProps) {
                 );
             }}
             onRetry={handleRetry}
+            emptyTitle={t('search.empty_music')}
+            errorTitle={t('search.load_error')}
             enableLoadMore={!isEnd && status !== RequestStatus.Idle}
             loadMoreStatus={status === RequestStatus.Done ? RequestStatus.Idle : status}
             onLoadMore={handleLoadMore}

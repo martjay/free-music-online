@@ -91,7 +91,11 @@ export function ToplistBody({ source }: ToplistBodyProps) {
         <div className="p-toplist__body">
             {data.map((group, groupIdx) => (
                 <div className="p-toplist__group" key={groupIdx}>
-                    {group.title && <h3 className="p-toplist__group-title">{group.title}</h3>}
+                    {group.title && (
+                        <h3 className="p-toplist__group-title" title={group.title}>
+                            {group.title}
+                        </h3>
+                    )}
                     <div className="p-toplist__grid">
                         {(group.data ?? []).map((item) => (
                             <button

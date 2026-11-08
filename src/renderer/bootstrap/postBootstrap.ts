@@ -8,6 +8,8 @@
  * 所有任务 fire-and-forget，不阻塞 UI。
  */
 import { compare } from 'compare-versions';
+import i18n from '@infra/i18n/renderer';
+import { showToast } from '@renderer/mainWindow/components/ui/Toast';
 import appConfig from '@infra/appConfig/renderer';
 import pluginManager from '@infra/pluginManager/renderer';
 import systemUtil from '@infra/systemUtil/renderer';
@@ -25,9 +27,20 @@ export function runPostBootstrapTasks(): void {
 function autoUpdatePlugins(): void {
     if (!appConfig.getConfigByKey('plugin.autoUpdatePlugin')) return;
 
-    pluginManager.updateAllPlugins().catch((err) => {
-        console.error('[PostBootstrap] Auto-update plugins failed:', err);
-    });
+    pluginManager
+        .checkPluginVersions()
+        .then((report) => {
+            if (!report.updated.length) return;
+            const detail = report.updated
+                .map((item) => `${item.name} ${item.from} → ${item.to}`)
+                .join('，');
+            showToast(
+                i18n.t('plugin.plugin_update_summary', { count: report.updated.length, detail }),
+            );
+        })
+        .catch((err) => {
+            console.error('[PostBootstrap] Auto-update plugins failed:', err);
+        });
 }
 
 /** 检查软件更新，并点亮左上角角标。关于页和启动检查走同一条结果。 */

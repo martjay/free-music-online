@@ -61,6 +61,7 @@ export function SheetResult({ pluginHash }: SheetResultProps) {
             onLoadMore={handleLoadMore}
             onLoadMoreRetry={handleLoadMore}
             emptyTitle={t('search.empty_sheet')}
+            errorTitle={t('search.load_error')}
         />
     );
 }
