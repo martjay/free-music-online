@@ -2,13 +2,19 @@
  * 洛雪插件沙箱 Worker 入口
  *
  * 消息协议（宿主 → Worker）：
+ *  - init_catalog  { id }                         初始化内置榜单/歌单目录
  *  - init_plugin   { id, code }                   初始化插件文件，返回全部音源 delegate
  *  - call_method   { id, platform, method, args } 调用指定音源的方法
  *  - host_response { reqId, result, error }       HTTP 桥回复
  * 消息协议（Worker → 宿主）：
  *  - init_success / init_error、call_success / call_error、host_request
  */
-import { executeLxPluginCode, extractPluginDelegate, handleHostResponse } from './lxSandboxCore';
+import {
+    createCatalogInstances,
+    executeLxPluginCode,
+    extractPluginDelegate,
+    handleHostResponse,
+} from './lxSandboxCore';
 
 interface IWorkerScope {
     postMessage: (message: any) => void;
@@ -22,6 +28,20 @@ let instances: IPlugin.IPluginInstance[] | null = null;
 scope.addEventListener('message', (event: any) => {
     const data = event?.data;
     if (!data) return;
+
+    if (data.type === 'init_catalog') {
+        try {
+            instances = createCatalogInstances();
+            scope.postMessage({ type: 'init_success', id: data.id, delegates: [] });
+        } catch (err: any) {
+            scope.postMessage({
+                type: 'init_error',
+                id: data.id,
+                error: String(err?.message || err),
+            });
+        }
+        return;
+    }
 
     if (data.type === 'init_plugin') {
         void (async () => {

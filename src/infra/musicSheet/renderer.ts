@@ -29,6 +29,7 @@ import {
     type IRadioBrowserMusicItem,
 } from '@common/radioBrowser';
 import musicItemToSlim from '@common/musicItemToSlim';
+import appConfig from '@infra/appConfig/renderer';
 import MutationQueue from '@common/mutationQueue';
 import {
     CONTEXT_BRIDGE_KEY,
@@ -238,7 +239,12 @@ class MusicSheetRenderer {
                 (m) => !existingKeys.has(compositeKey(m.platform, m.id)),
             );
             if (newSlims.length > 0) {
-                store.set(musicListAtom, [...newSlims, ...list]);
+                const atBottom =
+                    appConfig.getConfigByKey('playMusic.addMusicPosition') === 'bottom';
+                store.set(
+                    musicListAtom,
+                    atBottom ? [...list, ...newSlims] : [...newSlims, ...list],
+                );
             }
         }
 

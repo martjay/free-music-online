@@ -49,15 +49,19 @@ export default class LyricParser {
             if (transLrcItems.length > 0) {
                 this.hasTranslation = true;
 
-                // Two-pointer merge: both arrays are sorted by time
+                // Align translations within ~100ms (LX Music uses the same tolerance).
+                const TOLERANCE_SEC = 0.1;
                 let p2 = 0;
                 for (let p1 = 0; p1 < this.lrcItems.length; ++p1) {
                     const lrcItem = this.lrcItems[p1];
-                    while (p2 < transLrcItems.length - 1 && transLrcItems[p2].time < lrcItem.time) {
+                    while (
+                        p2 < transLrcItems.length - 1 &&
+                        transLrcItems[p2].time < lrcItem.time - TOLERANCE_SEC
+                    ) {
                         ++p2;
                     }
-                    lrcItem.translation =
-                        transLrcItems[p2].time === lrcItem.time ? transLrcItems[p2].lrc : '';
+                    const diff = Math.abs(transLrcItems[p2].time - lrcItem.time);
+                    lrcItem.translation = diff <= TOLERANCE_SEC ? transLrcItems[p2].lrc : '';
                 }
             }
         }
@@ -171,7 +175,7 @@ export default class LyricParser {
                 ++counter;
                 ++cursor;
             }
-            const lrc = rawLrcs[cursor]?.trim() ?? '';
+            const lrc = (rawLrcs[cursor] ?? '').replace(/<\d+:\d+(?:\.\d+)?>/g, '').trim();
             for (let j = i; j < i + counter; ++j) {
                 rawLrcItems.push({
                     time: this.parseTime(rawTimes[j]),
@@ -200,7 +204,7 @@ export default class LyricParser {
         if (lrcItems.length === 0 && raw.length) {
             lrcItems = raw.split('\n').map((line, index) => ({
                 time: 0,
-                lrc: line,
+                lrc: line.replace(/<\d+:\d+(?:\.\d+)?>/g, '').trim(),
                 index,
             }));
         }

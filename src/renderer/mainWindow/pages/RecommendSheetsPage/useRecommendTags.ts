@@ -8,41 +8,41 @@ const recommendTagCache: Record<string, IPlugin.IGetRecommendSheetTagsResult> = 
 /**
  * useRecommendTags — 获取热门歌单标签 hook
  *
- * 调用插件 getRecommendSheetTags，缓存按 pluginHash 隔离。
+ * 调用目录平台的 getRecommendSheetTags，缓存按平台隔离。
  */
-export function useRecommendTags(pluginHash: string) {
+export function useRecommendTags(platform: string) {
     const [tags, setTags] = useState<IPlugin.IGetRecommendSheetTagsResult | null>(
-        () => recommendTagCache[pluginHash] ?? null,
+        () => recommendTagCache[platform] ?? null,
     );
     const [status, setStatus] = useState<RequestStatus>(() =>
-        recommendTagCache[pluginHash] ? RequestStatus.Done : RequestStatus.Idle,
+        recommendTagCache[platform] ? RequestStatus.Done : RequestStatus.Idle,
     );
 
     const fetch = useCallback(async () => {
-        if (!recommendTagCache[pluginHash]) {
+        if (!recommendTagCache[platform]) {
             setStatus(RequestStatus.Pending);
         }
         try {
             const result = await pluginManager.callPluginMethod({
-                hash: pluginHash,
+                platform,
                 method: 'getRecommendSheetTags',
                 args: [],
             });
             const next: IPlugin.IGetRecommendSheetTagsResult = result ?? { pinned: [], data: [] };
-            recommendTagCache[pluginHash] = next;
+            recommendTagCache[platform] = next;
             setTags(next);
             setStatus(RequestStatus.Done);
         } catch {
             // 标签加载失败时回退为空标签列表，不阻塞歌单加载
             const next: IPlugin.IGetRecommendSheetTagsResult = { pinned: [], data: [] };
-            recommendTagCache[pluginHash] = next;
+            recommendTagCache[platform] = next;
             setTags(next);
             setStatus(RequestStatus.Done);
         }
-    }, [pluginHash]);
+    }, [platform]);
 
     useEffect(() => {
-        const cached = recommendTagCache[pluginHash];
+        const cached = recommendTagCache[platform];
         if (cached) {
             setTags(cached);
             setStatus(RequestStatus.Done);
@@ -51,7 +51,7 @@ export function useRecommendTags(pluginHash: string) {
             setStatus(RequestStatus.Idle);
         }
         fetch();
-    }, [pluginHash, fetch]);
+    }, [platform, fetch]);
 
     return { tags, status };
 }

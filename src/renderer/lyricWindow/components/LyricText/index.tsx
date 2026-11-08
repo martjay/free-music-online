@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, mem
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@common/cn';
+import { toTraditional } from '@common/s2t';
 import appSyncAuxiliary, { useAppStatePartial } from '@infra/appSync/renderer/auxiliary';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import { activeLyricStroke } from '@renderer/common/lyricColors';
@@ -24,9 +25,15 @@ function lineContentMode(value: string | null | undefined): LineContent {
 }
 
 /** 按显示模式取出一行的主文本和附带翻译。没有翻译时退回原文，避免空白。 */
-function resolveLyricLine(lrc: string, translation: string | undefined, mode: LineContent) {
-    const original = lrc.trim();
-    const translated = translation?.trim() ?? '';
+function resolveLyricLine(
+    lrc: string,
+    translation: string | undefined,
+    mode: LineContent,
+    traditional: boolean,
+) {
+    const convert = (text: string) => (traditional ? toTraditional(text) : text);
+    const original = convert(lrc.trim());
+    const translated = convert(translation?.trim() ?? '');
     if (mode === 'translation') {
         return { primary: translated || original, secondary: '' };
     }
@@ -48,7 +55,9 @@ const LyricLine = memo(function LyricLine() {
     const [fontColor] = useConfigValue('lyric.fontColor');
     const [strokeColor] = useConfigValue('lyric.strokeColor');
     const [lineContent] = useConfigValue('lyric.lineContent');
+    const [traditional] = useConfigValue('lyric.traditional');
     const contentMode = lineContentMode(lineContent);
+    const traditionalOn = traditional === true;
 
     const fontFamily = fontData?.family || undefined;
     const resolvedFontSize = fontSize ?? 54;
@@ -71,8 +80,8 @@ const LyricLine = memo(function LyricLine() {
                 return line;
             })();
         if (!source) return { primary: '', secondary: '' };
-        return resolveLyricLine(source.lrc, source.translation, contentMode);
-    }, [contentMode, currentLrc, fullLyric, progress]);
+        return resolveLyricLine(source.lrc, source.translation, contentMode, traditionalOn);
+    }, [contentMode, currentLrc, fullLyric, progress, traditionalOn]);
 
     const fallbackText = currentMusic
         ? `${currentMusic.title} - ${currentMusic.artist ?? ''}`
@@ -221,7 +230,9 @@ const LyricLines = memo(function LyricLines() {
     const [fontColor] = useConfigValue('lyric.fontColor');
     const [strokeColor] = useConfigValue('lyric.strokeColor');
     const [lineContent] = useConfigValue('lyric.lineContent');
+    const [traditional] = useConfigValue('lyric.traditional');
     const contentMode = lineContentMode(lineContent);
+    const traditionalOn = traditional === true;
 
     const fontFamily = fontData?.family || undefined;
     // 单行歌词通常很大，多行按它的比例缩小，一屏才能放下截图里那种一列歌词。
@@ -286,7 +297,12 @@ const LyricLines = memo(function LyricLines() {
                         </p>
                     ) : (
                         lines.map((item) => {
-                            const shown = resolveLyricLine(item.lrc, item.translation, contentMode);
+                            const shown = resolveLyricLine(
+                                item.lrc,
+                                item.translation,
+                                contentMode,
+                                traditionalOn,
+                            );
                             return (
                                 <p
                                     key={item.index}

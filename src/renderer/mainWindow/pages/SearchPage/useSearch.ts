@@ -13,11 +13,110 @@
 
 import { useCallback, useRef } from 'react';
 import { RequestStatus } from '@common/constant';
+import { textSimilar } from '@common/textSimilar';
 import pluginManager from '@infra/pluginManager/renderer';
-import { type SearchMediaType, getPluginResult, setPluginResult } from './store';
+import { ALL_SOURCE, type SearchMediaType, getPluginResult, setPluginResult } from './store';
 
 /** 最大自动续页次数（防止死循环） */
 const MAX_AUTO_CONTINUE = 3;
+
+interface SourcePage {
+    page: number;
+    isEnd: boolean;
+}
+
+const allSourcePages = new Map<string, Map<string, SourcePage>>();
+
+function allKey(type: SearchMediaType, query: string) {
+    return `${type}\0${query}`;
+}
+
+function searchablePlugins(type: SearchMediaType) {
+    return pluginManager.getSortedSearchablePlugins(type);
+}
+
+function identityOf(item: IMedia.SupportMediaItem[SearchMediaType], type: SearchMediaType) {
+    if (type === 'music') {
+        const music = item as IMusic.IMusicItem;
+        const title = (music.title ?? '').trim().toLocaleLowerCase();
+        const artist = (music.artist ?? '').trim().toLocaleLowerCase();
+        return `${title}\0${artist}`;
+    }
+    const named = item as { title?: string; id?: string; name?: string };
+    return `${(named.title ?? named.name ?? '').trim().toLocaleLowerCase()}\0${named.id ?? ''}`;
+}
+
+function mergeResults<T extends SearchMediaType>(
+    query: string,
+    type: T,
+    incoming: IMedia.SupportMediaItem[T][],
+    previous: IMedia.SupportMediaItem[T][],
+) {
+    const seen = new Set(previous.map((item) => identityOf(item, type)));
+    const fresh = incoming.filter((item) => {
+        const key = identityOf(item, type);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    const merged = [...previous, ...fresh];
+    if (type !== 'music') return merged;
+    return merged.toSorted((a, b) => {
+        const left = a as IMusic.IMusicItem;
+        const right = b as IMusic.IMusicItem;
+        const leftScore = textSimilar(query, `${left.title ?? ''} ${left.artist ?? ''}`);
+        const rightScore = textSimilar(query, `${right.title ?? ''} ${right.artist ?? ''}`);
+        return rightScore - leftScore;
+    });
+}
+
+async function fetchAllPage<T extends SearchMediaType>(query: string, type: T, nextPage: boolean) {
+    const plugins = searchablePlugins(type);
+    const progress =
+        allSourcePages.get(allKey(type, query)) ?? new Map<string, SourcePage>();
+    if (!nextPage) {
+        progress.clear();
+        for (const plugin of plugins) progress.set(plugin.hash, { page: 0, isEnd: false });
+        allSourcePages.set(allKey(type, query), progress);
+    }
+
+    const batches = await Promise.all(
+        plugins.map(async (plugin) => {
+            const state = progress.get(plugin.hash) ?? { page: 0, isEnd: false };
+            if (state.isEnd) return [] as IMedia.SupportMediaItem[T][];
+            const page = state.page + 1;
+            try {
+                const result = await pluginManager.callPluginMethod({
+                    hash: plugin.hash,
+                    method: 'search',
+                    args: [query, page, type],
+                });
+                const current = getPluginResult(type, ALL_SOURCE);
+                if (current && current.query !== query) return [] as IMedia.SupportMediaItem[T][];
+                progress.set(plugin.hash, { page, isEnd: result?.isEnd ?? true });
+                return (result?.data ?? []) as IMedia.SupportMediaItem[T][];
+            } catch (err) {
+                console.error(`[useSearch] all-source failed: ${plugin.hash}`, err);
+                progress.set(plugin.hash, { page: state.page, isEnd: true });
+                return [] as IMedia.SupportMediaItem[T][];
+            }
+        }),
+    );
+
+    const current = getPluginResult(type, ALL_SOURCE);
+    if (current && current.query !== query) return;
+    const previous = nextPage ? ((current?.data ?? []) as IMedia.SupportMediaItem[T][]) : [];
+    const data = mergeResults(query, type, batches.flat(), previous);
+    const isEnd = plugins.every((plugin) => progress.get(plugin.hash)?.isEnd);
+    const page = Math.max(1, ...[...progress.values()].map((item) => item.page));
+    setPluginResult(type, ALL_SOURCE, {
+        query,
+        page,
+        isEnd,
+        status: RequestStatus.Done,
+        data,
+    });
+}
 
 /**
  * 执行一次搜索请求并写入 store。
@@ -131,6 +230,11 @@ export function useSearch() {
             data: [],
         });
 
+        if (pluginHash === ALL_SOURCE) {
+            await fetchAllPage(query, type, false);
+            return;
+        }
+
         const result = await fetchPage(query, 1, type, pluginHash);
 
         // 过期检查（双重保险：fetchPage 自身的 stale guard + 此处的 seq 检查）
@@ -154,6 +258,11 @@ export function useSearch() {
         if (!query) return;
 
         setPluginResult(type, pluginHash, { status: RequestStatus.Pending });
+
+        if (pluginHash === ALL_SOURCE) {
+            await fetchAllPage(query, type, true);
+            return;
+        }
 
         const result = await fetchPage(query, nextPage, type, pluginHash);
 

@@ -233,6 +233,10 @@
     }
 }
 
+.song-table__header-cell:hover .song-table__resize::after {
+    background: var(--color-border-focus);
+}
+
 // ── 来源 badge ──
 
 .song-table__platform-badge {

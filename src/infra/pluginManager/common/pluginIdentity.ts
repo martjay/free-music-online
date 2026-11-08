@@ -2,6 +2,8 @@
  * 一份脚本可能拆成多个平台。分组和展示用同一套规则，避免页面各写各的。
  */
 
+import { catalogSourceLabel, catalogSourceOf } from '@common/musicCatalog';
+
 /** 同一脚本的分组键。没有 sourceHash 时退回自身 hash，单独成组。 */
 export function pluginGroupKey(
     plugin: Pick<IPlugin.IPluginDelegate, 'hash' | 'sourceHash'>,
@@ -18,6 +20,8 @@ export function pluginPlatformLabel(
 
 /** 歌曲、歌单上展示的来源。平台内部会带上脚本名，界面只保留「QQ音乐」这一段。 */
 export function shortPlatformName(platform?: string | null): string {
+    const catalog = catalogSourceOf(platform);
+    if (catalog) return catalogSourceLabel(catalog);
     const name = platform?.split(' · ')[0]?.trim();
     return name || '';
 }

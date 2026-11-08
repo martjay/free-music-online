@@ -2,6 +2,7 @@ import { useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { RequestStatus } from '@common/constant';
+import { catalogPlatform, type MusicCatalogSource } from '@common/musicCatalog';
 import { Artwork } from '../../components/ui/Artwork';
 import { StatusPlaceholder } from '../../components/ui/StatusPlaceholder';
 import {
@@ -16,51 +17,49 @@ import { useTopLists } from './useTopLists';
 import './index.scss';
 
 interface ToplistBodyProps {
-    /** 当前插件 hash */
-    pluginHash: string;
-    /** 当前插件 platform */
-    pluginPlatform: string;
+    source: MusicCatalogSource;
 }
 
 /**
- * ToplistBody — 单个插件的排行榜卡片网格
+ * ToplistBody — 一个音乐平台的排行榜卡片网格
  *
  * 按分组（IMusicSheetGroupItem）展示榜单卡片；
  * 卡片采用纵向布局：封面 + 标题 header + 预览占位文字。
  * 点击卡片跳转到排行榜详情页。
  */
-export function ToplistBody({ pluginHash, pluginPlatform }: ToplistBodyProps) {
+export function ToplistBody({ source }: ToplistBodyProps) {
     const { t } = useTranslation();
-    const { status, data, fetch, retry, syncFromCache } = useTopLists(pluginHash);
+    const platform = catalogPlatform(source);
+    const { status, data, fetch, retry, syncFromCache } = useTopLists(platform);
     const navigate = useNavigate();
     const restoredRef = useRef(false);
 
     useEffect(() => {
         syncFromCache();
         fetch();
-    }, [pluginHash]);
+    }, [platform]);
 
     useLayoutEffect(() => {
         if (restoredRef.current || data.length === 0) return;
         const saved = readListView(TOPLIST_VIEW);
-        if (!saved || saved.pluginHash !== pluginHash) return;
+        if (!saved || saved.pluginHash !== source) return;
         restoredRef.current = true;
         setContentScroll(saved.scrollTop);
-    }, [data.length, pluginHash]);
+    }, [data.length, source]);
 
     const handleCardClick = useCallback(
         (item: IMusic.IMusicSheetItem) => {
-            writeListView(TOPLIST_VIEW, { pluginHash, scrollTop: readContentScroll() });
-            navigate(toplistDetailRoute(pluginPlatform), {
+            writeListView(TOPLIST_VIEW, { pluginHash: source, scrollTop: readContentScroll() });
+            navigate(toplistDetailRoute(platform), {
                 state: {
                     topListItem: {
                         ...item,
-                        platform: pluginPlatform,
+                        platform,
                     },
                 },
             });
         },
-        [navigate, pluginHash, pluginPlatform],
+        [navigate, platform, source],
     );
 
     // 加载中 / 错误 / 空态

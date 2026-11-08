@@ -17,10 +17,6 @@
     padding-top: var(--space-4);
     min-width: 0;
 
-    &__official {
-        margin-bottom: var(--space-6);
-    }
-
     &__tabs {
         margin-bottom: var(--space-6);
         min-width: 0;
@@ -44,7 +40,7 @@
 
     &__grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
         gap: var(--space-3);
     }
 
@@ -59,6 +55,8 @@
 
         display: flex;
         align-items: center;
+        min-width: 0;
+        overflow: hidden;
         padding: var(--space-3) var(--space-4);
         border-radius: var(--radius-card);
         background-color: var(--color-bg-surface);
@@ -89,6 +87,9 @@
         display: flex;
         align-items: center;
         gap: var(--space-2);
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
     }
 
     &__card-cover {

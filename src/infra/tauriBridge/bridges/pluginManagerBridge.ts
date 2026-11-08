@@ -24,6 +24,7 @@ import { CONTEXT_BRIDGE_KEY as META_KEY } from '@infra/mediaMeta/common/constant
 import { CONTEXT_BRIDGE_KEY as SHEET_KEY } from '@infra/musicSheet/common/constant';
 import { CONTEXT_BRIDGE_KEY as APP_CONFIG_KEY } from '@infra/appConfig/common/constant';
 import { findPluginForPlatform } from '@infra/pluginManager/common/pluginIdentity';
+import { isCatalogPlatform } from '@common/musicCatalog';
 import { methodNormalizers } from '@infra/pluginManager/main/normalizer';
 import {
     getMediaSourceAdapter,
@@ -190,10 +191,27 @@ class TauriPluginManagerService {
     /** 异步初始化完成的 Promise */
     private pluginsReadyPromise: Promise<void>;
 
+    /** 榜单和歌单目录。不进入插件列表，也不受平台开关影响。 */
+    private catalogHost: LxPluginHost | null = null;
+
+    private catalogReady: Promise<void>;
+
     constructor() {
+        this.catalogReady = this.startCatalog();
         this.pluginsReadyPromise = this.initialize().catch((err) => {
             console.error('[PluginManager] Initialization failed:', err);
         });
+    }
+
+    private async startCatalog(): Promise<void> {
+        const host = new LxPluginHost();
+        try {
+            await host.initializeCatalog();
+            this.catalogHost = host;
+        } catch (err) {
+            host.terminate();
+            console.error('[PluginManager] Catalog initialization failed:', err);
+        }
     }
 
     // ─── 初始化 ───
@@ -384,9 +402,30 @@ class TauriPluginManagerService {
      * 4. afterCall 标准化返回值
      */
     public async callPluginMethod(params: ICallPluginMethodParams): Promise<any> {
-        await this.pluginsReadyPromise;
-
         const { hash, platform, method, args } = params;
+        const catalogKey = isCatalogPlatform(platform)
+            ? platform
+            : isCatalogPlatform(hash)
+              ? hash
+              : '';
+        if (catalogKey) {
+            await this.catalogReady;
+            if (!this.catalogHost) {
+                throw new Error('[PluginManager] Music catalog is unavailable');
+            }
+            const normalizer = methodNormalizers[method];
+            let processedArgs: any[] = [...args];
+            if (normalizer?.beforeCall) {
+                processedArgs = normalizer.beforeCall(processedArgs);
+            }
+            let result = await this.catalogHost.callMethod(catalogKey, method, processedArgs);
+            if (normalizer?.afterCall) {
+                result = normalizer.afterCall(result, catalogKey, args);
+            }
+            return result;
+        }
+
+        await this.pluginsReadyPromise;
 
         // 支持通过 hash 或 platform 查找
         let loaded: ILoadedPlugin | undefined;

@@ -69,36 +69,41 @@ export function AboutSection() {
                 }
             >
                 <div className="p-setting__about-grid">
-                    <div className="p-setting__about-column">
-                        <InfoRow
-                            label={t('settings.about.current_version_label')}
-                            value={`v${globalContext.appVersion}`}
-                        />
-                        <LinkRow label="License" text="AGPL-3.0" url={LICENSE_URL} />
-                        <LinkRow
-                            label={t('settings.about.original_author_label')}
-                            text="raclen"
-                            url={ORIGINAL_AUTHOR_URL}
-                        />
-                        <LinkRow
-                            label={t('settings.about.original_project_label')}
-                            text="AnhePlayer"
-                            url={ORIGINAL_PROJECT_URL}
-                        />
-                    </div>
-                    <div className="p-setting__about-column">
-                        <LinkRow
-                            label={t('settings.about.official_site_link')}
-                            text="free-music-online"
-                            url={OFFICIAL_SITE_URL}
-                        />
-                        <LinkRow label="GitHub" text="Free Music Online" url={GITHUB_REPO} />
-                        <LinkRow
-                            label={t('settings.about.issues_link')}
-                            text="GitHub Issues"
-                            url={GITHUB_ISSUES}
-                        />
-                    </div>
+                    <InfoRow
+                        label={t('settings.about.current_version_label')}
+                        value={`v${globalContext.appVersion}`}
+                    />
+                    <LinkRow
+                        label={t('settings.about.official_site_link')}
+                        text="free-music-online"
+                        url={OFFICIAL_SITE_URL}
+                    />
+                    <LinkRow label="License" text="AGPL-3.0" url={LICENSE_URL} />
+                    <LinkRow
+                        label={t('settings.about.issues_link')}
+                        text="GitHub Issues"
+                        url={GITHUB_ISSUES}
+                    />
+                    <LinkRow
+                        label={t('settings.about.original_author_label')}
+                        text="raclen"
+                        url={ORIGINAL_AUTHOR_URL}
+                    />
+                    <LinkRow
+                        label={t('settings.about.this_repo_label')}
+                        text="Free Music Online"
+                        url={GITHUB_REPO}
+                    />
+                    <LinkRow
+                        label={t('settings.about.original_project_label')}
+                        text="AnhePlayer"
+                        url={ORIGINAL_PROJECT_URL}
+                    />
+                    <LinkRow
+                        label={t('settings.about.maintainer_label')}
+                        text="martjay"
+                        url={GITHUB_MAINTAINER}
+                    />
                 </div>
             </SettingsCard>
 

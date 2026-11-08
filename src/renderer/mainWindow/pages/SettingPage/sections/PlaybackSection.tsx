@@ -1,4 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+    cancelSleepTimer,
+    sleepTimerActive,
+    startSleepTimer,
+} from '@renderer/mainWindow/core/trackPlayer/sleepTimer';
 import { useTranslation } from 'react-i18next';
 import { SettingsCard } from '../components/SettingsCard';
 import { SettingRow } from '../components/SettingRow';
@@ -44,6 +49,16 @@ export function PlaybackSection() {
     const [playError, setPlayError] = useConfigValue('playMusic.playError');
     const [whenDeviceRemoved, setWhenDeviceRemoved] = useConfigValue('playMusic.whenDeviceRemoved');
     const [caseSensitive, setCaseSensitive] = useConfigValue('playMusic.caseSensitiveInSearch');
+    const [startupAutoPlay, setStartupAutoPlay] = useConfigValue('playMusic.startupAutoPlay');
+    const [preventSleep, setPreventSleep] = useConfigValue('playMusic.preventSleep');
+    const [autoCleanPlayed, setAutoCleanPlayed] = useConfigValue('playMusic.autoCleanPlayed');
+    const [addMusicPosition, setAddMusicPosition] = useConfigValue('playMusic.addMusicPosition');
+    const [dislikeRules, setDislikeRules] = useConfigValue('playMusic.dislikeRules');
+    const [openApiEnable, setOpenApiEnable] = useConfigValue('openApi.enable');
+    const [openApiPort, setOpenApiPort] = useConfigValue('openApi.port');
+    const [openApiAllowLan, setOpenApiAllowLan] = useConfigValue('openApi.allowLan');
+    const [sleepMinutes, setSleepMinutes] = useState('30');
+    const [sleepOn, setSleepOn] = useState(() => sleepTimerActive());
 
     // 电台偏好配置
     const [radioBitrate, setRadioBitrate] = useConfigValue('radio.bitrate');
@@ -406,6 +421,133 @@ export function PlaybackSection() {
                                 { value: 'true', label: t('settings.playback.case_sensitive') },
                             ]}
                         />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.startup_autoplay_label')}
+                    description={t('settings.playback.startup_autoplay_desc')}
+                    control={
+                        <Toggle
+                            checked={startupAutoPlay ?? false}
+                            onChange={setStartupAutoPlay}
+                        />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.prevent_sleep_label')}
+                    description={t('settings.playback.prevent_sleep_desc')}
+                    control={
+                        <Toggle checked={preventSleep ?? false} onChange={setPreventSleep} />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.auto_clean_label')}
+                    description={t('settings.playback.auto_clean_desc')}
+                    control={
+                        <Toggle
+                            checked={autoCleanPlayed ?? false}
+                            onChange={setAutoCleanPlayed}
+                        />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.add_position_label')}
+                    description={t('settings.playback.add_position_desc')}
+                    control={
+                        <Select
+                            value={addMusicPosition ?? 'top'}
+                            onChange={setAddMusicPosition}
+                            options={[
+                                { value: 'top', label: t('settings.playback.add_position_top') },
+                                {
+                                    value: 'bottom',
+                                    label: t('settings.playback.add_position_bottom'),
+                                },
+                            ]}
+                        />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.sleep_timer_label')}
+                    description={t('settings.playback.sleep_timer_desc')}
+                    control={
+                        <div className="p-setting__duration">
+                            <input
+                                className="p-setting__duration-input"
+                                type="number"
+                                min={1}
+                                max={720}
+                                value={sleepMinutes}
+                                onChange={(event) => setSleepMinutes(event.target.value)}
+                            />
+                            <span>{t('settings.playback.sleep_timer_minutes')}</span>
+                            <button
+                                type="button"
+                                className="p-setting__text-btn"
+                                onClick={() => {
+                                    if (sleepOn) {
+                                        cancelSleepTimer();
+                                        setSleepOn(false);
+                                        return;
+                                    }
+                                    startSleepTimer(Number(sleepMinutes));
+                                    setSleepOn(sleepTimerActive());
+                                }}
+                            >
+                                {sleepOn
+                                    ? t('settings.playback.sleep_timer_cancel')
+                                    : t('settings.playback.sleep_timer_start')}
+                            </button>
+                        </div>
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.dislike_label')}
+                    description={t('settings.playback.dislike_desc')}
+                    control={
+                        <textarea
+                            className="p-setting__rules"
+                            value={dislikeRules ?? ''}
+                            onChange={(event) => setDislikeRules(event.target.value)}
+                        />
+                    }
+                />
+            </SettingsCard>
+
+            <SettingsCard
+                title={t('settings.playback.openapi_title')}
+                subtitle={t('settings.playback.openapi_subtitle')}
+            >
+                <SettingRow
+                    label={t('settings.playback.openapi_enable_label')}
+                    description={t('settings.playback.openapi_enable_desc')}
+                    control={
+                        <Toggle checked={openApiEnable ?? false} onChange={setOpenApiEnable} />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.openapi_port_label')}
+                    description={t('settings.playback.openapi_port_desc')}
+                    control={
+                        <input
+                            className="p-setting__duration-input"
+                            style={{ width: 88 }}
+                            type="number"
+                            min={1}
+                            max={65535}
+                            value={openApiPort ?? 23330}
+                            onChange={(event) => {
+                                const next = Number(event.target.value);
+                                if (Number.isFinite(next)) setOpenApiPort(next);
+                            }}
+                        />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.openapi_lan_label')}
+                    description={t('settings.playback.openapi_lan_desc')}
+                    control={
+                        <Toggle checked={openApiAllowLan ?? false} onChange={setOpenApiAllowLan} />
                     }
                 />
             </SettingsCard>

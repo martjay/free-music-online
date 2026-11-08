@@ -22,6 +22,7 @@ import {
     findPluginForPlatform,
     pluginsForSourceKey,
 } from '@infra/pluginManager/common/pluginIdentity';
+import { isCatalogPlatform } from '@common/musicCatalog';
 import neteaseAccount from '@infra/neteaseAccount/renderer';
 import requestForwarder from '@infra/requestForwarder/renderer';
 import { CONTEXT_BRIDGE_KEY as APP_CONFIG_KEY } from '@infra/appConfig/common/constant';
@@ -321,6 +322,74 @@ class DownloadStore {
         return (this.taskGeneration.get(taskId) ?? 0) !== generation;
     }
 
+    /**
+     * 榜单和歌单上的歌不属于某个已开启插件。
+     * 先用设置里的优先源搜同一首歌，找不到再试其他已开启音源。
+     */
+    private async fetchCatalogMediaSource(
+        pluginMod: {
+            getAllPlugins?: () => Promise<IPlugin.IPluginDelegate[]>;
+            getAllPluginMeta?: () => Promise<Record<string, { enabled?: boolean }>>;
+            getMediaSource?: (params: unknown) => Promise<IGetMediaSourceResult | null>;
+            callPluginMethod?: (params: {
+                hash: string;
+                method: string;
+                args: unknown[];
+            }) => Promise<{ data?: IMusic.IMusicItem[] } | null>;
+        },
+        musicItem: IMusic.IMusicItem,
+        quality: IMusic.IQualityKey,
+    ): Promise<IGetMediaSourceResult | null> {
+        const listPlugins = pluginMod.getAllPlugins;
+        const getSource = pluginMod.getMediaSource;
+        const searchPlugins = pluginMod.callPluginMethod;
+        if (!listPlugins || !getSource || !searchPlugins) {
+            throw new Error('插件系统不可用');
+        }
+        const [plugins, meta] = (await Promise.all([
+            listPlugins(),
+            pluginMod.getAllPluginMeta?.() ?? {},
+        ])) as [IPlugin.IPluginDelegate[], Record<string, { enabled?: boolean }>];
+        const enabled = plugins.filter(
+            (plugin) =>
+                plugin.supportedMethod?.includes('getMediaSource') &&
+                plugin.supportedMethod?.includes('search') &&
+                meta?.[plugin.hash]?.enabled !== false,
+        );
+        if (enabled.length === 0) throw new Error('没有已开启的音源');
+
+        const preferred = String(this.config['playMusic.defaultPlaybackPlugin'] ?? '');
+        const ordered = [...enabled].sort((a, b) => {
+            if (a.hash === preferred) return -1;
+            if (b.hash === preferred) return 1;
+            return 0;
+        });
+        const qualityFallbackOrder = this.config['download.whenQualityMissing'] ?? 'lower';
+        let lastError = '';
+        for (const plugin of ordered.slice(0, 6)) {
+            const candidate = await findSameTrackOnPlugin(
+                { callPluginMethod: searchPlugins },
+                musicItem,
+                plugin,
+            );
+            if (!candidate) continue;
+            try {
+                const source = (await getSource({
+                    hash: plugin.hash,
+                    musicItem: candidate,
+                    quality,
+                    qualityOrder: QUALITY_KEYS,
+                    qualityFallbackOrder,
+                })) as IGetMediaSourceResult | null;
+                if (source?.url) return source;
+            } catch (err: any) {
+                lastError = err?.message ?? String(err);
+            }
+        }
+        if (lastError) throw new Error(lastError);
+        throw new Error('在已开启的音源里没找到这首歌');
+    }
+
     private async fetchMediaSource(
         musicItem: IMusic.IMusicItem,
         quality: IMusic.IQualityKey,
@@ -343,6 +412,9 @@ class DownloadStore {
 
         const pluginMod = (window as any)[PLUGIN_KEY];
         if (!pluginMod) throw new Error('插件系统不可用');
+        if (isCatalogPlatform(musicItem.platform)) {
+            return this.fetchCatalogMediaSource(pluginMod, musicItem, quality);
+        }
         const [plugins, meta] = (await Promise.all([
             pluginMod.getAllPlugins(),
             pluginMod.getAllPluginMeta?.() ?? {},

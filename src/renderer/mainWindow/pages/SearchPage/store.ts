@@ -16,6 +16,9 @@ import { RequestStatus } from '@common/constant';
 // ── 外部常量 ──
 
 /** 搜索页支持的 4 种媒体类型（排除 lyric） */
+/** 同时搜索当前类型下所有已启用插件，结果合并后写入这个槽。 */
+export const ALL_SOURCE = '__all__';
+
 export const SEARCH_MEDIA_TYPES = ['music', 'album', 'artist', 'sheet'] as const;
 export type SearchMediaType = (typeof SEARCH_MEDIA_TYPES)[number];
 

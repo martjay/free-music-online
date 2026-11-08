@@ -12,8 +12,9 @@
 
 .media-grid__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr));
     gap: var(--space-6); // 24px
+    min-width: 0;
 }
 
 .media-grid__sentinel {
@@ -24,6 +25,8 @@
 // ── 卡片 ──
 
 .media-card {
+    min-width: 0;
+    overflow: hidden;
     padding: var(--space-3); // 12px
     border-radius: var(--radius-card);
     cursor: pointer;

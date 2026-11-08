@@ -47,6 +47,7 @@ export function Chip({
             disabled={disabled}
             aria-pressed={active}
             {...rest}
+            title={typeof rest.title === 'string' ? rest.title : label}
         >
             {prefix && <span className="chip__prefix">{prefix}</span>}
             <span className="chip__label">{label}</span>

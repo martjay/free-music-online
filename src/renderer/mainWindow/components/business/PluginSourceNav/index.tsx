@@ -7,6 +7,8 @@ interface PluginSourceNavProps {
     plugins: IPlugin.IPluginDelegate[];
     activeHash: string;
     onChange: (hash: string) => void;
+    /** 排在音源前面的「全部」。选中后不再显示第二行平台。 */
+    allItem?: { key: string; label: string };
 }
 
 interface SourceGroup {
@@ -41,15 +43,20 @@ function buildSourceGroups(plugins: IPlugin.IPluginDelegate[]): SourceGroup[] {
  * 先选插件，再选这个插件里已开启的平台。
  * 两行都按内容宽度排列，放不下时横向滚动。
  */
-export function PluginSourceNav({ plugins, activeHash, onChange }: PluginSourceNavProps) {
+export function PluginSourceNav({ plugins, activeHash, onChange, allItem }: PluginSourceNavProps) {
     const groups = useMemo(() => buildSourceGroups(plugins), [plugins]);
-    const activeGroup =
-        groups.find((group) => group.plugins.some((plugin) => plugin.hash === activeHash)) ??
-        groups[0];
+    const allActive = allItem != null && activeHash === allItem.key;
+    const activeGroup = allActive
+        ? undefined
+        : (groups.find((group) => group.plugins.some((plugin) => plugin.hash === activeHash)) ??
+          groups[0]);
 
     const scriptItems = useMemo(
-        () => groups.map((group) => ({ key: group.id, label: group.label })),
-        [groups],
+        () => [
+            ...(allItem ? [{ key: allItem.key, label: allItem.label }] : []),
+            ...groups.map((group) => ({ key: group.id, label: group.label })),
+        ],
+        [allItem, groups],
     );
     const platformItems = useMemo(
         () =>
@@ -61,28 +68,34 @@ export function PluginSourceNav({ plugins, activeHash, onChange }: PluginSourceN
     );
 
     const handleScriptChange = (scriptId: string) => {
+        if (allItem && scriptId === allItem.key) {
+            onChange(allItem.key);
+            return;
+        }
         const group = groups.find((item) => item.id === scriptId);
         if (!group || group.plugins.some((plugin) => plugin.hash === activeHash)) return;
         onChange(group.plugins[0].hash);
     };
 
-    if (!activeGroup) return null;
+    if (!activeGroup && !allActive) return null;
 
     return (
         <div className="plugin-source-nav">
             <TabBar
                 mode="scroll"
                 items={scriptItems}
-                activeKey={activeGroup.id}
+                activeKey={allActive ? allItem.key : activeGroup?.id}
                 onChange={handleScriptChange}
             />
-            <TabBar
-                mode="scroll"
-                className="plugin-source-nav__platforms"
-                items={platformItems}
-                activeKey={activeHash}
-                onChange={onChange}
-            />
+            {!allActive && (
+                <TabBar
+                    mode="scroll"
+                    className="plugin-source-nav__platforms"
+                    items={platformItems}
+                    activeKey={activeHash}
+                    onChange={onChange}
+                />
+            )}
         </div>
     );
 }

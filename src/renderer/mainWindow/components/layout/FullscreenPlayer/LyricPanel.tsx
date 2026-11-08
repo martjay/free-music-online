@@ -7,6 +7,8 @@
 
 import { useRef, useEffect, useCallback, memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toTraditional } from '@common/s2t';
+import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import { useLyric, useCurrentMusic } from '@renderer/mainWindow/core/trackPlayer/hooks';
 import { isRadioBrowserMedia } from '@common/radioBrowser';
 import type { IParsedLrcItem } from '@common/lyricParser';
@@ -35,6 +37,7 @@ const prefersReducedMotion =
 
 const LyricPanel = memo(function LyricPanel({ fontScale, showTranslation }: LyricPanelProps) {
     const { t } = useTranslation();
+    const [traditional] = useConfigValue('lyric.traditional');
     const currentMusic = useCurrentMusic();
     const lyricState = useLyric();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -59,6 +62,8 @@ const LyricPanel = memo(function LyricPanel({ fontScale, showTranslation }: Lyri
     const parser = lyricState?.parser;
     const currentLrc = lyricState?.currentLrc;
     const lyricItems = parser?.getLyricItems() ?? [];
+    const showText = (text: string) =>
+        traditional === true ? toTraditional(text) : text;
     const activeIndex = currentLrc?.index ?? -1;
 
     /** 标记用户正在手动滚动，暂停自动跟随 */
@@ -231,10 +236,10 @@ const LyricPanel = memo(function LyricPanel({ fontScale, showTranslation }: Lyri
                         }}
                         onClick={() => handleLyricClick(item)}
                     >
-                        <div className="l-fullscreen-player__lyric-text">{item.lrc}</div>
+                        <div className="l-fullscreen-player__lyric-text">{showText(item.lrc)}</div>
                         {showTranslation && item.translation && (
                             <div className="l-fullscreen-player__lyric-trans">
-                                {item.translation}
+                                {showText(item.translation)}
                             </div>
                         )}
                     </div>

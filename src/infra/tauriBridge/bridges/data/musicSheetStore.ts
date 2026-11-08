@@ -11,6 +11,7 @@
  *   internal 事件 renderer 会拉取 musicList
  */
 import { nanoid } from 'nanoid';
+import { CONTEXT_BRIDGE_KEY as APP_CONFIG_KEY } from '@infra/appConfig/common/constant';
 import { INTERNAL_SLIM_KEY } from '@common/constant';
 import { compositeKey } from '@common/mediaKey';
 import { RADIO_BROWSER_PLATFORM } from '@common/radioBrowser';
@@ -35,6 +36,21 @@ import type { IBackupSheet, RestoreMode } from '@appTypes/infra/backup';
 import { JsonFileStore } from './jsonFile';
 import { joinPath } from './pathUtils';
 import { getUserDataDir } from './tauriFs';
+
+/** 加歌时再读桥，避免存储模块在桥注册前把配置单例求值成空的。 */
+async function addedAtBottom(): Promise<boolean> {
+    const bridge = (window as unknown as Record<string, { syncConfig?: () => Promise<unknown> }>)[
+        APP_CONFIG_KEY
+    ];
+    if (!bridge?.syncConfig) return false;
+    try {
+        const config = await bridge.syncConfig();
+        if (!config || typeof config !== 'object') return false;
+        return (config as Record<string, unknown>)['playMusic.addMusicPosition'] === 'bottom';
+    } catch {
+        return false;
+    }
+}
 
 // ─── 存储结构 ───
 
@@ -432,16 +448,17 @@ class MusicSheetStore {
         const relSet = new Set(
             data.relations.map((r) => relKeyOf(r.sheetId, r.platform, r.musicId)),
         );
-        // MIN(sort_order) COALESCE 0
-        let minOrder = 0;
+        const atBottom = await addedAtBottom();
+        let edgeOrder = 0;
         let hasRel = false;
         for (const r of data.relations) {
-            if (r.sheetId === sheetId && (!hasRel || r.sortOrder < minOrder)) {
-                minOrder = r.sortOrder;
+            if (r.sheetId !== sheetId) continue;
+            if (!hasRel || (atBottom ? r.sortOrder > edgeOrder : r.sortOrder < edgeOrder)) {
+                edgeOrder = r.sortOrder;
                 hasRel = true;
             }
         }
-        const startOrder = minOrder - toAdd.length;
+        const startOrder = atBottom ? (hasRel ? edgeOrder + 1 : 0) : edgeOrder - toAdd.length;
         const now = Date.now();
 
         for (let i = 0; i < toAdd.length; i++) {

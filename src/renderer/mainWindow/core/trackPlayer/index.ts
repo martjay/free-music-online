@@ -30,10 +30,12 @@ import { tauriEmit, tauriInvoke, tauriListen } from '@infra/tauriBridge/ipc';
 import { REPEAT_MODE_MAP } from '@renderer/common/repeatModeMap';
 import { showToast } from '@renderer/mainWindow/components/ui/Toast';
 import i18n from '@infra/i18n/renderer';
+import { isDisliked, parseDislikeRules } from '@common/dislikeRules';
 import LyricParser from '@common/lyricParser';
 import { type IAudioController, createAudioController } from './audioController';
 import PlayQueue from './playQueue';
 import LyricManager from './lyricManager';
+import { bindSleepTimer } from './sleepTimer';
 import type { IPlayOptions, IResolvedMediaSource } from './types';
 
 interface IAlternativeSourceHit {
@@ -173,6 +175,8 @@ class TrackPlayer {
         });
         this.markReady = () => resolveReady();
         this.bindAudioEvents();
+        bindSleepTimer(() => this.pause());
+        this.bindOpenApi();
         this.watchStalledPlayback();
         this.bindAppSyncCommands();
         this.bindMediaSession();
@@ -221,6 +225,7 @@ class TrackPlayer {
     private static readonly SOURCE_RESOLVE_TIMEOUT_MS = 5000;
     private static readonly SOURCE_SLOW_TIMEOUT_MS = 12000;
     private static readonly PLAYBACK_START_TIMEOUT_MS = 5000;
+    private wakeLock: WakeLockSentinel | null = null;
 
     // ─── 启动恢复 ───
 
@@ -228,6 +233,7 @@ class TrackPlayer {
         try {
             await this.restorePlayerState();
         } finally {
+            this.startOpenApi();
             this.markReady();
         }
     }
@@ -420,6 +426,9 @@ class TrackPlayer {
                 false,
             );
             this.audioController.seekTo(savedProgress);
+            if (appConfig.getConfigByKey('playMusic.startupAutoPlay') === true) {
+                this.audioController.play();
+            }
         } catch {
             // 恢复失败不阻塞播放
         }
@@ -436,6 +445,16 @@ class TrackPlayer {
 
         const queue = this.playQueue.queue;
         index = ((index % queue.length) + queue.length) % queue.length;
+        const dislike = parseDislikeRules(appConfig.getConfigByKey('playMusic.dislikeRules'));
+        let skipped = 0;
+        while (skipped < queue.length && isDisliked(queue[index], dislike)) {
+            index = (index + 1) % queue.length;
+            skipped += 1;
+        }
+        if (skipped === queue.length) {
+            this.pause();
+            return;
+        }
 
         const targetSlim = queue[index];
 
@@ -824,6 +843,61 @@ class TrackPlayer {
 
     // ─── 事件绑定 ───
 
+    private async syncWakeLock(state: PlayerState): Promise<void> {
+        const enabled = appConfig.getConfigByKey('playMusic.preventSleep') === true;
+        if (!enabled || state !== PlayerState.Playing) {
+            const lock = this.wakeLock;
+            this.wakeLock = null;
+            await lock?.release().catch(() => {});
+            return;
+        }
+        if (this.wakeLock || typeof navigator === 'undefined' || !navigator.wakeLock) return;
+        try {
+            this.wakeLock = await navigator.wakeLock.request('screen');
+        } catch {
+            this.wakeLock = null;
+        }
+    }
+
+    private publishOpenApiStatus(): void {
+        const music = store.get(currentMusicAtom);
+        const state = store.get(playerStateAtom);
+        void tauriInvoke('open_api_set_status', {
+            status: JSON.stringify({
+                state,
+                title: music?.title ?? '',
+                artist: music?.artist ?? '',
+                id: music?.id ?? '',
+                platform: music?.platform ?? '',
+            }),
+        });
+    }
+
+    private bindOpenApi(): void {
+        void tauriListen<string>('open-api', (action) => {
+            if (action === 'next') void this.skipToNext();
+            else if (action === 'previous') void this.skipToPrev();
+            else if (action === 'pause') this.pause();
+            else if (action === 'play') this.resume();
+            else this.togglePlayPause();
+        });
+    }
+
+    private startOpenApi(): void {
+        const start = () => {
+            if (appConfig.getConfigByKey('openApi.enable') === true) {
+                void tauriInvoke('open_api_start', {
+                    port: appConfig.getConfigByKey('openApi.port') ?? 23330,
+                    allowLan: appConfig.getConfigByKey('openApi.allowLan') === true,
+                });
+                this.publishOpenApiStatus();
+            }
+            void this.syncWakeLock(store.get(playerStateAtom));
+        };
+        start();
+        appConfig.onConfigUpdated(start);
+    }
+
     private bindAudioEvents(): void {
         this.audioController.on('stateChange', (state) => {
             store.set(playerStateAtom, state);
@@ -833,6 +907,8 @@ class TrackPlayer {
             if (state === PlayerState.Playing) {
                 this.markSourceHealthy(this.activeSourceKey, this.activeSourceHash);
             }
+            void this.syncWakeLock(state);
+            this.publishOpenApiStatus();
             if (state === PlayerState.Paused) {
                 syncKV.set('player.currentProgress', store.get(progressAtom).currentTime);
             }
@@ -869,8 +945,10 @@ class TrackPlayer {
                 await this.playIndex(this.playQueue.getCurrentIndex(), {
                     restartOnSameMedia: true,
                 });
+            } else if (appConfig.getConfigByKey('playMusic.autoCleanPlayed') === true) {
+                const current = this.playQueue.getCurrentMusic();
+                if (current) await this.removeMusic(current);
             } else {
-                // 自然播完 → 下一首（不用 skipToNext，因为它是手动操作语义）
                 await this.playIndex(this.playQueue.getNextIndex());
             }
         });

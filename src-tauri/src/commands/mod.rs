@@ -9,6 +9,7 @@ pub mod http_proxy;
 pub mod local_meta;
 pub mod lyric_window;
 pub mod netease;
+pub mod open_api;
 pub mod system_util;
 pub mod taskbar_toolbar;
 pub mod tray_menu;

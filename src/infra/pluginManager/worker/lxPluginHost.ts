@@ -17,6 +17,16 @@ interface IHostRequestPayload {
     responseType?: string;
 }
 
+function bytesToBase64(bytes: ArrayBuffer): string {
+    const view = new Uint8Array(bytes);
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < view.length; i += chunk) {
+        binary += String.fromCharCode(...view.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+}
+
 interface IWorkerMessage {
     type: string;
     id?: string;
@@ -77,6 +87,7 @@ export class LxPluginHost {
                     method: payload.method,
                     headers: payload.headers,
                     body: payload.body,
+                    responseType: payload.responseType,
                 },
             });
             const bodyText = typeof res?.body === 'string' ? res.body : '';
@@ -102,14 +113,17 @@ export class LxPluginHost {
                               ? payload.body
                               : JSON.stringify(payload.body),
                 });
-                const text = await resp.text();
+                const wantsBase64 = payload.responseType === 'base64';
+                const data = wantsBase64
+                    ? bytesToBase64(await resp.arrayBuffer())
+                    : this.parseBody(await resp.text(), payload.responseType);
                 this.worker.postMessage({
                     type: 'host_response',
                     reqId,
                     result: {
                         status: resp.status,
                         headers: Object.fromEntries(resp.headers.entries()),
-                        data: this.parseBody(text, payload.responseType),
+                        data,
                     },
                     error: null,
                 });
@@ -125,12 +139,20 @@ export class LxPluginHost {
     }
 
     private parseBody(text: string, responseType?: string): any {
-        if (responseType === 'text') return text;
+        if (responseType === 'text' || responseType === 'base64') return text;
         try {
             return JSON.parse(text);
         } catch {
             return text;
         }
+    }
+
+    /** 启动内置榜单和歌单目录。这个 Worker 不再加载用户脚本。 */
+    public async initializeCatalog(timeoutMs = 20000): Promise<void> {
+        const id = `catalog_${++this.seq}`;
+        await this.request(id, timeoutMs, () => {
+            this.worker.postMessage({ type: 'init_catalog', id });
+        });
     }
 
     /** 在 Worker 中初始化插件代码，返回各音源 delegate（hash 由调用方补齐） */

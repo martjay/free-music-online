@@ -10,6 +10,14 @@
  */
 
 import CryptoJS from 'crypto-js';
+import {
+    decodeKrc,
+    decodeKuwoLyricx,
+    decodeQrc,
+    fixTlrcTimeTag,
+    parseKuwoLrc,
+    parseQrcToLrc,
+} from '../../../common/lyricCodec';
 
 // ─── Worker 侧：与宿主的 HTTP 桥 ───
 
@@ -333,6 +341,7 @@ type ILxTopListInfoResult = {
 type ILxRecommendSheetTagsResult = {
     pinned?: IMusic.IMusicSheetItem[];
     data?: IMusic.IMusicSheetGroupItem[];
+    sorts?: Array<{ id: string; title: string }>;
 };
 type ILxPaginationResponse<T> = {
     isEnd?: boolean;
@@ -349,6 +358,7 @@ type ILxRecommendSheetsGetter = (
     tag: IMedia.IUnique,
     page: number,
     platform: string,
+    sortId?: string,
 ) => Promise<ILxPaginationResponse<IMusic.IMusicSheetItem>>;
 type ILxMusicSheetInfoGetter = (
     sheetItem: IMusic.IMusicSheetItem,
@@ -722,7 +732,8 @@ function mapTencentSongInfo(item: any, platform: string): IMusic.IMusicItem {
             : undefined,
         duration: normalizeDurationSeconds(item.interval),
         raw: item,
-        songmid: item.songmid,
+        songmid: item.songmid ?? item.mid,
+        songId: item.songid ?? item.songId ?? item.id,
         media_mid: item.media_mid,
         strMediaMid: item.strMediaMid,
     };
@@ -861,8 +872,11 @@ function mapKugouSheetItem(item: any, platform: string): IMusic.IMusicSheetItem 
         title: cleanSearchText(item?.specialname ?? item?.rankname ?? item?.name),
         artwork: artwork ? String(artwork).replace('{size}', '300') : undefined,
         description: cleanSearchText(item?.intro ?? item?.description ?? item?.update_frequency),
-        worksNum: Number(item?.songcount ?? item?.total) || undefined,
-        playCount: Number(item?.playcount ?? item?.play_times) || undefined,
+        worksNum: Number(item?.songcount ?? item?.song_count ?? item?.total) || undefined,
+        playCount:
+            Number(
+                item?.playcount ?? item?.play_count ?? item?.total_play_count ?? item?.play_times,
+            ) || undefined,
         artist: cleanSearchText(item?.nickname ?? item?.singername),
         raw: item,
     };
@@ -928,53 +942,143 @@ async function getTencentTopListDetail(
     };
 }
 
+const TENCENT_PLAYLIST_HEADERS = { Referer: 'https://y.qq.com/', 'User-Agent': BROWSER_USER_AGENT };
+
+function tencentMusicuUrl(data: Record<string, unknown>): string {
+    return `https://u.y.qq.com/cgi-bin/musicu.fcg?loginUin=0&hostUin=0&format=json&inCharset=utf-8&outCharset=utf-8&notice=0&platform=wk_v15.json&needNewCode=0&data=${encodeURIComponent(JSON.stringify(data))}`;
+}
+
+function mapTencentCategorySheet(basic: any, platform: string): IMusic.IMusicSheetItem {
+    return {
+        id: String(basic?.tid ?? ''),
+        platform,
+        title: cleanSearchText(basic?.title),
+        artwork: basic?.cover?.medium_url || basic?.cover?.default_url,
+        description: cleanSearchText(String(basic?.desc ?? '').replace(/<br>/g, '\n')),
+        worksNum: Number(basic?.song_cnt) || undefined,
+        playCount: Number(basic?.play_cnt) || undefined,
+        artist: cleanSearchText(basic?.creator?.nick),
+        raw: basic,
+    };
+}
+
+async function fetchTencentRecommendPlaylists(
+    page: number,
+    platform: string,
+): Promise<ILxPaginationResponse<IMusic.IMusicSheetItem>> {
+    const resp = await axios.get(
+        tencentMusicuUrl({
+            comm: { cv: 1602, ct: 20 },
+            playlist: {
+                module: 'music.playlist.PlaylistSquare',
+                method: 'GetRecommendWhole',
+                param: {
+                    IsReqFeed: true,
+                    FeedReq: {
+                        From: (page - 1) * ONLINE_PLAYLIST_PAGE_SIZE,
+                        Size: ONLINE_PLAYLIST_PAGE_SIZE,
+                    },
+                },
+            },
+        }),
+        { headers: TENCENT_PLAYLIST_HEADERS, timeout: 15000, responseType: 'json' },
+    );
+    const list = Array.isArray(resp.data?.playlist?.data?.FeedRsp?.List)
+        ? resp.data.playlist.data.FeedRsp.List
+        : [];
+    return {
+        data: list
+            .map((item: any) => item?.Playlist?.basic)
+            .filter((item: any) => item?.tid && item?.title)
+            .map((item: any) => mapTencentCategorySheet(item, platform)),
+        isEnd: list.length < ONLINE_PLAYLIST_PAGE_SIZE,
+    };
+}
+
+async function fetchTencentCategoryPlaylists(
+    categoryId: string,
+    page: number,
+    platform: string,
+): Promise<ILxPaginationResponse<IMusic.IMusicSheetItem>> {
+    const resp = await axios.get(
+        tencentMusicuUrl({
+            comm: { cv: 1602, ct: 20 },
+            playlist: {
+                method: 'get_category_content',
+                param: {
+                    titleid: Number(categoryId),
+                    caller: '0',
+                    category_id: Number(categoryId),
+                    size: ONLINE_PLAYLIST_PAGE_SIZE,
+                    page: page - 1,
+                    use_page: 1,
+                },
+                module: 'playlist.PlayListCategoryServer',
+            },
+        }),
+        { headers: TENCENT_PLAYLIST_HEADERS, timeout: 15000, responseType: 'json' },
+    );
+    const content = resp.data?.playlist?.data?.content ?? {};
+    const list = Array.isArray(content.v_item) ? content.v_item : [];
+    const total = Number(content.total_cnt ?? 0);
+    return {
+        data: list
+            .map((item: any) => item?.basic)
+            .filter((item: any) => item?.tid && item?.title)
+            .map((item: any) => mapTencentCategorySheet(item, platform)),
+        isEnd:
+            list.length < ONLINE_PLAYLIST_PAGE_SIZE ||
+            (total > 0 && page * ONLINE_PLAYLIST_PAGE_SIZE >= total),
+    };
+}
+
 async function getTencentRecommendSheetTags(): Promise<ILxRecommendSheetTagsResult> {
-    const resp = await axios.get('https://c.y.qq.com/splcloud/fcgi-bin/fcg_get_diss_tag_conf.fcg', {
-        params: { format: 'json' },
-        headers: { Referer: 'https://y.qq.com/', 'User-Agent': BROWSER_USER_AGENT },
-        timeout: 15000,
-        responseType: 'json',
-    });
-    const categories = Array.isArray(resp.data?.data?.categories) ? resp.data.data.categories : [];
-    const data = categories
+    const resp = await axios.get(
+        tencentMusicuUrl({
+            tags: {
+                method: 'get_all_categories',
+                param: { qq: '' },
+                module: 'playlist.PlaylistAllCategoriesServer',
+            },
+        }),
+        { headers: TENCENT_PLAYLIST_HEADERS, timeout: 15000, responseType: 'json' },
+    );
+    const groups = Array.isArray(resp.data?.tags?.data?.v_group) ? resp.data.tags.data.v_group : [];
+    const data = groups
         .map((group: any) => ({
-            title: cleanSearchText(group?.categoryGroupName),
-            data: (Array.isArray(group?.items) ? group.items : [])
-                .filter((item: any) => item?.categoryId != null && item?.categoryName)
-                .map((item: any) => mapRecommendTag(item.categoryId, item.categoryName)),
+            title: cleanSearchText(group?.group_name),
+            data: (Array.isArray(group?.v_item) ? group.v_item : [])
+                .filter((item: any) => item?.id != null && item?.name)
+                .map((item: any) => mapRecommendTag(item.id, item.name)),
         }))
         .filter((group: IMusic.IMusicSheetGroupItem) => group.data.length);
-    const allTags = data.flatMap((group: IMusic.IMusicSheetGroupItem) => group.data);
-    return { pinned: allTags.slice(0, 8), data };
+    const hot = data.find((group: IMusic.IMusicSheetGroupItem) => group.title === '热门');
+    const pinned = (hot?.data ?? data[0]?.data ?? []).slice(0, 10);
+    return {
+        pinned,
+        data,
+        sorts: [
+            { id: '-1', title: '推荐' },
+            { id: '3', title: '最热' },
+            { id: '2', title: '最新' },
+        ],
+    };
 }
 
 async function getTencentRecommendSheetsByTag(
     tag: IMedia.IUnique,
     page: number,
     platform: string,
+    sortId = '-1',
 ): Promise<ILxPaginationResponse<IMusic.IMusicSheetItem>> {
     const currentPage = Math.max(Number(page) || 1, 1);
-    const start = (currentPage - 1) * ONLINE_PLAYLIST_PAGE_SIZE;
-    const resp = await axios.get('https://c.y.qq.com/splcloud/fcgi-bin/fcg_get_diss_by_tag.fcg', {
-        params: {
-            format: 'json',
-            categoryId: tag?.id && tag.id !== 'all' ? tag.id : 10000000,
-            sortId: 5,
-            sin: start,
-            ein: start + ONLINE_PLAYLIST_PAGE_SIZE - 1,
-        },
-        headers: { Referer: 'https://y.qq.com/', 'User-Agent': BROWSER_USER_AGENT },
-        timeout: 15000,
-        responseType: 'json',
-    });
-    const result = resp.data?.data ?? {};
-    const list = Array.isArray(result.list) ? result.list : [];
-    const total = Number(result.sum ?? 0);
-    return {
-        data: list.map((item: any) => mapTencentSheetItem(item, platform)),
-        isEnd:
-            list.length < ONLINE_PLAYLIST_PAGE_SIZE || (total > 0 && start + list.length >= total),
-    };
+    const tagId = tag?.id && tag.id !== 'all' ? String(tag.id) : '';
+    if (!tagId) {
+        if (!sortId || sortId === '-1')
+            return fetchTencentRecommendPlaylists(currentPage, platform);
+        return fetchTencentCategoryPlaylists(sortId, currentPage, platform);
+    }
+    return fetchTencentCategoryPlaylists(tagId, currentPage, platform);
 }
 
 async function fetchTencentPlaylistInfo(
@@ -1065,31 +1169,41 @@ async function getKugouTopListDetail(
 }
 
 async function getKugouRecommendSheetTags(): Promise<ILxRecommendSheetTagsResult> {
-    const resp = await axios.get('http://mobilecdn.kugou.com/api/v3/tag/list', {
-        params: { version: 9108, plat: 0 },
-        headers: { Referer: 'https://www.kugou.com/', 'User-Agent': BROWSER_USER_AGENT },
-        timeout: 15000,
-        responseType: 'json',
-    });
-    const groups = Array.isArray(resp.data?.data?.info) ? resp.data.data.info : [];
-    const data = groups
-        .map((group: any) => ({
-            title: cleanSearchText(group?.name),
-            data: (Array.isArray(group?.children) ? group.children : [])
-                .filter((item: any) => item?.name)
-                .map((item: any) => mapRecommendTag(item.special_tag_id ?? item.id, item.name)),
+    const resp = await axios.get(
+        'http://www2.kugou.kugou.com/yueku/v9/special/getSpecial?is_smarty=1',
+        {
+            headers: { Referer: 'https://www.kugou.com/', 'User-Agent': BROWSER_USER_AGENT },
+            timeout: 15000,
+            responseType: 'json',
+        },
+    );
+    const tagids = resp.data?.data?.tagids ?? {};
+    const data = Object.keys(tagids)
+        .map((name) => ({
+            title: cleanSearchText(name),
+            data: (Array.isArray(tagids[name]?.data) ? tagids[name].data : [])
+                .filter((item: any) => item?.id != null && item?.name)
+                .map((item: any) => mapRecommendTag(item.id, item.name)),
         }))
         .filter((group: IMusic.IMusicSheetGroupItem) => group.data.length);
-    const hotTags = groups.flatMap((group: any) =>
-        (Array.isArray(group?.children) ? group.children : [])
-            .filter((item: any) => item?.is_hot && item?.name)
-            .map((item: any) => mapRecommendTag(item.special_tag_id ?? item.id, item.name)),
-    );
+    const hotData = resp.data?.data?.hotTag?.data ?? {};
+    const pinned = Object.keys(hotData)
+        .map((key) => hotData[key])
+        .filter((item: any) => item?.special_id != null && item?.special_name)
+        .sort((a: any, b: any) => Number(a.sort ?? 0) - Number(b.sort ?? 0))
+        .map((item: any) => mapRecommendTag(item.special_id, item.special_name));
     return {
-        pinned: hotTags.length
-            ? hotTags.slice(0, 8)
+        pinned: pinned.length
+            ? pinned
             : data.flatMap((group: IMusic.IMusicSheetGroupItem) => group.data).slice(0, 8),
         data,
+        sorts: [
+            { id: '5', title: '推荐' },
+            { id: '6', title: '最热' },
+            { id: '7', title: '最新' },
+            { id: '3', title: '热藏' },
+            { id: '8', title: '飙升' },
+        ],
     };
 }
 
@@ -1097,23 +1211,28 @@ async function getKugouRecommendSheetsByTag(
     tag: IMedia.IUnique,
     page: number,
     platform: string,
+    sortId = '5',
 ): Promise<ILxPaginationResponse<IMusic.IMusicSheetItem>> {
     const currentPage = Math.max(Number(page) || 1, 1);
-    const keyword = cleanSearchText(tag?.title) || '热门';
-    const resp = await axios.get('http://mobilecdn.kugou.com/api/v3/search/special', {
-        params: { keyword, page: currentPage, pagesize: ONLINE_PLAYLIST_PAGE_SIZE },
+    const tagId = tag?.id && tag.id !== 'all' ? String(tag.id) : '';
+    const resp = await axios.get('http://www2.kugou.kugou.com/yueku/v9/special/getSpecial', {
+        params: {
+            is_ajax: 1,
+            cdn: 'cdn',
+            t: sortId || '5',
+            c: tagId,
+            p: currentPage,
+        },
         headers: { Referer: 'https://www.kugou.com/', 'User-Agent': BROWSER_USER_AGENT },
         timeout: 15000,
         responseType: 'json',
     });
-    const result = resp.data?.data ?? {};
-    const list = Array.isArray(result.info) ? result.info : [];
-    const total = Number(result.total ?? 0);
+    const list = Array.isArray(resp.data?.special_db) ? resp.data.special_db : [];
     return {
-        data: list.map((item: any) => mapKugouSheetItem(item, platform)),
-        isEnd:
-            list.length < ONLINE_PLAYLIST_PAGE_SIZE ||
-            (total > 0 && currentPage * ONLINE_PLAYLIST_PAGE_SIZE >= total),
+        data: list
+            .filter((item: any) => item?.specialid && item?.specialname)
+            .map((item: any) => mapKugouSheetItem(item, platform)),
+        isEnd: list.length < 20,
     };
 }
 
@@ -1236,18 +1355,39 @@ async function getNeteaseTopListDetail(
 }
 
 async function getNeteaseRecommendSheetTags(): Promise<ILxRecommendSheetTagsResult> {
-    const resp = await axios.get('https://music.163.com/api/playlist/hottags', {
-        headers: NETEASE_HEADERS,
-        timeout: 15000,
-        responseType: 'json',
-    });
+    const [hotResp, catalogResp] = await Promise.all([
+        axios.get('https://music.163.com/api/playlist/hottags', {
+            headers: NETEASE_HEADERS,
+            timeout: 15000,
+            responseType: 'json',
+        }),
+        axios.get('https://music.163.com/api/playlist/catalogue', {
+            headers: NETEASE_HEADERS,
+            timeout: 15000,
+            responseType: 'json',
+        }),
+    ]);
 
-    const tags: any[] = Array.isArray(resp.data?.tags) ? resp.data.tags : [];
-    const mappedTags = tags.map(mapNeteaseTag).filter((item) => item.id);
+    const categories = catalogResp.data?.categories ?? {};
+    const sub = Array.isArray(catalogResp.data?.sub) ? catalogResp.data.sub : [];
+    const grouped = new Map<string, IMusic.IMusicSheetItem[]>();
+    for (const item of sub) {
+        const title = cleanSearchText(categories[item?.category]);
+        const name = cleanSearchText(item?.name);
+        if (!title || !name) continue;
+        const list = grouped.get(title) ?? [];
+        list.push(mapRecommendTag(name, name));
+        grouped.set(title, list);
+    }
+    const data = [...grouped.entries()].map(([title, items]) => ({ title, data: items }));
+    const hotTags = (Array.isArray(hotResp.data?.tags) ? hotResp.data.tags : [])
+        .map(mapNeteaseTag)
+        .filter((item) => item.id);
 
     return {
-        pinned: mappedTags.slice(0, 8),
-        data: mappedTags.length ? [{ title: '热门分类', data: mappedTags }] : [],
+        pinned: hotTags.length ? hotTags : data.flatMap((group) => group.data).slice(0, 8),
+        data,
+        sorts: [{ id: 'hot', title: '最热' }],
     };
 }
 
@@ -1255,13 +1395,14 @@ async function getNeteaseRecommendSheetsByTag(
     tag: IMedia.IUnique,
     page: number,
     platform: string,
+    sortId = 'hot',
 ): Promise<ILxPaginationResponse<IMusic.IMusicSheetItem>> {
     const currentPage = Math.max(Number(page) || 1, 1);
     const category = cleanSearchText(tag?.title ?? tag?.id) || '全部';
     const resp = await axios.get('https://music.163.com/api/playlist/list', {
         params: {
             cat: category,
-            order: 'hot',
+            order: sortId || 'hot',
             offset: (currentPage - 1) * NETEASE_PLAYLIST_PAGE_SIZE,
             limit: NETEASE_PLAYLIST_PAGE_SIZE,
             total: currentPage === 1,
@@ -1905,6 +2046,110 @@ async function searchKuwoMusic(
     };
 }
 
+async function searchTencentSheet(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'sheet'>> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('http://c.y.qq.com/soso/fcgi-bin/client_music_search_songlist', {
+        params: {
+            page_no: currentPage - 1,
+            num_per_page: LX_SEARCH_PAGE_SIZE,
+            format: 'json',
+            query,
+            remoteplace: 'txt.yqq.playlist',
+            inCharset: 'utf8',
+            outCharset: 'utf-8',
+        },
+        headers: {
+            Referer: 'https://y.qq.com/',
+            'User-Agent': BROWSER_USER_AGENT,
+        },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const list = Array.isArray(resp.data?.data?.list) ? resp.data.data.list : [];
+    const total = Number(resp.data?.data?.sum ?? 0);
+    return {
+        isEnd: list.length < LX_SEARCH_PAGE_SIZE || currentPage * LX_SEARCH_PAGE_SIZE >= total,
+        data: list.map((item: any) => mapTencentSheetItem(item, platform)),
+    };
+}
+
+async function searchKugouSheet(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'sheet'>> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('http://msearchretry.kugou.com/api/v3/search/special', {
+        params: {
+            keyword: query,
+            page: currentPage,
+            pagesize: LX_SEARCH_PAGE_SIZE,
+            showtype: 10,
+            filter: 0,
+            version: 7910,
+            sver: 2,
+        },
+        headers: { Referer: 'https://www.kugou.com/', 'User-Agent': BROWSER_USER_AGENT },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const list = Array.isArray(resp.data?.data?.info) ? resp.data.data.info : [];
+    const total = Number(resp.data?.data?.total ?? 0);
+    return {
+        isEnd: list.length < LX_SEARCH_PAGE_SIZE || currentPage * LX_SEARCH_PAGE_SIZE >= total,
+        data: list.map((item: any) => mapKugouSheetItem(item, platform)),
+    };
+}
+
+async function searchKuwoSheet(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'sheet'>> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('https://search.kuwo.cn/r.s', {
+        params: {
+            client: 'kt',
+            all: query,
+            pn: currentPage - 1,
+            rn: LX_SEARCH_PAGE_SIZE,
+            ft: 'playlist',
+            encoding: 'utf8',
+            rformat: 'json',
+            mobi: 1,
+            vipver: 1,
+        },
+        headers: KUWO_HEADERS,
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const list = Array.isArray(resp.data?.abslist) ? resp.data.abslist : [];
+    const total = Number(resp.data?.TOTAL ?? 0);
+    return {
+        isEnd: list.length < LX_SEARCH_PAGE_SIZE || currentPage * LX_SEARCH_PAGE_SIZE >= total,
+        data: list.map((item: any) => mapKuwoSheetItem(item, platform)),
+    };
+}
+
+async function searchMiguSheet(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'sheet'>> {
+    const currentPage = Math.max(page, 1);
+    const { list, total } = await searchMiguPlaylists(query, currentPage);
+    return {
+        isEnd:
+            list.length < ONLINE_PLAYLIST_PAGE_SIZE ||
+            (total > 0 && currentPage * ONLINE_PLAYLIST_PAGE_SIZE >= total),
+        data: list.map((item: any) => mapMiguSheetItem(item, platform)),
+    };
+}
+
 async function searchMiguMusic(
     query: string,
     page: number,
@@ -2004,39 +2249,101 @@ async function getNeteaseLyric(
     };
 }
 
-async function getTencentLyric(
-    musicInfo: Record<string, any>,
-): Promise<ILyric.ILyricSource | null> {
+async function resolveTencentSongId(musicInfo: Record<string, any>): Promise<number | null> {
+    const direct = Number(
+        musicInfo.songId ?? musicInfo.songid ?? musicInfo.raw?.songid ?? musicInfo.raw?.id,
+    );
+    if (Number.isFinite(direct) && direct > 0) return direct;
+
     const songmid =
         musicInfo.songmid ?? musicInfo.media_mid ?? musicInfo.strMediaMid ?? musicInfo.id;
     if (!songmid) return null;
 
-    const resp = await axios.get('https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg', {
-        params: {
-            songmid,
-            format: 'json',
-            nobase64: 1,
-        },
-        headers: {
-            Referer: 'https://y.qq.com/',
-            'User-Agent': BROWSER_USER_AGENT,
-        },
-        timeout: 15000,
-        responseType: 'json',
-    });
+    try {
+        const resp = await axios.post(
+            'https://u.y.qq.com/cgi-bin/musicu.fcg',
+            {
+                comm: { ct: '19', cv: '1859', uin: '0' },
+                req: {
+                    module: 'music.pf_song_detail_svr',
+                    method: 'get_song_detail_yqq',
+                    param: { song_type: 0, song_mid: String(songmid) },
+                },
+            },
+            {
+                headers: {
+                    Referer: 'https://y.qq.com/',
+                    'User-Agent': BROWSER_USER_AGENT,
+                },
+                timeout: 15000,
+                responseType: 'json',
+            },
+        );
+        const id = Number(resp.data?.req?.data?.track_info?.id);
+        return Number.isFinite(id) && id > 0 ? id : null;
+    } catch {
+        return null;
+    }
+}
 
-    const rawLrc = decodeTextEntities(resp.data?.lyric);
-    const translation = decodeTextEntities(resp.data?.trans);
+async function getTencentLyric(
+    musicInfo: Record<string, any>,
+): Promise<ILyric.ILyricSource | null> {
+    const songId = await resolveTencentSongId(musicInfo);
+    if (!songId) return null;
+
+    const resp = await axios.post(
+        'https://u.y.qq.com/cgi-bin/musicu.fcg',
+        {
+            comm: { ct: '19', cv: '1859', uin: '0' },
+            req: {
+                method: 'GetPlayLyricInfo',
+                module: 'music.musichallSong.PlayLyricInfo',
+                param: {
+                    format: 'json',
+                    crypt: 1,
+                    ct: 19,
+                    cv: 1873,
+                    interval: 0,
+                    lrc_t: 0,
+                    qrc: 1,
+                    qrc_t: 0,
+                    roma: 0,
+                    roma_t: 0,
+                    songID: songId,
+                    trans: 1,
+                    trans_t: 0,
+                    type: -1,
+                },
+            },
+        },
+        {
+            headers: {
+                Referer: 'https://y.qq.com/',
+                'User-Agent': BROWSER_USER_AGENT,
+            },
+            timeout: 15000,
+            responseType: 'json',
+        },
+    );
+
+    if (resp.data?.code !== 0 || resp.data?.req?.code !== 0) return null;
+    const data = resp.data?.req?.data;
+    if (!data?.lyric) return null;
+
+    const [decodedLrc, decodedTrans] = await Promise.all([
+        decodeQrc(String(data.lyric)),
+        data.trans ? decodeQrc(String(data.trans)) : Promise.resolve(''),
+    ]);
+    const { lyric } = parseQrcToLrc(decodedLrc);
+    const translation = decodedTrans ? fixTlrcTimeTag(decodedTrans, lyric) : '';
+    const rawLrc = decodeTextEntities(lyric);
     if (!rawLrc && !translation) return null;
-
-    return {
-        rawLrc,
-        translation,
-    };
+    return { rawLrc: rawLrc || '', translation: translation || undefined };
 }
 
 async function getKugouLyric(musicInfo: Record<string, any>): Promise<ILyric.ILyricSource | null> {
-    const hash = musicInfo.hash ?? musicInfo.id;
+    const hash = musicInfo.hash ?? musicInfo.raw?.hash ?? musicInfo.id;
     const keyword = [
         musicInfo.title ?? musicInfo.songname,
         musicInfo.artist ?? musicInfo.singername,
@@ -2045,20 +2352,32 @@ async function getKugouLyric(musicInfo: Record<string, any>): Promise<ILyric.ILy
         .join(' ');
     if (!hash || !keyword) return null;
 
-    const duration = normalizeDurationSeconds(musicInfo.duration);
-    const resp = await axios.get('https://lyrics.kugou.com/search', {
+    const durationMs =
+        Number(musicInfo._interval) ||
+        (() => {
+            const sec = normalizeDurationSeconds(
+                musicInfo.duration ?? musicInfo.interval ?? musicInfo.raw?.duration,
+            );
+            return sec ? sec * 1000 : 0;
+        })();
+
+    const kgHeaders = {
+        'KG-RC': '1',
+        'KG-THash': 'expand_search_manager.cpp:852736169:451',
+        'User-Agent': 'KuGou2012-9020-ExpandSearchManager',
+    };
+
+    const resp = await axios.get('http://lyrics.kugou.com/search', {
         params: {
             ver: 1,
             man: 'yes',
             client: 'pc',
             keyword,
-            duration: duration ? duration * 1000 : undefined,
             hash,
+            timelength: durationMs || undefined,
+            lrctxt: 1,
         },
-        headers: {
-            Referer: 'https://www.kugou.com/',
-            'User-Agent': BROWSER_USER_AGENT,
-        },
+        headers: kgHeaders,
         timeout: 15000,
         responseType: 'json',
     });
@@ -2067,25 +2386,33 @@ async function getKugouLyric(musicInfo: Record<string, any>): Promise<ILyric.ILy
     const candidate = candidates[0];
     if (!candidate?.id || !candidate?.accesskey) return null;
 
-    const downloadResp = await axios.get('https://lyrics.kugou.com/download', {
+    const fmt = candidate.krctype == 1 && candidate.contenttype != 1 ? 'krc' : 'lrc';
+
+    const downloadResp = await axios.get('http://lyrics.kugou.com/download', {
         params: {
             ver: 1,
             client: 'pc',
             id: candidate.id,
             accesskey: candidate.accesskey,
-            fmt: 'lrc',
+            fmt,
             charset: 'utf8',
         },
-        headers: {
-            Referer: 'https://www.kugou.com/',
-            'User-Agent': BROWSER_USER_AGENT,
-        },
+        headers: kgHeaders,
         timeout: 15000,
         responseType: 'json',
     });
 
     const content = downloadResp.data?.content;
     if (typeof content !== 'string' || !content) return null;
+    const bodyFmt = downloadResp.data?.fmt || fmt;
+
+    if (bodyFmt === 'krc') {
+        const parsed = await decodeKrc(content);
+        const rawLrc = decodeTextEntities(parsed.lyric);
+        const translation = decodeTextEntities(parsed.tlyric);
+        if (!rawLrc && !translation) return null;
+        return { rawLrc: rawLrc || '', translation: translation || undefined };
+    }
 
     const rawLrc = decodeTextEntities(decodeBase64Utf8(content));
     return rawLrc ? { rawLrc } : null;
@@ -2097,10 +2424,36 @@ async function getKuwoLyric(musicInfo: Record<string, any>): Promise<ILyric.ILyr
     ).replace(/^MUSIC_/, '');
     if (!musicId) return null;
 
+    try {
+        const resp = await axios.get(
+            `http://mlyric.kuwo.cn/mobi.s?f=web&type=lyric&lrcx=1&rid=${musicId}&encode=utf8`,
+            {
+                headers: {
+                    Referer: 'http://www.kuwo.cn/',
+                    'User-Agent': BROWSER_USER_AGENT,
+                },
+                timeout: 15000,
+                responseType: 'base64',
+            },
+        );
+        const b64 = typeof resp.data === 'string' ? resp.data : '';
+        if (b64) {
+            const text = await decodeKuwoLyricx(b64, true);
+            if (text && /\[\d{1,2}:.*\d{1,4}]/.test(text)) {
+                const parsed = parseKuwoLrc(text);
+                const rawLrc = decodeTextEntities(parsed.lyric);
+                const translation = decodeTextEntities(parsed.tlyric);
+                if (rawLrc) {
+                    return { rawLrc, translation: translation || undefined };
+                }
+            }
+        }
+    } catch {
+        /* fall through to H5 API */
+    }
+
     const resp = await axios.get('https://m.kuwo.cn/newh5/singles/songinfoandlrc', {
-        params: {
-            musicId,
-        },
+        params: { musicId },
         headers: {
             Referer: 'https://m.kuwo.cn/',
             'User-Agent': BROWSER_USER_AGENT,
@@ -2109,25 +2462,81 @@ async function getKuwoLyric(musicInfo: Record<string, any>): Promise<ILyric.ILyr
         responseType: 'json',
     });
 
-    const rawLrc = buildKuwoLyricText(resp.data?.data?.lrclist);
-    return rawLrc ? { rawLrc } : null;
+    const list = resp.data?.data?.lrclist;
+    if (!Array.isArray(list) || !list.length) return null;
+
+    // H5 list may embed translation as duplicate timestamps — reuse Kuwo sorter via LRC text
+    const asLrc = buildKuwoLyricText(list);
+    if (!asLrc) return null;
+    const parsed = parseKuwoLrc(asLrc);
+    return {
+        rawLrc: decodeTextEntities(parsed.lyric) || asLrc,
+        translation: decodeTextEntities(parsed.tlyric) || undefined,
+    };
+}
+
+async function resolveMiguLyricUrls(
+    musicInfo: Record<string, any>,
+): Promise<{ lrcUrl?: string; trcUrl?: string }> {
+    const lrcUrl = musicInfo.lrcUrl ?? musicInfo.lrc ?? musicInfo.lyricUrl ?? musicInfo.raw?.lrcUrl;
+    const trcUrl = musicInfo.trcUrl ?? musicInfo.raw?.trcUrl;
+    if (lrcUrl) return { lrcUrl, trcUrl };
+
+    const resourceId =
+        musicInfo.copyrightId ??
+        musicInfo.songmid ??
+        musicInfo.songId ??
+        musicInfo.id ??
+        musicInfo.raw?.copyrightId;
+    if (!resourceId) return {};
+
+    try {
+        const resp = await axios.post(
+            'https://c.musicapp.migu.cn/MIGUM2.0/v1.0/content/resourceinfo.do?resourceType=2',
+            `resourceId=${encodeURIComponent(String(resourceId))}`,
+            {
+                headers: {
+                    ...MIGU_HEADERS,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    channel: '0146921',
+                },
+                timeout: 15000,
+                responseType: 'json',
+            },
+        );
+        const item = Array.isArray(resp.data?.resource) ? resp.data.resource[0] : null;
+        return {
+            lrcUrl: item?.lrcUrl,
+            trcUrl: item?.trcUrl,
+        };
+    } catch {
+        return {};
+    }
 }
 
 async function getMiguLyric(musicInfo: Record<string, any>): Promise<ILyric.ILyricSource | null> {
-    const lrcUrl = musicInfo.lrc ?? musicInfo.lyricUrl;
-    if (!lrcUrl) return null;
+    const urls = await resolveMiguLyricUrls(musicInfo);
+    if (!urls.lrcUrl) return null;
 
-    const resp = await axios.get(lrcUrl, {
-        headers: {
-            Referer: 'https://music.migu.cn/',
-            'User-Agent': MOBILE_USER_AGENT,
-        },
-        timeout: 15000,
-        responseType: 'text',
-    });
+    const headers = {
+        Referer: 'https://app.c.nf.migu.cn/',
+        'User-Agent': MOBILE_USER_AGENT,
+        channel: '0146921',
+    };
 
-    const rawLrc = decodeTextEntities(resp.data);
-    return rawLrc ? { rawLrc, lrc: lrcUrl } : null;
+    const [lrcResp, trcResp] = await Promise.all([
+        axios.get(urls.lrcUrl, { headers, timeout: 15000, responseType: 'text' }),
+        urls.trcUrl
+            ? axios
+                  .get(urls.trcUrl, { headers, timeout: 15000, responseType: 'text' })
+                  .catch(() => null)
+            : Promise.resolve(null),
+    ]);
+
+    const rawLrc = decodeTextEntities(lrcResp.data);
+    const translation = trcResp ? decodeTextEntities(trcResp.data) : undefined;
+    if (!rawLrc && !translation) return null;
+    return { rawLrc: rawLrc || '', translation, lrc: urls.lrcUrl };
 }
 
 // lyric 搜索复用 music 搜索器：搜索结果项为 IMusicItem（含 raw 字段），
@@ -2136,14 +2545,6 @@ const LX_MEDIA_SEARCHERS: Record<
     string,
     Partial<Record<IMedia.SupportMediaType, ILxMediaSearcher>>
 > = {
-    tx: {
-        music: searchTencentMusic,
-        lyric: searchTencentMusic,
-    },
-    kg: {
-        music: searchKugouMusic,
-        lyric: searchKugouMusic,
-    },
     wy: {
         music: searchNeteaseMusic,
         album: searchNeteaseAlbum,
@@ -2154,10 +2555,22 @@ const LX_MEDIA_SEARCHERS: Record<
     kw: {
         music: searchKuwoMusic,
         lyric: searchKuwoMusic,
+        sheet: searchKuwoSheet,
+    },
+    tx: {
+        music: searchTencentMusic,
+        lyric: searchTencentMusic,
+        sheet: searchTencentSheet,
+    },
+    kg: {
+        music: searchKugouMusic,
+        lyric: searchKugouMusic,
+        sheet: searchKugouSheet,
     },
     mg: {
         music: searchMiguMusic,
         lyric: searchMiguMusic,
+        sheet: searchMiguSheet,
     },
 };
 
@@ -2188,29 +2601,51 @@ const LX_ARTIST_WORKS_GETTERS: Record<string, ILxArtistWorksGetter> = {
     wy: getNeteaseArtistWorks,
 };
 
-/** 酷我没有可用的榜单目录接口，使用仍能拉到歌曲的固定榜单。 */
+/** 与洛雪酷我榜单目录同一份。接口目录已停用，这边也用这份完整名单。 */
 const KUWO_CHARTS: Array<{ id: string; title: string }> = [
-    { id: '16', title: '热歌榜' },
-    { id: '17', title: '新歌榜' },
     { id: '93', title: '飙升榜' },
+    { id: '17', title: '新歌榜' },
+    { id: '16', title: '热歌榜' },
+    { id: '158', title: '抖音热歌榜' },
+    { id: '292', title: '铃声榜' },
+    { id: '284', title: '热评榜' },
+    { id: '290', title: 'ACG新歌榜' },
+    { id: '286', title: '台湾KKBOX榜' },
+    { id: '279', title: '冬日暖心榜' },
+    { id: '281', title: '巴士随身听榜' },
+    { id: '255', title: 'KTV点唱榜' },
+    { id: '280', title: '家务进行曲榜' },
+    { id: '282', title: '熬夜修仙榜' },
+    { id: '283', title: '枕边轻音乐榜' },
+    { id: '278', title: '古风音乐榜' },
+    { id: '264', title: 'Vlog音乐榜' },
+    { id: '242', title: '电音榜' },
+    { id: '187', title: '流行趋势榜' },
+    { id: '204', title: '现场音乐榜' },
+    { id: '186', title: 'ACG神曲榜' },
+    { id: '185', title: '最强翻唱榜' },
     { id: '26', title: '经典怀旧榜' },
-    { id: '64', title: '热评榜' },
-    { id: '158', title: '抖音榜' },
-    { id: '187', title: '流行榜' },
-    { id: '176', title: '古风榜' },
-];
-
-const PLAYLIST_TAGS = [
-    '华语',
-    '流行',
-    '摇滚',
-    '民谣',
-    '电子',
-    '轻音乐',
-    '古风',
-    '粤语',
-    '影视',
-    '经典',
+    { id: '104', title: '华语榜' },
+    { id: '182', title: '粤语榜' },
+    { id: '22', title: '欧美榜' },
+    { id: '184', title: '韩语榜' },
+    { id: '183', title: '日语榜' },
+    { id: '145', title: '会员畅听榜' },
+    { id: '153', title: '网红新歌榜' },
+    { id: '64', title: '影视金曲榜' },
+    { id: '176', title: 'DJ嗨歌榜' },
+    { id: '106', title: '真声音' },
+    { id: '12', title: 'Billboard榜' },
+    { id: '49', title: 'iTunes音乐榜' },
+    { id: '180', title: 'beatport电音榜' },
+    { id: '13', title: '英国UK榜' },
+    { id: '164', title: '百大DJ榜' },
+    { id: '246', title: 'YouTube音乐排行榜' },
+    { id: '265', title: '韩国Genie榜' },
+    { id: '14', title: '韩国M-net榜' },
+    { id: '8', title: '香港电台榜' },
+    { id: '15', title: '日本公信榜' },
+    { id: '151', title: '腾讯音乐人原创榜' },
 ];
 
 const KUWO_HEADERS = { Referer: 'https://www.kuwo.cn/', 'User-Agent': BROWSER_USER_AGENT };
@@ -2264,6 +2699,9 @@ function mapMiguSongInfo(item: any, platform: string): IMusic.IMusicItem {
         contentId: item.contentId,
         copyrightId: item.copyrightId,
         lrc: item.lrcUrl ?? item.lyricUrl,
+        lrcUrl: item.lrcUrl ?? item.lyricUrl,
+        mrcUrl: item.mrcUrl,
+        trcUrl: item.trcUrl,
     };
 }
 
@@ -2345,41 +2783,90 @@ async function getKuwoTopListDetail(
     };
 }
 
+function mapKuwoPlaylist(item: any, platform: string): IMusic.IMusicSheetItem {
+    return {
+        id: String(item.id ?? ''),
+        platform,
+        title: cleanSearchText(item.name),
+        artwork: item.img,
+        description: cleanSearchText(item.desc),
+        worksNum: Number(item.total) || undefined,
+        playCount: Number(item.listencnt) || undefined,
+        artist: cleanSearchText(item.uname),
+        raw: item,
+    };
+}
+
 async function getKuwoRecommendSheetTags(): Promise<ILxRecommendSheetTagsResult> {
-    const data = PLAYLIST_TAGS.map((title) => mapRecommendTag(title, title));
-    return { pinned: data.slice(0, 8), data: [{ title: '分类', data }] };
+    const headers = KUWO_HEADERS;
+    const [tagResp, hotResp] = await Promise.all([
+        axios.get(
+            'http://wapi.kuwo.cn/api/pc/classify/playlist/getTagList?cmd=rcm_keyword_playlist&user=0&prod=kwplayer_pc_9.0.5.0&vipver=9.0.5.0&source=kwplayer_pc_9.0.5.0&loginUid=0&loginSid=0&appUid=76039576',
+            { headers, timeout: 15000, responseType: 'json' },
+        ),
+        axios.get(
+            'http://wapi.kuwo.cn/api/pc/classify/playlist/getRcmTagList?loginUid=0&loginSid=0&appUid=76039576',
+            { headers, timeout: 15000, responseType: 'json' },
+        ),
+    ]);
+    const groups = Array.isArray(tagResp.data?.data) ? tagResp.data.data : [];
+    const data = groups
+        .map((group: any) => ({
+            title: cleanSearchText(group?.name),
+            data: (Array.isArray(group?.data) ? group.data : [])
+                .filter((item: any) => item?.id != null && item?.name)
+                .map((item: any) => mapRecommendTag(`${item.id}-${item.digest}`, item.name)),
+        }))
+        .filter((group: IMusic.IMusicSheetGroupItem) => group.data.length);
+    const hot = Array.isArray(hotResp.data?.data?.[0]?.data) ? hotResp.data.data[0].data : [];
+    const pinned = hot
+        .filter((item: any) => item?.id != null && item?.name)
+        .map((item: any) => mapRecommendTag(`${item.id}-${item.digest}`, item.name));
+    return {
+        pinned,
+        data,
+        sorts: [
+            { id: 'hot', title: '最热' },
+            { id: 'new', title: '最新' },
+        ],
+    };
 }
 
 async function getKuwoRecommendSheetsByTag(
     tag: IMedia.IUnique,
     page: number,
     platform: string,
+    sortId = 'hot',
 ): Promise<ILxPaginationResponse<IMusic.IMusicSheetItem>> {
     const currentPage = Math.max(Number(page) || 1, 1);
-    const keyword = cleanSearchText(tag?.title ?? tag?.id) || '热门';
-    const resp = await axios.get('https://search.kuwo.cn/r.s', {
-        params: {
-            client: 'kt',
-            all: keyword,
-            pn: currentPage - 1,
-            rn: ONLINE_PLAYLIST_PAGE_SIZE,
-            ft: 'playlist',
-            encoding: 'utf8',
-            rformat: 'json',
-            mobi: 1,
-            vipver: 1,
-        },
+    const tagId = tag?.id && tag.id !== 'all' ? String(tag.id) : '';
+    let url: string;
+    if (!tagId) {
+        url = `http://wapi.kuwo.cn/api/pc/classify/playlist/getRcmPlayList?loginUid=0&loginSid=0&appUid=76039576&pn=${currentPage}&rn=${ONLINE_PLAYLIST_PAGE_SIZE}&order=${sortId || 'hot'}`;
+    } else {
+        const [id, type] = tagId.split('-');
+        url =
+            type === '43'
+                ? `http://mobileinterfaces.kuwo.cn/er.s?type=get_pc_qz_data&f=web&id=${id}&prod=pc`
+                : `http://wapi.kuwo.cn/api/pc/classify/playlist/getTagPlayList?loginUid=0&loginSid=0&appUid=76039576&pn=${currentPage}&id=${id}&rn=${ONLINE_PLAYLIST_PAGE_SIZE}`;
+    }
+    const resp = await axios.get(url, {
         headers: KUWO_HEADERS,
         timeout: 15000,
         responseType: 'json',
     });
-    const list = Array.isArray(resp.data?.abslist) ? resp.data.abslist : [];
-    const total = Number(resp.data?.TOTAL ?? 0);
+    const body = resp.data;
+    const nested = Array.isArray(body?.data?.data) ? body.data.data : null;
+    const list =
+        nested ?? (Array.isArray(body) ? body.flatMap((group: any) => group?.list ?? []) : []);
+    const total = Number(body?.data?.total ?? 0);
+    const pageSize =
+        Number(body?.data?.rn ?? ONLINE_PLAYLIST_PAGE_SIZE) || ONLINE_PLAYLIST_PAGE_SIZE;
     return {
-        data: list.map((item: any) => mapKuwoSheetItem(item, platform)),
-        isEnd:
-            list.length < ONLINE_PLAYLIST_PAGE_SIZE ||
-            (total > 0 && currentPage * ONLINE_PLAYLIST_PAGE_SIZE >= total),
+        data: list
+            .filter((item: any) => item?.id && item?.name)
+            .map((item: any) => mapKuwoPlaylist(item, platform)),
+        isEnd: !nested || list.length < pageSize || (total > 0 && currentPage * pageSize >= total),
     };
 }
 
@@ -2479,9 +2966,60 @@ async function getMiguTopListDetail(
     };
 }
 
+function walkMiguPlaylists(nodes: any, list: any[] = [], seen = new Set<string>()): any[] {
+    if (!nodes) return list;
+    const items = Array.isArray(nodes) ? nodes : [nodes];
+    for (const item of items) {
+        if (!item || typeof item !== 'object') continue;
+        if (Array.isArray(item.contents)) walkMiguPlaylists(item.contents, list, seen);
+        if (String(item.resType) === '2021' && item.resId && !seen.has(String(item.resId))) {
+            seen.add(String(item.resId));
+            list.push(item);
+        }
+    }
+    return list;
+}
+
+function mapMiguPlazaSheet(item: any, platform: string): IMusic.IMusicSheetItem {
+    const id = String(item.resId ?? item.logEvent?.contentId ?? item.id ?? '');
+    return {
+        id,
+        platform,
+        title: cleanSearchText(item.txt ?? item.title ?? item.name),
+        artwork: item.img ?? item.imageUrl,
+        description: cleanSearchText(item.txt2 ?? item.desc),
+        playCount: /^\d+$/.test(String(item.playNum ?? '')) ? Number(item.playNum) : undefined,
+        artist: cleanSearchText(item.author),
+        raw: item,
+    };
+}
+
 async function getMiguRecommendSheetTags(): Promise<ILxRecommendSheetTagsResult> {
-    const data = PLAYLIST_TAGS.map((title) => mapRecommendTag(title, title));
-    return { pinned: data.slice(0, 8), data: [{ title: '分类', data }] };
+    const resp = await axios.get(
+        'https://app.c.nf.migu.cn/pc/v1.0/template/musiclistplaza-taglist/release',
+        { headers: MIGU_HEADERS, timeout: 15000, responseType: 'json' },
+    );
+    const blocks = Array.isArray(resp.data?.data) ? resp.data.data : [];
+    const mapBlock = (block: any) =>
+        (Array.isArray(block?.content) ? block.content : [])
+            .map((item: any) => {
+                const texts = Array.isArray(item?.texts) ? item.texts : [];
+                return mapRecommendTag(texts[1], texts[0]);
+            })
+            .filter((item: IMusic.IMusicSheetItem) => item.id && item.title);
+    const pinned = blocks.length ? mapBlock(blocks[0]) : [];
+    const data = blocks
+        .slice(1)
+        .map((block: any) => ({
+            title: cleanSearchText(block?.header?.title),
+            data: mapBlock(block),
+        }))
+        .filter((group: IMusic.IMusicSheetGroupItem) => group.data.length);
+    return {
+        pinned,
+        data,
+        sorts: [{ id: 'recommend', title: '推荐' }],
+    };
 }
 
 async function searchMiguPlaylists(
@@ -2523,13 +3061,42 @@ async function getMiguRecommendSheetsByTag(
     platform: string,
 ): Promise<ILxPaginationResponse<IMusic.IMusicSheetItem>> {
     const currentPage = Math.max(Number(page) || 1, 1);
-    const keyword = cleanSearchText(tag?.title ?? tag?.id) || '华语';
-    const { list, total } = await searchMiguPlaylists(keyword, currentPage);
+    const tagId = tag?.id && tag.id !== 'all' ? String(tag.id) : '';
+    const url = tagId
+        ? `https://app.c.nf.migu.cn/pc/v1.0/template/musiclistplaza-listbytag/release?pageNumber=${currentPage}&templateVersion=2&tagId=${encodeURIComponent(tagId)}`
+        : `https://app.c.nf.migu.cn/pc/bmw/page-data/playlist-square-recommend/v1.0?templateVersion=2&pageNo=${currentPage}`;
+    const resp = await axios.get(url, {
+        headers: MIGU_HEADERS,
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const body = resp.data?.data ?? {};
+    let raw: any[] = [];
+    if (tagId) {
+        const blocks = Array.isArray(body.contentItemList) ? body.contentItemList : [];
+        const grid = blocks.find((block: any) => Array.isArray(block?.itemList));
+        raw = Array.isArray(grid?.itemList) ? grid.itemList : [];
+    } else {
+        raw = walkMiguPlaylists(body.contents);
+    }
+    const data = raw
+        .map((item: any) =>
+            tagId
+                ? mapMiguPlazaSheet(
+                      {
+                          resId: item.logEvent?.contentId,
+                          txt: item.title,
+                          img: item.imageUrl,
+                          barList: item.barList,
+                      },
+                      platform,
+                  )
+                : mapMiguPlazaSheet(item, platform),
+        )
+        .filter((item) => item.id && item.title);
     return {
-        data: list.map((item: any) => mapMiguSheetItem(item, platform)),
-        isEnd:
-            list.length < ONLINE_PLAYLIST_PAGE_SIZE ||
-            (total > 0 && currentPage * ONLINE_PLAYLIST_PAGE_SIZE >= total),
+        data,
+        isEnd: tagId ? data.length < ONLINE_PLAYLIST_PAGE_SIZE : data.length === 0,
     };
 }
 
@@ -2539,21 +3106,19 @@ async function getMiguMusicSheetInfo(
     platform: string,
 ): Promise<ILxSheetInfoResult | null> {
     const currentPage = Math.max(Number(page) || 1, 1);
-    const resp = await axios.get(
-        'https://app.c.nf.migu.cn/MIGUM2.0/v1.0/user/queryMusicListSongs.do',
-        {
-            params: {
-                musicListId: sheetItem.raw?.id ?? sheetItem.id,
-                pageNo: currentPage,
-                pageSize: ONLINE_PLAYLIST_PAGE_SIZE,
-            },
-            headers: MIGU_HEADERS,
-            timeout: 15000,
-            responseType: 'json',
+    const playlistId = String(sheetItem.raw?.resId ?? sheetItem.raw?.id ?? sheetItem.id);
+    const resp = await axios.get('https://app.c.nf.migu.cn/MIGUM3.0/resource/playlist/song/v2.0', {
+        params: {
+            playlistId,
+            pageNo: currentPage,
+            pageSize: ONLINE_PLAYLIST_PAGE_SIZE,
         },
-    );
-    const list = Array.isArray(resp.data?.list) ? resp.data.list : [];
-    const total = Number(resp.data?.totalCount ?? 0);
+        headers: MIGU_HEADERS,
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const list = Array.isArray(resp.data?.data?.songList) ? resp.data.data.songList : [];
+    const total = Number(resp.data?.data?.totalCount ?? 0);
     return {
         sheetItem,
         musicList: list.map((item: any) => mapMiguSongInfo(item, platform)),
@@ -2602,6 +3167,49 @@ const LX_MUSIC_SHEET_INFO_GETTERS: Record<string, ILxMusicSheetInfoGetter> = {
     kw: getKuwoMusicSheetInfo,
     mg: getMiguMusicSheetInfo,
 };
+
+const CATALOG_SOURCE_KEYS = ['kw', 'kg', 'tx', 'wy', 'mg'] as const;
+
+/**
+ * 榜单和歌单不依赖用户脚本声明了哪些平台。
+ * 五个平台各一个实例，只提供榜单、歌单标签和详情，不提供播放地址。
+ */
+export function createCatalogInstances(): IPlugin.IPluginInstance[] {
+    return CATALOG_SOURCE_KEYS.map((sourceKey) => {
+        const platform = `catalog:${sourceKey}`;
+        const instance: IPlugin.IPluginInstance = {
+            platform,
+            platformLabel: sourceKey,
+            sourceKey,
+            supportedSearchType: [],
+            _path: '',
+        };
+        const topListsGetter = LX_TOP_LIST_GETTERS[sourceKey];
+        if (topListsGetter) {
+            instance.getTopLists = async () => topListsGetter(platform);
+        }
+        const topListDetailGetter = LX_TOP_LIST_DETAIL_GETTERS[sourceKey];
+        if (topListDetailGetter) {
+            instance.getTopListDetail = async (topListItem, page) =>
+                topListDetailGetter(topListItem, page, platform);
+        }
+        const recommendTagGetter = LX_RECOMMEND_TAG_GETTERS[sourceKey];
+        if (recommendTagGetter) {
+            instance.getRecommendSheetTags = async () => recommendTagGetter();
+        }
+        const recommendSheetGetter = LX_RECOMMEND_SHEET_GETTERS[sourceKey];
+        if (recommendSheetGetter) {
+            instance.getRecommendSheetsByTag = async (tag, page = 1, sortId?: string) =>
+                recommendSheetGetter(tag, page, platform, sortId);
+        }
+        const musicSheetInfoGetter = LX_MUSIC_SHEET_INFO_GETTERS[sourceKey];
+        if (musicSheetInfoGetter) {
+            instance.getMusicSheetInfo = async (sheetItem, page) =>
+                musicSheetInfoGetter(sheetItem, page, platform);
+        }
+        return instance;
+    });
+}
 
 /**
  * 判断脚本是否为洛雪插件。
@@ -2895,8 +3503,8 @@ export async function executeLxPluginCode(
 
             const recommendSheetGetter = LX_RECOMMEND_SHEET_GETTERS[sourceKey];
             if (recommendSheetGetter) {
-                instance.getRecommendSheetsByTag = async (tag, page = 1) =>
-                    recommendSheetGetter(tag, page, platform);
+                instance.getRecommendSheetsByTag = async (tag, page = 1, sortId?: string) =>
+                    recommendSheetGetter(tag, page, platform, sortId);
             }
 
             const musicSheetInfoGetter = LX_MUSIC_SHEET_INFO_GETTERS[sourceKey];

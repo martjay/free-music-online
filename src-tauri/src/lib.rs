@@ -15,6 +15,7 @@ use commands::{
         LyricWindowState,
     },
     netease::*,
+    open_api::*,
     system_util::*,
     taskbar_toolbar::*,
     tray_menu::{on_tray_menu_blur, show_tray_menu, tray_menu_click},
@@ -126,6 +127,9 @@ pub fn run() {
             netease_session,
             netease_request,
             netease_logout,
+            // Open API
+            open_api_start,
+            open_api_set_status,
         ])
         .setup(|app| {
             commands::forwarder::init_forwarder(app.handle().clone());

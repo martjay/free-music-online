@@ -13,18 +13,18 @@ const topListCache: Record<string, ITopListCache> = {};
 /**
  * useTopLists — 排行榜数据获取 hook
  *
- * 按插件 hash 缓存分组榜单数据，切换插件时复用已有数据，避免重复请求。
+ * 按目录平台缓存分组榜单，切换平台时复用已有数据。
  */
-export function useTopLists(pluginHash: string) {
+export function useTopLists(platform: string) {
     const [status, setStatus] = useState<RequestStatus>(() => {
-        return topListCache[pluginHash]?.status ?? RequestStatus.Idle;
+        return topListCache[platform]?.status ?? RequestStatus.Idle;
     });
     const [data, setData] = useState<IMusic.IMusicSheetGroupItem[]>(() => {
-        return topListCache[pluginHash]?.data ?? [];
+        return topListCache[platform]?.data ?? [];
     });
 
     const fetch = useCallback(async () => {
-        const cached = topListCache[pluginHash];
+        const cached = topListCache[platform];
         // 已有数据或正在加载中，不重复请求
         if (cached?.data?.length || cached?.status === RequestStatus.Pending) {
             setStatus(cached.status);
@@ -34,34 +34,33 @@ export function useTopLists(pluginHash: string) {
 
         setStatus(RequestStatus.Pending);
         setData([]);
-        topListCache[pluginHash] = { status: RequestStatus.Pending, data: [] };
+        topListCache[platform] = { status: RequestStatus.Pending, data: [] };
 
         try {
             const result = await pluginManager.callPluginMethod({
-                hash: pluginHash,
+                platform,
                 method: 'getTopLists',
                 args: [],
             });
             const groupData = result ?? [];
-            topListCache[pluginHash] = { status: RequestStatus.Done, data: groupData };
+            topListCache[platform] = { status: RequestStatus.Done, data: groupData };
             setStatus(RequestStatus.Done);
             setData(groupData);
         } catch {
-            topListCache[pluginHash] = { status: RequestStatus.Error, data: [] };
+            topListCache[platform] = { status: RequestStatus.Error, data: [] };
             setStatus(RequestStatus.Error);
             setData([]);
         }
-    }, [pluginHash]);
+    }, [platform]);
 
     const retry = useCallback(() => {
         // 清除缓存后重试
-        delete topListCache[pluginHash];
+        delete topListCache[platform];
         fetch();
-    }, [pluginHash, fetch]);
+    }, [platform, fetch]);
 
-    // 同步读取缓存（当 pluginHash 变化时）
     const syncFromCache = useCallback(() => {
-        const cached = topListCache[pluginHash];
+        const cached = topListCache[platform];
         if (cached) {
             setStatus(cached.status);
             setData(cached.data);
@@ -69,7 +68,7 @@ export function useTopLists(pluginHash: string) {
             setStatus(RequestStatus.Idle);
             setData([]);
         }
-    }, [pluginHash]);
+    }, [platform]);
 
     return { status, data, fetch, retry, syncFromCache };
 }

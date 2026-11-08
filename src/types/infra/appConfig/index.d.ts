@@ -46,6 +46,16 @@ interface _IAppConfig {
     'playMusic.rejectShortPreview': boolean;
     /** 触发自动换源的最长时长（秒） */
     'playMusic.shortPreviewLimitSec': number;
+    /** 不喜欢规则，一行一条：歌名、@歌手、歌名@歌手 */
+    'playMusic.dislikeRules': string;
+    /** 启动后接着播放上次的歌 */
+    'playMusic.startupAutoPlay': boolean;
+    /** 播放时阻止系统休眠 */
+    'playMusic.preventSleep': boolean;
+    /** 自然播完后从队列移除 */
+    'playMusic.autoCleanPlayed': boolean;
+    /** 新歌加入歌单的位置 */
+    'playMusic.addMusicPosition': 'top' | 'bottom';
 
     /** 电台：筛选码率 */
     'radio.bitrate': 'all' | '128' | '192' | '320';
@@ -76,6 +86,14 @@ interface _IAppConfig {
     'lyric.strokeColor': string;
     /** 无歌词时自动联网搜索匹配 */
     'lyric.autoMatch': boolean;
+    /** 歌词简体转繁体 */
+    'lyric.traditional': boolean;
+
+    /** 本机开放接口，默认关闭 */
+    'openApi.enable': boolean;
+    'openApi.port': number;
+    /** 允许局域网访问。没有鉴权 */
+    'openApi.allowLan': boolean;
 
     /** 是否启用本地快捷键 */
     'shortCut.enableLocal': boolean;

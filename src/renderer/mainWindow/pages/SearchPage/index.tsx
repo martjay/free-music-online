@@ -28,6 +28,7 @@ import { AlbumResult } from './components/AlbumResult';
 import { ArtistResult } from './components/ArtistResult';
 import { SheetResult } from './components/SheetResult';
 import {
+    ALL_SOURCE,
     SEARCH_MEDIA_TYPES,
     SEARCH_TAB_LABEL_KEYS,
     type SearchMediaType,
@@ -86,11 +87,12 @@ export default function SearchPage() {
     // ── 当前激活的插件 hash ──
     const activePluginHash = useMemo(() => {
         const stored = pluginPerType[activeType];
-        // 如果之前有选择且仍然可用 → 继续使用
+        if (stored === ALL_SOURCE && availablePlugins.length > 1) {
+            return ALL_SOURCE;
+        }
         if (stored && availablePlugins.some((p) => p.hash === stored)) {
             return stored;
         }
-        // 否则 fallback 到第一个
         return availablePlugins[0]?.hash ?? '';
     }, [pluginPerType, activeType, availablePlugins]);
 
@@ -185,6 +187,11 @@ export default function SearchPage() {
                             plugins={availablePlugins}
                             activeHash={activePluginHash}
                             onChange={handlePluginChange}
+                            allItem={
+                                availablePlugins.length > 1
+                                    ? { key: ALL_SOURCE, label: t('search.all_sources') }
+                                    : undefined
+                            }
                         />
                     )}
                 </div>

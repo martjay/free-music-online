@@ -22,6 +22,7 @@ export function LyricSection() {
     const { t } = useTranslation();
     const [enableDesktopLyric, setEnableDesktopLyric] = useConfigValue('lyric.enableDesktopLyric');
     const [autoMatch, setAutoMatch] = useConfigValue('lyric.autoMatch');
+    const [traditional, setTraditional] = useConfigValue('lyric.traditional');
     const [alwaysOnTop, setAlwaysOnTop] = useConfigValue('lyric.alwaysOnTop');
     const [lockLyric, setLockLyric] = useConfigValue('lyric.lockLyric');
     const [fontData, setFontData] = useConfigValue('lyric.fontData');
@@ -142,6 +143,11 @@ export function LyricSection() {
                 label={t('settings.lyric.auto_match_label')}
                 description={t('settings.lyric.auto_match_desc')}
                 control={<Toggle checked={autoMatch ?? true} onChange={setAutoMatch} />}
+            />
+            <SettingRow
+                label={t('settings.lyric.traditional_label')}
+                description={t('settings.lyric.traditional_desc')}
+                control={<Toggle checked={traditional ?? false} onChange={setTraditional} />}
             />
             <SettingRow
                 label={t('settings.lyric.always_on_top_label')}

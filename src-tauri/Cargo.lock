@@ -43,8 +43,9 @@ dependencies = [
 
 [[package]]
 name = "anhe-player"
-version = "1.0.48"
+version = "1.0.49"
 dependencies = [
+ "base64 0.22.1",
  "dirs 5.0.1",
  "env_logger",
  "lofty",

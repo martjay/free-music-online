@@ -7,6 +7,9 @@ pub struct HttpOptions {
     pub method: Option<String>,
     pub headers: Option<HashMap<String, String>>,
     pub body: Option<serde_json::Value>,
+    /// `text` / `json` 返回 UTF-8 文本；`base64` 返回原始字节的 Base64（酷我歌词等二进制体）。
+    #[serde(default, rename = "responseType")]
+    pub response_type: Option<String>,
     /// 电台代理：`system` 系统代理，`direct` 直连，或其他为自定义代理 URL。
     /// 不传时保持原来的环境变量代理行为。
     #[serde(default)]
@@ -175,8 +178,14 @@ pub async fn http_request(
         .map_err(|e| e.to_string())?;
 
     let mut req_builder = client.request(method, &url);
+    let mut as_base64 = false;
 
     if let Some(opt) = options {
+        as_base64 = opt
+            .response_type
+            .as_deref()
+            .map(|value| value.eq_ignore_ascii_case("base64"))
+            .unwrap_or(false);
         if let Some(headers_map) = opt.headers {
             let mut header_map = HeaderMap::new();
             for (k, v) in headers_map {
@@ -209,7 +218,13 @@ pub async fn http_request(
         }
     }
 
-    let body = resp.text().await.map_err(|e| e.to_string())?;
+    let body = if as_base64 {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+        STANDARD.encode(bytes)
+    } else {
+        resp.text().await.map_err(|e| e.to_string())?
+    };
 
     Ok(HttpResponsePayload {
         status_code,

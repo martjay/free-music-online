@@ -59,6 +59,8 @@ declare namespace IPlugin {
         // 固定的tag
         pinned?: IMusic.IMusicSheetItem[];
         data?: IMusic.IMusicSheetGroupItem[];
+        /** 歌单排序。音源没有排序时不返回。 */
+        sorts?: Array<{ id: string; title: string }>;
     }
 
     interface IGetCommentResult {
@@ -138,6 +140,7 @@ declare namespace IPlugin {
         getRecommendSheetsByTag?: (
             tag: ICommon.IUnique,
             page?: number,
+            sortId?: string,
         ) => Promise<ICommon.PaginationResponse<IMusic.IMusicSheetItem>>;
         /** 歌曲评论 */
         getMusicComments?: (

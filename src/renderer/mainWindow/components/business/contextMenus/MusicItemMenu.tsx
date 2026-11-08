@@ -7,11 +7,13 @@ import {
     removeFromRecentlyPlayed,
 } from '@renderer/mainWindow/core/recentlyPlayed';
 import musicSheet from '@infra/musicSheet/renderer';
+import appConfig from '@infra/appConfig/renderer';
 import downloadManager from '@infra/downloadManager/renderer';
 import localMusic from '@infra/localMusic/renderer';
 import fsUtil from '@infra/fsUtil/renderer';
 import systemUtil from '@infra/systemUtil/renderer';
 import i18n from '@infra/i18n/renderer';
+import { appendDislikeRule } from '@common/dislikeRules';
 import { LOCAL_PLUGIN_NAME } from '@common/constant';
 import { isRadioBrowserMedia } from '@common/radioBrowser';
 import { PLAY_QUEUE_SHEET_ID, DOWNLOADED_SHEET_ID } from '@infra/musicSheet/common/constant';
@@ -26,6 +28,7 @@ import {
     Trash2,
     Download,
     FolderOpen,
+    Ban,
 } from 'lucide-react';
 
 export interface MusicItemMenuContext {
@@ -150,6 +153,18 @@ export function MusicItemMenu(ctx: MusicItemMenuContext): ContextMenuEntry[] {
         label: i18n.t('playlist.add_to_sheet_menu'),
         onClick: () => {
             showModal('AddMusicToSheetModal', { musicItems: items });
+        },
+    });
+
+    entries.push({
+        id: 'dislike',
+        icon: <Ban />,
+        label: i18n.t('media.dislike'),
+        onClick: () => {
+            let next = appConfig.getConfigByKey('playMusic.dislikeRules') ?? '';
+            for (const item of items) next = appendDislikeRule(next, item);
+            appConfig.setConfig({ 'playMusic.dislikeRules': next });
+            showToast(i18n.t('media.disliked'));
         },
     });
 

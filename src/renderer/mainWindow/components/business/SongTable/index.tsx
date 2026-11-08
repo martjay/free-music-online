@@ -28,12 +28,14 @@ import { useCurrentMusic } from '../../../core/trackPlayer/hooks';
 import { ListFooter } from '../../ui/ListFooter';
 import { StatusPlaceholder } from '../../ui/StatusPlaceholder';
 import './index.scss';
+import { isDisliked, parseDislikeRules } from '@common/dislikeRules';
 import { isOfficialChartNowPlaying, isSameMedia } from '@common/mediaKey';
 import formatDuration from '@common/formatDuration';
 import appConfig from '@infra/appConfig/renderer';
 import trackPlayer from '../../../core/trackPlayer';
 import { showToast } from '../../ui/Toast';
 import { useColumnWidths } from '@renderer/common/hooks/useColumnWidths';
+import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import { shortPlatformName } from '@infra/pluginManager/common/pluginIdentity';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -362,6 +364,36 @@ export function SongTable({
         return el ?? undefined;
     }, [externalScrollParent]);
 
+    const [dislikeRules] = useConfigValue('playMusic.dislikeRules');
+    const visibleData = useMemo(() => {
+        const index = parseDislikeRules(dislikeRules);
+        if (index.titles.size === 0 && index.artists.size === 0 && index.pairs.size === 0) {
+            return data;
+        }
+        return data.filter((item) => !isDisliked(item, index));
+    }, [data, dislikeRules]);
+
+    useEffect(() => {
+        const node = scrollParent;
+        if (!node) return;
+        const key = `song-table-scroll:${window.location.pathname}`;
+        try {
+            const saved = Number(sessionStorage.getItem(key) ?? '0');
+            if (saved > 0) node.scrollTop = saved;
+        } catch {
+            // 隐私模式里 sessionStorage 可能不可用
+        }
+        const onScroll = () => {
+            try {
+                sessionStorage.setItem(key, String(node.scrollTop));
+            } catch {
+                // 写失败就放弃记住位置
+            }
+        };
+        node.addEventListener('scroll', onScroll, { passive: true });
+        return () => node.removeEventListener('scroll', onScroll);
+    }, [scrollParent]);
+
     // ── 内部选中态（非受控模式） ──
     const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
     const selectedIds = externalSelectedIds ?? internalSelectedIds;
@@ -380,8 +412,10 @@ export function SongTable({
     const lastClickIndexRef = useRef<number>(-1);
 
     // ── 频繁变化值存入 ref，避免 virtuosoComponents 依赖频繁重建 ──
-    const dataRef = useRef(data);
-    dataRef.current = data;
+    const dataRef = useRef(visibleData);
+    dataRef.current = visibleData;
+    const sourceDataRef = useRef(data);
+    sourceDataRef.current = data;
     const selectedIdsRef = useRef(selectedIds);
     selectedIdsRef.current = selectedIds;
     const currentMusicRef = useRef(currentMusic);
@@ -491,7 +525,7 @@ export function SongTable({
                 header: t('media.platform'),
                 width: defaultColumnWidths?.platform ?? 120,
                 resizable: true,
-                textOf: (item) => item.platform ?? '',
+                textOf: (item) => shortPlatformName(item.platform),
                 render: (item) => (
                     <span className="song-table__platform-badge">
                         {shortPlatformName(item.platform)}
@@ -639,7 +673,7 @@ export function SongTable({
 
     // ── DnD ──
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-    const sortableIds = useMemo(() => data.map((d) => d.id), [data]);
+    const sortableIds = useMemo(() => visibleData.map((d) => d.id), [visibleData]);
 
     const handleDragStart = useCallback(
         (event: DragStartEvent) => {
@@ -674,8 +708,21 @@ export function SongTable({
             .filter((i) => i !== -1)
             .sort((a, b) => a - b);
 
-        if (fromIndices.length > 0) {
-            onDragSortEndRef.current?.(fromIndices, overIndex);
+        const source = sourceDataRef.current;
+        const toSourceIndex = (visibleIndex: number) => {
+            if (currentData === source) return visibleIndex;
+            const item = currentData[visibleIndex];
+            if (!item) return -1;
+            return source.findIndex((row) => row.platform === item.platform && row.id === item.id);
+        };
+        const mappedFrom = fromIndices
+            .map(toSourceIndex)
+            .filter((index) => index >= 0)
+            .sort((a, b) => a - b);
+        const mappedTo = toSourceIndex(overIndex);
+
+        if (mappedFrom.length > 0 && mappedTo >= 0) {
+            onDragSortEndRef.current?.(mappedFrom, mappedTo);
         }
     }, []);
 
@@ -940,7 +987,7 @@ export function SongTable({
         >
             <TableVirtuoso
                 ref={virtuosoRef}
-                data={data}
+                data={visibleData}
                 customScrollParent={scrollParent}
                 useWindowScroll={!scrollParent}
                 fixedHeaderContent={fixedHeaderContent}

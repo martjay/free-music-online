@@ -14,6 +14,9 @@ export interface TagFilterProps {
     selectedTag: IMedia.IUnique;
     /** 选中标签变更回调 */
     onTagChange: (tag: IMedia.IUnique) => void;
+    sorts?: Array<{ id: string; title: string }>;
+    selectedSort?: string;
+    onSortChange?: (sortId: string) => void;
 }
 
 /**
@@ -22,7 +25,14 @@ export interface TagFilterProps {
  * 顶行：默认标签（带下拉箭头） + pinned 标签
  * 下拉面板：按分组展示全部标签
  */
-export function TagFilter({ tags, selectedTag, onTagChange }: TagFilterProps) {
+export function TagFilter({
+    tags,
+    selectedTag,
+    onTagChange,
+    sorts = [],
+    selectedSort = '',
+    onSortChange,
+}: TagFilterProps) {
     const { t } = useTranslation();
     const [panelOpen, setPanelOpen] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -93,6 +103,14 @@ export function TagFilter({ tags, selectedTag, onTagChange }: TagFilterProps) {
                         label={tag.title}
                         active={selectedTag.id === tag.id}
                         onClick={() => handlePinnedClick(tag)}
+                    />
+                ))}
+                {sorts.map((sort) => (
+                    <Chip
+                        key={sort.id}
+                        label={sort.title}
+                        active={selectedSort === sort.id}
+                        onClick={() => onSortChange?.(sort.id)}
                     />
                 ))}
             </div>

@@ -11,8 +11,8 @@ interface SheetListCache {
 /** 挂在模块上，详情页返回后还能用刚才加载过的歌单，不用从第一页重来。 */
 const sheetListCache = new Map<string, SheetListCache>();
 
-function sheetCacheKey(pluginHash: string, tagId: string): string {
-    return `${pluginHash}\0${tagId}`;
+function sheetCacheKey(platform: string, tagId: string, sortId: string): string {
+    return `${platform}\0${tagId}\0${sortId}`;
 }
 
 /**
@@ -20,8 +20,12 @@ function sheetCacheKey(pluginHash: string, tagId: string): string {
  *
  * 支持分页加载。当 tag 变更时，自动重置并加载首页。
  */
-export function useRecommendSheets(pluginHash: string, tag: IMedia.IUnique | null) {
-    const initial = sheetListCache.get(sheetCacheKey(pluginHash, tag?.id ?? ''));
+export function useRecommendSheets(
+    platform: string,
+    tag: IMedia.IUnique | null,
+    sortId = '',
+) {
+    const initial = sheetListCache.get(sheetCacheKey(platform, tag?.id ?? '', sortId));
     const [sheets, setSheets] = useState<IMusic.IMusicSheetItem[]>(() => initial?.sheets ?? []);
     const [requestStatus, setRequestStatus] = useState<RequestStatus>(
         initial ? RequestStatus.Done : RequestStatus.Idle,
@@ -31,6 +35,8 @@ export function useRecommendSheets(pluginHash: string, tag: IMedia.IUnique | nul
     const pageRef = useRef(initial?.page ?? 1);
     const pendingRef = useRef(false);
     const tagIdRef = useRef<string>(tag?.id ?? '');
+    const sortIdRef = useRef(sortId);
+    sortIdRef.current = sortId;
     const sheetsRef = useRef(sheets);
     sheetsRef.current = sheets;
 
@@ -42,19 +48,19 @@ export function useRecommendSheets(pluginHash: string, tag: IMedia.IUnique | nul
 
             try {
                 const result = await pluginManager.callPluginMethod({
-                    hash: pluginHash,
+                    platform,
                     method: 'getRecommendSheetsByTag',
-                    args: [fetchTag, page],
+                    args: [fetchTag, page, sortId || undefined],
                 });
 
                 // 检查 tag 是否已经变化
-                if (tagIdRef.current !== fetchTag.id) return;
+                if (tagIdRef.current !== fetchTag.id || sortIdRef.current !== sortId) return;
 
                 const resData = result?.data ?? [];
                 const resIsEnd = result?.isEnd ?? true;
 
                 const nextSheets = isFirstPage ? resData : [...sheetsRef.current, ...resData];
-                sheetListCache.set(sheetCacheKey(pluginHash, fetchTag.id), {
+                sheetListCache.set(sheetCacheKey(platform, fetchTag.id, sortId), {
                     sheets: nextSheets,
                     isEnd: resIsEnd,
                     page,
@@ -64,20 +70,20 @@ export function useRecommendSheets(pluginHash: string, tag: IMedia.IUnique | nul
                 setRequestStatus(RequestStatus.Done);
                 pageRef.current = page;
             } catch {
-                if (tagIdRef.current !== fetchTag.id) return;
+                if (tagIdRef.current !== fetchTag.id || sortIdRef.current !== sortId) return;
                 setRequestStatus(RequestStatus.Error);
             } finally {
                 pendingRef.current = false;
             }
         },
-        [pluginHash],
+        [platform, sortId],
     );
 
     // tag 变化时重置并加载首页。同一组合已经加载过则直接用缓存。
     useEffect(() => {
         if (!tag) return;
         tagIdRef.current = tag.id;
-        const cached = sheetListCache.get(sheetCacheKey(pluginHash, tag.id));
+        const cached = sheetListCache.get(sheetCacheKey(platform, tag.id, sortId));
         if (cached) {
             pendingRef.current = false;
             pageRef.current = cached.page;
@@ -91,7 +97,7 @@ export function useRecommendSheets(pluginHash: string, tag: IMedia.IUnique | nul
         setIsEnd(false);
         pageRef.current = 1;
         fetchPage(tag, 1, true);
-    }, [tag?.id, pluginHash, fetchPage]);
+    }, [tag?.id, platform, sortId, fetchPage]);
 
     const loadMore = useCallback(() => {
         if (!tag || isEnd || pendingRef.current) return;
@@ -100,10 +106,10 @@ export function useRecommendSheets(pluginHash: string, tag: IMedia.IUnique | nul
 
     const retry = useCallback(() => {
         if (!tag) return;
-        sheetListCache.delete(sheetCacheKey(pluginHash, tag.id));
+        sheetListCache.delete(sheetCacheKey(platform, tag.id, sortId));
         const isFirstPage = pageRef.current <= 1 && sheets.length === 0;
         fetchPage(tag, isFirstPage ? 1 : pageRef.current + 1, isFirstPage);
-    }, [tag, sheets.length, fetchPage, pluginHash]);
+    }, [tag, sheets.length, fetchPage, platform, sortId]);
 
     return { sheets, requestStatus, isEnd, loadMore, retry };
 }
