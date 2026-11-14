@@ -209,6 +209,8 @@ class TrackPlayer {
     private sourceFailureAnnounced = new Set<string>();
     private preferredFallbackHash = '';
     private playbackAttempt = 0;
+    /** 用户点过播放。恢复阶段的失效地址不要自己换源出声。 */
+    private userAskedToPlay = false;
     private activeSourceKey = '';
     private activeSourceHash = '';
     private pendingAlternative: Promise<IAlternativeSourceHit | null> | null = null;
@@ -689,15 +691,36 @@ class TrackPlayer {
     }
 
     resume(): void {
-        if (!this.audioController.hasSource) {
-            // 无音源（如恢复失败），尝试重新加载当前曲目
-            const idx = this.playQueue.getCurrentIndex();
-            if (idx >= 0) {
-                this.playIndex(idx, { restartOnSameMedia: true }).catch(() => {});
-            }
+        this.userAskedToPlay = true;
+        const music = store.get(currentMusicAtom);
+        if (this.audioController.hasUsableSource) {
+            this.audioController.play();
             return;
         }
-        this.audioController.play();
+        if (!music || store.get(playerStateAtom) === PlayerState.Buffering) return;
+        store.set(playerStateAtom, PlayerState.Buffering);
+        void this.playVisibleTrack(music);
+    }
+
+    /**
+     * 播放栏上这首歌可能已经不在队列里：上次的列表过几天没对上编号，
+     * 或启动时音源没准备好。这时按播放栏上的歌重新取地址。
+     */
+    private async playVisibleTrack(music: IMusicItemSlim): Promise<void> {
+        try {
+            await this.playQueue.setup();
+            if (!this.isCurrentMusic(music)) return;
+            const idx = this.playQueue.findIndex(music);
+            if (idx >= 0) {
+                await this.playIndex(idx, { restartOnSameMedia: true });
+                return;
+            }
+            await this.playMusic(music as IMusic.IMusicItem);
+        } catch (error) {
+            if (!this.isCurrentMusic(music)) return;
+            store.set(playerStateAtom, PlayerState.Paused);
+            console.error('[TrackPlayer] resume visible track failed:', error);
+        }
     }
 
     togglePlayPause(): void {
@@ -955,7 +978,9 @@ class TrackPlayer {
         });
 
         this.audioController.on('error', (_reason, _detail) => {
-            this.handlePlayError(this.playQueue.getCurrentMusic(), _detail).catch((err) => {
+            const queued = this.playQueue.getCurrentMusic();
+            const visible = this.userAskedToPlay ? store.get(currentMusicAtom) : null;
+            this.handlePlayError(queued ?? visible, _detail).catch((err) => {
                 console.error('[TrackPlayer] handle play error failed:', err);
             });
         });

@@ -54,6 +54,7 @@ export interface IAudioController extends EventEmitter<IAudioControllerEvents> {
 
     readonly playerState: PlayerState;
     readonly hasSource: boolean;
+    readonly hasUsableSource: boolean;
 }
 
 // ─── WebAudioController 实现 ───
@@ -75,6 +76,11 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
 
     get hasSource(): boolean {
         return !!this.audio.src && this.audio.src !== location.href;
+    }
+
+    /** 地址还在，但上次加载已经失败。这种地址再点播放不会出声。 */
+    get hasUsableSource(): boolean {
+        return this.hasSource && this.audio.error == null;
     }
 
     constructor() {

@@ -52,3 +52,19 @@ export function forgetPluginPlaybackLatency(hash: string): void {
     delete next[hash];
     persist(next);
 }
+
+/** 导入配置时一次写完，避免每个平台都重写本地记录。 */
+export function applyPluginPlaybackLatencies(
+    updates: Array<{ hash: string; latencyMs: number | null }>,
+): void {
+    const next = { ...readCache() };
+    for (const item of updates) {
+        if (!item.hash) continue;
+        if (item.latencyMs != null && Number.isFinite(item.latencyMs) && item.latencyMs > 0) {
+            next[item.hash] = Math.round(item.latencyMs);
+        } else {
+            delete next[item.hash];
+        }
+    }
+    persist(next);
+}

@@ -1,7 +1,8 @@
 {
-    "version": "1.0.52",
+    "version": "1.0.53",
     "changeLog": [
-        "检测平台后按响应速度决定播放和下载顺序，避免线路和平台来回切换"
+        "插件可以导入导出平台开关和检测排序",
+        "隔几天再打开时，点播放会重新加载上次的歌曲"
     ],
     "download": [
         "https://github.com/martjay/free-music-online/releases/latest"

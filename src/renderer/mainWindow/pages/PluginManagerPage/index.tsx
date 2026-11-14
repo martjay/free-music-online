@@ -1,4 +1,4 @@
-import { Activity, ArrowUpCircle, Plus } from 'lucide-react';
+import { Activity, ArrowUpCircle, Download, Plus, Upload } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@renderer/mainWindow/components/ui/Button';
@@ -6,10 +6,22 @@ import { showModal } from '@renderer/mainWindow/components/ui/Modal/modalManager
 import { showToast } from '@renderer/mainWindow/components/ui/Toast';
 import { usePlugins } from '@infra/pluginManager/renderer/hooks';
 import pluginManager from '@infra/pluginManager/renderer';
+import {
+    readPluginSettingsFile,
+    writePluginSettingsFile,
+} from '@infra/pluginManager/renderer/pluginSettingsTransfer';
+import systemUtil from '@infra/systemUtil/renderer';
 import { pluginGroupKey } from '@infra/pluginManager/common/pluginIdentity';
 import { LOCAL_PLUGIN_HASH } from '@common/constant';
 import PluginList from './components/PluginList';
 import './index.scss';
+
+function formatDate(): string {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${now.getFullYear()}${month}${day}`;
+}
 
 /**
  * PluginManagerPage — 插件管理页面
@@ -27,6 +39,7 @@ export default function PluginManagerPage() {
     const scriptCount = useMemo(() => new Set(installed.map(pluginGroupKey)).size, [installed]);
     const [checking, setChecking] = useState(false);
     const [updatingPlugins, setUpdatingPlugins] = useState(false);
+    const [transferring, setTransferring] = useState(false);
     const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
     const handleCheckVersions = useCallback(async () => {
@@ -77,6 +90,59 @@ export default function PluginManagerPage() {
         }
     }, [installed, t]);
 
+    const handleExport = useCallback(async () => {
+        const dialogResult = await systemUtil.showSaveDialog({
+            title: t('plugin.export_plugins'),
+            defaultPath: `FreeMusicOnlinePlugins_${formatDate()}.json`,
+            filters: [{ name: 'JSON', extensions: ['json'] }],
+        });
+        if (dialogResult.canceled || !dialogResult.filePath) return;
+        setTransferring(true);
+        try {
+            const count = await writePluginSettingsFile(dialogResult.filePath);
+            showToast(t('plugin.export_plugins_success', { count }));
+        } catch (error) {
+            showToast(
+                t('plugin.export_plugins_fail', {
+                    reason: error instanceof Error ? error.message : String(error),
+                }),
+                { type: 'warn' },
+            );
+        } finally {
+            setTransferring(false);
+        }
+    }, [t]);
+
+    const handleImport = useCallback(async () => {
+        const dialogResult = await systemUtil.showOpenDialog({
+            title: t('plugin.import_plugins'),
+            filters: [{ name: 'JSON', extensions: ['json'] }],
+            properties: ['openFile'],
+        });
+        const filePath = dialogResult.filePaths?.[0];
+        if (dialogResult.canceled || !filePath) return;
+        setTransferring(true);
+        try {
+            const result = await readPluginSettingsFile(filePath);
+            if (result.applied === 0) {
+                showToast(t('plugin.import_plugins_none'), { type: 'warn' });
+            } else if (result.skipped > 0) {
+                showToast(
+                    t('plugin.import_plugins_partial', {
+                        count: result.applied,
+                        skipped: result.skipped,
+                    }),
+                );
+            } else {
+                showToast(t('plugin.import_plugins_success', { count: result.applied }));
+            }
+        } catch {
+            showToast(t('plugin.import_plugins_invalid'), { type: 'warn' });
+        } finally {
+            setTransferring(false);
+        }
+    }, [t]);
+
     const checkLabel =
         checking && progress && progress.total > 0
             ? t('plugin.source_check_progress', progress)
@@ -102,9 +168,29 @@ export default function PluginManagerPage() {
                         <Button
                             variant="secondary"
                             size="md"
+                            icon={<Download size={16} />}
+                            loading={transferring}
+                            disabled={installed.length === 0 || checking || updatingPlugins}
+                            onClick={handleExport}
+                        >
+                            {t('plugin.export_plugins')}
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="md"
+                            icon={<Upload size={16} />}
+                            loading={transferring}
+                            disabled={checking || updatingPlugins}
+                            onClick={handleImport}
+                        >
+                            {t('plugin.import_plugins')}
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="md"
                             icon={<ArrowUpCircle size={16} />}
                             loading={updatingPlugins}
-                            disabled={installed.length === 0 || checking}
+                            disabled={installed.length === 0 || checking || transferring}
                             onClick={handleCheckVersions}
                         >
                             {updatingPlugins
@@ -116,7 +202,7 @@ export default function PluginManagerPage() {
                             size="md"
                             icon={<Activity size={16} />}
                             loading={checking}
-                            disabled={installed.length === 0 || updatingPlugins}
+                            disabled={installed.length === 0 || updatingPlugins || transferring}
                             onClick={handleCheckSources}
                         >
                             {checkLabel}
