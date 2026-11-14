@@ -748,18 +748,20 @@ function splitKugouFilename(value: unknown): { artist?: string; title?: string }
 }
 
 function mapTencentSongInfo(item: any, platform: string): IMusic.IMusicItem {
+    const songMid = item.songmid ?? item.mid ?? item.media_mid ?? item.strMediaMid;
+    const albumMid = item.albummid ?? item.album?.mid;
     return {
-        id: String(item.songmid ?? item.songid ?? item.media_mid ?? item.strMediaMid),
+        id: String(songMid ?? item.songid ?? item.id ?? ''),
         platform,
-        title: cleanSearchText(item.songname ?? item.name),
+        title: cleanSearchText(item.songname ?? item.name ?? item.title),
         artist: normalizeArtistNames(item.singer),
-        album: cleanSearchText(item.albumname ?? item.album?.name),
-        artwork: item.albummid
-            ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${item.albummid}.jpg`
+        album: cleanSearchText(item.albumname ?? item.album?.name ?? item.album?.title),
+        artwork: albumMid
+            ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumMid}.jpg`
             : undefined,
         duration: normalizeDurationSeconds(item.interval),
         raw: item,
-        songmid: item.songmid ?? item.mid,
+        songmid: songMid,
         songId: item.songid ?? item.songId ?? item.id,
         media_mid: item.media_mid,
         strMediaMid: item.strMediaMid,
@@ -1108,9 +1110,94 @@ async function getTencentRecommendSheetsByTag(
     return fetchTencentCategoryPlaylists(tagId, currentPage, platform);
 }
 
-async function fetchTencentPlaylistInfo(
+/** 歌单详情里的 dissid 有时是被截断的数字，保留更长的那一串。 */
+function tencentSheetId(sheetItem: IMusic.IMusicSheetItem): string {
+    const raw = sheetItem.raw ?? {};
+    const fromRaw = String(raw.tid ?? raw.disstid ?? raw.dissid ?? '').trim();
+    const fromId = String(sheetItem.id ?? '').trim();
+    if (/^\d+$/.test(fromRaw) && /^\d+$/.test(fromId)) {
+        return fromRaw.length >= fromId.length ? fromRaw : fromId;
+    }
+    return fromRaw || fromId;
+}
+
+function tencentDissParam(id: string): number | string {
+    if (/^\d+$/.test(id) && Number.isSafeInteger(Number(id))) return Number(id);
+    return id;
+}
+
+function parseMaybeJson(data: unknown): any {
+    if (data && typeof data === 'object') return data;
+    if (typeof data !== 'string') return null;
+    const trimmed = data.trim();
+    try {
+        return JSON.parse(trimmed);
+    } catch {
+        const start = trimmed.indexOf('{');
+        const end = trimmed.lastIndexOf('}');
+        if (start < 0 || end <= start) return null;
+        try {
+            return JSON.parse(trimmed.slice(start, end + 1));
+        } catch {
+            return null;
+        }
+    }
+}
+
+async function fetchTencentPlaylistByMusicu(
     sheetItem: IMusic.IMusicSheetItem,
-    page: number,
+    disstid: string,
+    start: number,
+    platform: string,
+): Promise<ILxSheetInfoResult | null> {
+    const resp = await axios.get(
+        tencentMusicuUrl({
+            comm: { ct: 24, cv: 0 },
+            req_1: {
+                module: 'music.srfDissInfo.DissInfo',
+                method: 'CgiGetDiss',
+                param: {
+                    disstid: tencentDissParam(disstid),
+                    userinfo: 1,
+                    tag: 1,
+                    song_begin: start,
+                    song_num: ONLINE_PLAYLIST_PAGE_SIZE,
+                    onlysonglist: 0,
+                    enc_song_info: 0,
+                },
+            },
+        }),
+        { headers: TENCENT_PLAYLIST_HEADERS, timeout: 15000, responseType: 'json' },
+    );
+    const payload = resp.data?.req_1;
+    if (!payload || payload.code !== 0) return null;
+    const data = payload.data ?? {};
+    const songs = Array.isArray(data.songlist) ? data.songlist : [];
+    const dir = data.dirinfo ?? {};
+    const total = Number(dir.songnum ?? data.total_song_num ?? 0);
+    if (!songs.length && !dir.title && !total) return null;
+    return {
+        sheetItem: {
+            ...sheetItem,
+            title: cleanSearchText(dir.title) || sheetItem.title,
+            artwork: dir.picurl || sheetItem.artwork,
+            description: cleanSearchText(dir.desc) || sheetItem.description,
+            worksNum: total || sheetItem.worksNum,
+            artist: cleanSearchText(dir.creator?.nick ?? dir.host_nick) || sheetItem.artist,
+        },
+        musicList: songs
+            .filter((item: any) => item?.mid || item?.songmid || item?.name || item?.songname)
+            .map((item: any) => mapTencentSongInfo(item, platform)),
+        isEnd:
+            songs.length < ONLINE_PLAYLIST_PAGE_SIZE ||
+            (total > 0 && start + songs.length >= total),
+    };
+}
+
+async function fetchTencentPlaylistByLegacy(
+    sheetItem: IMusic.IMusicSheetItem,
+    disstid: string,
+    start: number,
     platform: string,
 ): Promise<ILxSheetInfoResult | null> {
     const resp = await axios.get(
@@ -1121,7 +1208,7 @@ async function fetchTencentPlaylistInfo(
                 json: 1,
                 utf8: 1,
                 onlysong: 0,
-                disstid: sheetItem.raw?.dissid ?? sheetItem.id,
+                disstid,
                 format: 'json',
                 g_tk: 5381,
                 loginUin: 0,
@@ -1137,10 +1224,9 @@ async function fetchTencentPlaylistInfo(
             responseType: 'json',
         },
     );
-    const playlist = resp.data?.cdlist?.[0];
+    const body = parseMaybeJson(resp.data);
+    const playlist = body?.cdlist?.[0];
     if (!playlist) return null;
-    const currentPage = Math.max(Number(page) || 1, 1);
-    const start = (currentPage - 1) * ONLINE_PLAYLIST_PAGE_SIZE;
     const songs = Array.isArray(playlist.songlist) ? playlist.songlist : [];
     const pageSongs = songs.slice(start, start + ONLINE_PLAYLIST_PAGE_SIZE);
     return {
@@ -1148,6 +1234,28 @@ async function fetchTencentPlaylistInfo(
         musicList: pageSongs.map((item: any) => mapTencentSongInfo(item, platform)),
         isEnd: start + pageSongs.length >= songs.length,
     };
+}
+
+async function fetchTencentPlaylistInfo(
+    sheetItem: IMusic.IMusicSheetItem,
+    page: number,
+    platform: string,
+): Promise<ILxSheetInfoResult | null> {
+    const disstid = tencentSheetId(sheetItem);
+    if (!disstid) return null;
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const start = (currentPage - 1) * ONLINE_PLAYLIST_PAGE_SIZE;
+    try {
+        const modern = await fetchTencentPlaylistByMusicu(sheetItem, disstid, start, platform);
+        if (modern?.musicList.length || modern?.isEnd) return modern;
+    } catch {
+        /* 新接口失败时再试旧歌单接口 */
+    }
+    try {
+        return await fetchTencentPlaylistByLegacy(sheetItem, disstid, start, platform);
+    } catch {
+        return null;
+    }
 }
 
 async function getKugouTopLists(platform: string): Promise<IMusic.IMusicSheetGroupItem[]> {
@@ -1689,36 +1797,15 @@ async function importTencentMusicSheet(
     const parsed = parseTencentSheetLink(resolved);
     if (!parsed?.id) return [];
 
-    const resp = await axios.get(
-        'https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg',
-        {
-            params: {
-                type: 1,
-                json: 1,
-                utf8: 1,
-                onlysong: 0,
-                disstid: parsed.id,
-                format: 'json',
-                g_tk: 5381,
-                loginUin: 0,
-                hostUin: 0,
-                inCharset: 'utf8',
-                outCharset: 'utf-8',
-                notice: 0,
-                platform: 'yqq',
-                needNewCode: 0,
-            },
-            headers: {
-                Referer: 'https://y.qq.com/',
-                'User-Agent': BROWSER_USER_AGENT,
-            },
-            timeout: 15000,
-            responseType: 'json',
-        },
-    );
-
-    const list = resp.data?.cdlist?.[0]?.songlist;
-    return Array.isArray(list) ? list.map((item: any) => mapTencentSongInfo(item, platform)) : [];
+    const sheetItem: IMusic.IMusicSheetItem = { id: parsed.id, platform, title: '' };
+    const musicList: IMusic.IMusicItem[] = [];
+    for (let page = 1; page <= 40; page += 1) {
+        const sheet = await fetchTencentPlaylistInfo(sheetItem, page, platform);
+        if (!sheet?.musicList.length) break;
+        musicList.push(...sheet.musicList);
+        if (sheet.isEnd) break;
+    }
+    return musicList;
 }
 
 async function importKuwoMusicSheet(

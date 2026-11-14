@@ -59,6 +59,13 @@ interface IMod {
     getStarredSheets(): Promise<IStarredSheetItem[]>;
     starSheet(sheet: IMusic.IMusicSheetItem): Promise<void>;
     unstarSheet(platform: string, id: string): Promise<void>;
+    saveStarredTracks(
+        platform: string,
+        id: string,
+        musicList: IMusic.IMusicItem[],
+        complete?: boolean,
+    ): Promise<void>;
+    getStarredTracks(platform: string, id: string): Promise<IMusic.IMusicItem[]>;
     setStarredOrder(orderedKeys: IMedia.IMediaBase[]): Promise<void>;
     // ─── 播放队列 ───
     playQueueGetAll(): Promise<IMusicItemSlim[]>;
@@ -435,6 +442,27 @@ class MusicSheetRenderer {
             this.events.emit('starredChange');
         } catch (e) {
             this.events.emit('error', e instanceof Error ? e : new Error(String(e)));
+        }
+    }
+
+    async saveStarredSheetMusic(
+        sheet: { platform: string; id: string },
+        musicList: IMusic.IMusicItem[],
+        complete = false,
+    ): Promise<void> {
+        if (!musicList.length || !this.isSheetStarred(sheet)) return;
+        try {
+            await mod.saveStarredTracks(sheet.platform, String(sheet.id), musicList, complete);
+        } catch (e) {
+            this.events.emit('error', e instanceof Error ? e : new Error(String(e)));
+        }
+    }
+
+    async getStarredSheetMusic(platform: string, id: string): Promise<IMusic.IMusicItem[]> {
+        try {
+            return await mod.getStarredTracks(platform, String(id));
+        } catch {
+            return [];
         }
     }
 

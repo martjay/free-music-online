@@ -43,6 +43,10 @@ export function registerDataBridges(): void {
         getStarredSheets: () => musicSheetStore.getStarredSheets(),
         starSheet: (sheet: any) => musicSheetStore.starSheet(sheet),
         unstarSheet: (platform: string, id: string) => musicSheetStore.unstarSheet(platform, id),
+        saveStarredTracks: (platform: string, id: string, musicList: any[], complete?: boolean) =>
+            musicSheetStore.saveStarredTracks(platform, id, musicList, complete),
+        getStarredTracks: (platform: string, id: string) =>
+            musicSheetStore.getStarredTracks(platform, id),
         setStarredOrder: (orderedKeys: any[]) => musicSheetStore.setStarredOrder(orderedKeys),
 
         playQueueGetAll: () => musicSheetStore.playQueueGetAll(),

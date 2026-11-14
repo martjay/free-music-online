@@ -1,8 +1,8 @@
 {
-    "version": "1.0.53",
+    "version": "1.0.54",
     "changeLog": [
-        "插件可以导入导出平台开关和检测排序",
-        "隔几天再打开时，点播放会重新加载上次的歌曲"
+        "在线歌单可以加载歌曲列表",
+        "收藏的歌单会同步到本地，线上失败时仍能打开"
     ],
     "download": [
         "https://github.com/martjay/free-music-online/releases/latest"

@@ -93,6 +93,8 @@ interface IStoredStarred {
     raw: string;
     sortOrder: number;
     starredAt: number;
+    /** 收藏时记下的歌曲，在线详情失效后仍能打开。 */
+    tracks?: string;
 }
 
 interface IMusicSheetData {
@@ -574,11 +576,45 @@ class MusicSheetStore {
             (s) => s.platform === entry.platform && s.id === entry.id,
         );
         if (idx >= 0) {
+            entry.sortOrder = data.starred[idx].sortOrder;
+            entry.starredAt = data.starred[idx].starredAt;
+            entry.tracks = data.starred[idx].tracks;
             data.starred[idx] = entry;
         } else {
             data.starred.push(entry);
         }
         this.save();
+    }
+
+    public async saveStarredTracks(
+        platform: string,
+        id: string,
+        musicList: IMusic.IMusicItem[],
+        complete = false,
+    ): Promise<void> {
+        if (!musicList.length) return;
+        const data = await this.init();
+        const entry = data.starred.find((s) => s.platform === platform && s.id === String(id));
+        if (!entry || !complete) return;
+        const compact = musicList.map((item) => {
+            const copy = { ...item };
+            delete copy.raw;
+            return copy;
+        });
+        entry.tracks = JSON.stringify(compact);
+        this.save();
+    }
+
+    public async getStarredTracks(platform: string, id: string): Promise<IMusic.IMusicItem[]> {
+        const data = await this.init();
+        const entry = data.starred.find((s) => s.platform === platform && s.id === String(id));
+        if (!entry?.tracks) return [];
+        try {
+            const parsed = JSON.parse(entry.tracks);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
     }
 
     public async unstarSheet(platform: string, id: string): Promise<void> {

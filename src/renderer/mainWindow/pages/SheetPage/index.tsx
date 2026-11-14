@@ -39,7 +39,7 @@ export default function SheetPage() {
         };
     }, [platform, id, location.state]);
 
-    const { sheetItem, musicList, requestStatus, isEnd, loadMore, retry } =
+    const { sheetItem, musicList, requestStatus, isEnd, loadMore, retry, syncStarredSheet } =
         useSheetDetail(originalItem);
 
     // ── 本地搜索 ──
@@ -85,11 +85,18 @@ export default function SheetPage() {
 
     const handleToggleStar = useCallback(() => {
         if (isStarred) {
-            musicSheet.unstarMusicSheet(sheetItem);
-        } else {
-            musicSheet.starMusicSheet(sheetItem);
+            void musicSheet.unstarMusicSheet(sheetItem);
+            return;
         }
-    }, [isStarred, sheetItem]);
+        void (async () => {
+            await musicSheet.starMusicSheet(sheetItem);
+            if (isEnd && musicList.length > 0) {
+                await musicSheet.saveStarredSheetMusic(sheetItem, musicList, true);
+                return;
+            }
+            await syncStarredSheet(sheetItem);
+        })();
+    }, [isStarred, sheetItem, musicList, isEnd, syncStarredSheet]);
 
     return (
         <div className="p-sheet">
