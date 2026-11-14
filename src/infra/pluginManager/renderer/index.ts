@@ -20,6 +20,10 @@ import { tauriInvoke } from '@infra/tauriBridge/ipc';
 import { CONTEXT_BRIDGE_KEY } from '../common/constant';
 import { findPluginForPlatform } from '../common/pluginIdentity';
 import { sortByPluginOrder } from '../common/sortByOrder';
+import {
+    forgetPluginPlaybackLatency,
+    rememberPluginPlaybackLatency,
+} from '../common/playbackLatency';
 import { store, pluginsAtom, pluginMetaAtom, pluginAvailabilityAtom } from './store';
 import type { IPluginAvailabilityResult } from './store';
 
@@ -490,6 +494,7 @@ async function checkSinglePlugin(hash: string): Promise<IPluginAvailabilityResul
 
     // 没有取源能力（如纯搜索插件）无法判断播放能力
     if (!plugin.supportedMethod.includes('getMediaSource')) {
+        forgetPluginPlaybackLatency(hash);
         return { state: 'unsupported', checkedAt: Date.now() };
     }
 
@@ -517,10 +522,13 @@ async function checkSinglePlugin(hash: string): Promise<IPluginAvailabilityResul
         }
         musicItem = musicItem ?? fallbackTestMusic(plugin);
         if (!musicItem) {
+            forgetPluginPlaybackLatency(hash);
             return { state: 'unsupported', checkedAt: Date.now() };
         }
 
-        // 2. 走与播放一致的取源链路（含官方源兜底），拿到真实播放地址
+        // 2. 走与播放一致的取源链路（含官方源兜底），拿到真实播放地址。
+        // 从这里开始计时，测的是播放调用和线路响应，不是搜索接口。
+        const playbackStarted = performance.now();
         const media = await withTimeout(
             adapters.getMediaSource({
                 hash,
@@ -531,17 +539,22 @@ async function checkSinglePlugin(hash: string): Promise<IPluginAvailabilityResul
             }),
         );
         if (!media?.url) {
+            forgetPluginPlaybackLatency(hash);
             return { state: 'unavailable', message: '未返回播放地址', checkedAt: Date.now() };
         }
 
         // 3. 拉流探活：HTTP 可访问且不是错误页 / JSON 才算可用
         const failReason = await probeMediaSource(media);
+        const latencyMs = Math.max(1, Math.round(performance.now() - playbackStarted));
         if (failReason) {
+            forgetPluginPlaybackLatency(hash);
             return { state: 'unavailable', message: failReason, checkedAt: Date.now() };
         }
-        return { state: 'available', checkedAt: Date.now() };
+        rememberPluginPlaybackLatency(hash, latencyMs);
+        return { state: 'available', latencyMs, checkedAt: Date.now() };
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        forgetPluginPlaybackLatency(hash);
         return { state: 'unavailable', message, checkedAt: Date.now() };
     }
 }

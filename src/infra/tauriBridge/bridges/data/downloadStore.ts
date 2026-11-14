@@ -22,6 +22,7 @@ import {
     findPluginForPlatform,
     pluginsForSourceKey,
 } from '@infra/pluginManager/common/pluginIdentity';
+import { getPluginPlaybackLatency } from '@infra/pluginManager/common/playbackLatency';
 import { isCatalogPlatform } from '@common/musicCatalog';
 import neteaseAccount from '@infra/neteaseAccount/renderer';
 import requestForwarder from '@infra/requestForwarder/renderer';
@@ -362,7 +363,12 @@ class DownloadStore {
         const ordered = [...enabled].sort((a, b) => {
             if (a.hash === preferred) return -1;
             if (b.hash === preferred) return 1;
-            return 0;
+            const latencyA = getPluginPlaybackLatency(a.hash);
+            const latencyB = getPluginPlaybackLatency(b.hash);
+            if (latencyA == null && latencyB == null) return 0;
+            if (latencyA == null) return 1;
+            if (latencyB == null) return -1;
+            return latencyA - latencyB;
         });
         const qualityFallbackOrder = this.config['download.whenQualityMissing'] ?? 'lower';
         let lastError = '';

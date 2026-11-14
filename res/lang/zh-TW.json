@@ -304,6 +304,7 @@
         "plugin_update_none": "這些插件已是音源目錄裡的最新版本",
         "plugin_update_offline": "連不上音源目錄，暫時無法檢查版本",
         "source_available": "可用",
+        "source_available_latency": "可用 · {{latency}}",
         "source_unavailable": "不可用",
         "source_checking": "檢測中",
         "source_unchecked": "未檢測",

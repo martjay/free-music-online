@@ -40,6 +40,8 @@ export interface IPluginAvailabilityResult {
     message?: string;
     /** 最近一次检测完成时间戳 */
     checkedAt?: number;
+    /** 取播放地址并探活成功的耗时（毫秒）。换源按它从快到慢调用。 */
+    latencyMs?: number;
 }
 
 /** 按插件 hash 索引的可用性检测结果 */

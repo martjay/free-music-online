@@ -1,7 +1,7 @@
 {
-    "version": "1.0.51",
+    "version": "1.0.52",
     "changeLog": [
-        "同一首歌在歌单和排行榜里会一起记住正在播放和收藏状态"
+        "检测平台后按响应速度决定播放和下载顺序，避免线路和平台来回切换"
     ],
     "download": [
         "https://github.com/martjay/free-music-online/releases/latest"

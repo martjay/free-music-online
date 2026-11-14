@@ -54,13 +54,26 @@ export interface PluginItemCardProps {
     dragListeners?: ReturnType<typeof useSortable>['listeners'];
 }
 
+function formatLatency(latencyMs: number): string {
+    if (latencyMs < 1000) return `${latencyMs}ms`;
+    return `${(latencyMs / 1000).toFixed(1)}s`;
+}
+
 /** 音源可用性状态徽章 */
 function AvailabilityBadge({ availability }: { availability?: IPluginAvailabilityResult }) {
     const { t } = useTranslation();
 
     switch (availability?.state) {
         case 'available':
-            return <Badge variant="tint">{t('plugin.source_available')}</Badge>;
+            return (
+                <Badge variant="tint">
+                    {availability.latencyMs != null
+                        ? t('plugin.source_available_latency', {
+                              latency: formatLatency(availability.latencyMs),
+                          })
+                        : t('plugin.source_available')}
+                </Badge>
+            );
         case 'unavailable':
             return (
                 <Badge variant="tint" colorScheme="danger">

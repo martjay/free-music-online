@@ -19,6 +19,7 @@ import {
 import musicSheet from '@infra/musicSheet/renderer';
 import pluginManager from '@infra/pluginManager/renderer';
 import { shortPlatformName } from '@infra/pluginManager/common/pluginIdentity';
+import { getPluginPlaybackLatency } from '@infra/pluginManager/common/playbackLatency';
 import appConfig from '@infra/appConfig/renderer';
 import downloadManager from '@infra/downloadManager/renderer';
 import fsUtil from '@infra/fsUtil/renderer';
@@ -1294,23 +1295,10 @@ class TrackPlayer {
         const plugins = this.fallbackPlugins(sourceMusic);
         if (plugins.length === 0 || attempt !== this.playbackAttempt) return null;
 
-        const preferred = plugins[0]?.hash === this.preferredFallbackHash ? plugins[0] : undefined;
-        if (preferred) {
-            const hit = await this.withTimeout(
-                this.resolvePluginSource(sourceMusic, preferred),
-                6000,
-            );
+        // 按检测延迟从快到慢逐个调用。并行抢最先返回的结果会让平台来回换。
+        for (const plugin of plugins) {
             if (attempt !== this.playbackAttempt) return null;
-            if (hit) return hit;
-        }
-
-        const rest = plugins.filter((plugin) => plugin.hash !== preferred?.hash);
-        for (let index = 0; index < rest.length; index += 3) {
-            const hit = await this.racePluginSources(
-                sourceMusic,
-                rest.slice(index, index + 3),
-                attempt,
-            );
+            const hit = await this.withTimeout(this.resolvePluginSource(sourceMusic, plugin), 6000);
             if (attempt !== this.playbackAttempt) return null;
             if (hit) return hit;
         }
@@ -1329,15 +1317,23 @@ class TrackPlayer {
                     !this.previewSkipHashes.has(plugin.hash),
             );
         const configured = appConfig.getConfigByKey('playMusic.defaultPlaybackPlugin') ?? '';
-        return [...plugins].sort(
-            (a, b) => this.pluginRank(a.hash, configured) - this.pluginRank(b.hash, configured),
-        );
+        return [...plugins].sort((a, b) => {
+            const rank = this.pluginRank(a.hash, configured) - this.pluginRank(b.hash, configured);
+            if (rank !== 0) return rank;
+            return this.latencyRank(a.hash) - this.latencyRank(b.hash);
+        });
     }
 
     private pluginRank(hash: string, configured: string): number {
         if (configured && hash === configured) return 0;
         if (this.preferredFallbackHash && hash === this.preferredFallbackHash) return 1;
         return 2;
+    }
+
+    /** 没测过的平台排在测过的后面，测过的按耗时从短到长。 */
+    private latencyRank(hash: string): number {
+        const latency = getPluginPlaybackLatency(hash);
+        return latency == null ? Number.MAX_SAFE_INTEGER : latency;
     }
 
     /** 设置了默认播放平台，且它不是歌曲自带平台时，先用它搜可播放地址。 */
@@ -1375,39 +1371,6 @@ class TrackPlayer {
         const plugin = pluginManager.getPluginByHash(hash);
         if (!plugin?.supportedMethod.includes('getMediaSource')) return null;
         return plugin;
-    }
-
-    private racePluginSources(
-        sourceMusic: IMusic.IMusicItem,
-        plugins: IPlugin.IPluginDelegate[],
-        attempt: number,
-    ): Promise<IAlternativeSourceHit | null> {
-        if (plugins.length === 0 || attempt !== this.playbackAttempt) return Promise.resolve(null);
-        return new Promise((resolve) => {
-            let pending = plugins.length;
-            let settled = false;
-            const finish = (hit: IAlternativeSourceHit | null) => {
-                if (settled) return;
-                settled = true;
-                resolve(hit);
-            };
-            for (const plugin of plugins) {
-                this.withTimeout(this.resolvePluginSource(sourceMusic, plugin), 6000).then(
-                    (hit) => {
-                        if (attempt !== this.playbackAttempt) {
-                            finish(null);
-                            return;
-                        }
-                        if (hit) {
-                            finish(hit);
-                            return;
-                        }
-                        pending -= 1;
-                        if (pending === 0) finish(null);
-                    },
-                );
-            }
-        });
     }
 
     private async resolvePluginSource(

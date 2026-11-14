@@ -304,6 +304,7 @@
         "plugin_update_none": "Installed plugins already match the newest versions in the source list",
         "plugin_update_offline": "Can't reach the source list, so versions couldn't be checked",
         "source_available": "Available",
+        "source_available_latency": "Available · {{latency}}",
         "source_unavailable": "Unavailable",
         "source_checking": "Checking",
         "source_unchecked": "Not checked",
