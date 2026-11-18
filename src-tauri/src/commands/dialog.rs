@@ -19,6 +19,7 @@ pub struct DialogFilter {
 pub struct OpenDialogOptions {
     pub title: Option<String>,
     pub default_path: Option<String>,
+    #[cfg_attr(mobile, allow(dead_code))]
     pub filters: Option<Vec<DialogFilter>>,
     pub properties: Option<Vec<String>>,
 }
@@ -62,6 +63,8 @@ pub async fn show_open_dialog(
         }
     }
     if let Some(filters) = &options.filters {
+        // Android 的 json 过滤器常对不上微信/下载目录里的文件，打开时不加扩展名限制。
+        #[cfg(desktop)]
         for filter in filters {
             let exts = usable_extensions(filter);
             if exts.is_empty() {
@@ -75,31 +78,55 @@ pub async fn show_open_dialog(
                 .unwrap_or_else(|| "Files".to_string());
             builder = builder.add_filter(name, &ext_refs);
         }
+        #[cfg(mobile)]
+        let _ = filters;
     }
 
     let props = options.properties.unwrap_or_default();
     let is_dir = props.iter().any(|p| p == "openDirectory");
     let multi = props.iter().any(|p| p == "multiSelections");
 
+    #[cfg(mobile)]
+    if is_dir {
+        return Err("当前平台不能选择文件夹".to_string());
+    }
+
+    fn stringify_picked(file: tauri_plugin_dialog::FilePath) -> String {
+        #[cfg(mobile)]
+        {
+            // Android 给的是 content://，不能 simplified 成普通路径，否则后面读文件会失败。
+            file.to_string()
+        }
+        #[cfg(not(mobile))]
+        {
+            file.simplified().to_string()
+        }
+    }
+
     // blocking API 在非主线程（async command 运行于异步线程池）中调用是官方推荐用法。
     let picked: Option<Vec<String>> = if is_dir {
-        if multi {
-            builder
-                .blocking_pick_folders()
-                .map(|folders| folders.into_iter().map(|f| f.simplified().to_string()).collect())
-        } else {
-            builder
-                .blocking_pick_folder()
-                .map(|f| vec![f.simplified().to_string()])
+        #[cfg(desktop)]
+        {
+            if multi {
+                builder
+                    .blocking_pick_folders()
+                    .map(|folders| folders.into_iter().map(stringify_picked).collect())
+            } else {
+                builder
+                    .blocking_pick_folder()
+                    .map(|f| vec![stringify_picked(f)])
+            }
         }
+        #[cfg(mobile)]
+        None
     } else if multi {
         builder
             .blocking_pick_files()
-            .map(|files| files.into_iter().map(|f| f.simplified().to_string()).collect())
+            .map(|files| files.into_iter().map(stringify_picked).collect())
     } else {
         builder
             .blocking_pick_file()
-            .map(|f| vec![f.simplified().to_string()])
+            .map(|f| vec![stringify_picked(f)])
     };
 
     Ok(picked.filter(|paths| !paths.is_empty()))
@@ -154,7 +181,14 @@ pub async fn show_save_dialog(
         }
     }
 
-    Ok(builder
-        .blocking_save_file()
-        .map(|f| f.simplified().to_string()))
+    Ok(builder.blocking_save_file().map(|f| {
+        #[cfg(mobile)]
+        {
+            f.to_string()
+        }
+        #[cfg(not(mobile))]
+        {
+            f.simplified().to_string()
+        }
+    }))
 }

@@ -69,6 +69,8 @@
 
     // ── 可交互状态 ──
     &--interactive {
+        touch-action: none;
+
         .progress-bar__track {
             cursor: pointer;
         }

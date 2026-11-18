@@ -1,0 +1,583 @@
+// Mobile-only layout. Windows never gets html.is-mobile-app.
+html.is-mobile-app {
+    .l-app-shell__content {
+        touch-action: manipulation;
+    }
+
+    // ── Shared chrome ──
+    .tab-bar {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .tab-bar__list {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        overflow-y: hidden;
+        gap: 16px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
+    .tab-bar__indicator {
+        display: none;
+    }
+
+    .tab-bar__tab.is-active {
+        box-shadow: inset 0 -2px 0 var(--color-fill-brand);
+    }
+
+    .song-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-3);
+    }
+
+    .song-toolbar__left {
+        flex-wrap: wrap;
+    }
+
+    .song-toolbar__search {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .song-table,
+    .song-table__table {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .song-table__resize {
+        display: none;
+    }
+
+    .song-table__cell--title .song-table__cell-content {
+        white-space: normal;
+    }
+
+    .music-sheet-header {
+        flex-direction: row;
+        align-items: center;
+        gap: var(--space-4);
+    }
+
+    .p-artist-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-3);
+    }
+
+    .music-sheet-header__cover .artwork,
+    .p-artist-header__avatar.artwork,
+    .p-artist-header .artwork {
+        width: 112px !important;
+        height: 112px !important;
+    }
+
+    .music-sheet-header__info {
+        padding-bottom: 0;
+    }
+
+    .music-sheet-header__title {
+        margin-bottom: var(--space-1);
+        font-size: 20px;
+    }
+
+    .p-artist-header__title {
+        font-size: 22px;
+    }
+
+    .song-table__header-row {
+        display: none;
+    }
+
+    .music-sheet-header__actions {
+        flex-wrap: wrap;
+    }
+
+    .p-search__title,
+    .p-download__title,
+    .p-setting__title,
+    .p-theme__title,
+    .p-plugin-manager__title,
+    .p-local-music__title,
+    .p-recommend-sheets__title,
+    .p-toplist__title {
+        font-size: 22px;
+    }
+
+    // ── Tables: keep title + artist ──
+    .p-download__header-cell--album,
+    .p-download__cell--album,
+    .p-download__header-cell--size,
+    .p-download__cell--size,
+    .p-download__table col[data-col='album'],
+    .p-download__table col[data-col='size'] {
+        display: none;
+    }
+
+    .p-download__table {
+        table-layout: auto;
+        width: 100%;
+    }
+
+    .p-download__cell--actions,
+    .p-download__header-cell--actions {
+        width: 72px;
+    }
+
+    // ── Nested page scroll → one outer scroller ──
+    .p-setting,
+    .p-theme,
+    .p-plugin-manager {
+        height: auto;
+    }
+
+    .p-setting__body,
+    .p-theme__body,
+    .p-plugin-manager__body {
+        overflow: visible;
+        flex: none;
+        min-height: 0;
+        margin-right: 0;
+        padding-right: 0;
+        scrollbar-gutter: auto;
+    }
+
+    .p-setting__row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--space-3);
+        align-items: center;
+    }
+
+    .p-setting__row--desktop-only {
+        display: none;
+    }
+
+    .p-setting__row-label {
+        overflow-wrap: anywhere;
+        white-space: normal;
+    }
+
+    .p-setting__card-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .p-setting__row:has(.select),
+    .p-setting__row:has(.input),
+    .p-setting__row:has(.p-setting__path-picker) {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .p-setting__row-control {
+        justify-content: flex-end;
+        width: auto;
+        min-width: 0;
+
+        .input,
+        .select {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+        }
+    }
+
+    .p-setting__duration,
+    .p-setting__rules,
+    .p-setting__path-display,
+    .p-setting__path-picker {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .p-setting__path-picker {
+        flex-wrap: wrap;
+    }
+
+    .p-setting__color-picker {
+        max-width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .p-setting__about-grid,
+    .p-setting__shortcut-item {
+        grid-template-columns: 1fr;
+    }
+
+    .p-setting__shortcut-cell {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .p-setting__about-contact-body {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-4);
+    }
+
+    .p-setting__info-row {
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+
+    .p-setting__card {
+        padding: var(--space-4);
+    }
+
+    // ── Local music master-detail ──
+    .p-local-music {
+        --_body-h: auto;
+    }
+
+    .p-local-music__header,
+    .p-local-music__tab-row,
+    .p-download__header,
+    .p-plugin-manager__header-row,
+    .p-search__title-row,
+    .p-netease-recommend__header,
+    .p-theme__title-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-3);
+    }
+
+    .p-local-music__search {
+        width: 100%;
+    }
+
+    .p-local-music__split {
+        flex-direction: column;
+        height: auto;
+        min-height: 0;
+    }
+
+    .p-local-music__split-master {
+        width: 100%;
+        max-height: 40vh;
+    }
+
+    .l-topbar__nav {
+        display: none;
+    }
+
+    .l-sidebar__tool-btn--dev,
+    .l-sidebar__tool-btn--minimode {
+        display: none;
+    }
+
+    .l-sidebar__group-header {
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        padding: 0 var(--space-3);
+    }
+
+    .l-sidebar__group-actions {
+        flex: 1 1 100%;
+        gap: var(--space-2);
+    }
+
+    .l-sidebar__group-action {
+        flex: 1;
+        width: auto;
+        min-width: 0;
+        height: 40px;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--color-text-secondary);
+        background: var(--color-fill-subtle);
+        border-radius: var(--radius-control);
+    }
+
+    .l-sidebar__group-action-label {
+        display: inline;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .l-sidebar__footer {
+        justify-content: space-around;
+        gap: var(--space-2);
+        margin-right: 0;
+        padding: var(--space-3) var(--space-2) var(--space-2);
+    }
+
+    .l-sidebar__tool-btn {
+        width: auto;
+        height: auto;
+        min-height: 44px;
+        flex: 1;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 11px;
+        line-height: 1.2;
+        color: var(--color-text-secondary);
+
+        span {
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    }
+
+    .p-toplist__group-title {
+        display: none;
+    }
+
+    .p-toplist__card {
+        padding: var(--space-2) var(--space-3);
+    }
+
+    .p-toplist {
+        padding-bottom: var(--space-2);
+    }
+
+    .l-sidebar__nav-item {
+        min-height: 44px;
+        height: auto;
+        padding: 10px var(--space-3);
+    }
+
+    .p-plugin-manager__header {
+        padding-top: var(--space-3);
+        padding-bottom: var(--space-4);
+        gap: var(--space-3);
+    }
+
+    .p-plugin-manager__title-group {
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: var(--space-2);
+    }
+
+    .p-plugin-manager__count {
+        white-space: normal;
+    }
+
+    .p-plugin-manager__hint {
+        max-width: none;
+        overflow-wrap: anywhere;
+    }
+
+    .p-plugin-manager__header-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        justify-content: stretch;
+        gap: var(--space-2);
+
+        .btn {
+            width: 100%;
+            min-width: 0;
+        }
+
+        .btn--primary {
+            grid-column: 1 / -1;
+        }
+    }
+
+    .p-plugin-manager__list {
+        gap: var(--space-3);
+    }
+
+    .p-plugin-manager__group,
+    .p-plugin-manager__item {
+        padding: var(--space-4);
+        min-width: 0;
+    }
+
+    .p-plugin-manager__group-header {
+        position: relative;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: var(--space-3);
+        padding-right: 32px;
+    }
+
+    .p-plugin-manager__group-info {
+        flex: 1 1 calc(100% - 40px);
+        min-width: 0;
+    }
+
+    .p-plugin-manager__group-actions {
+        flex: 1 1 100%;
+        width: 100%;
+        justify-content: stretch;
+        min-width: 0;
+    }
+
+    .p-plugin-manager__group-actions .btn {
+        flex: 1 1 auto;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .p-plugin-manager__group-toggle {
+        position: absolute;
+        top: 0;
+        right: 0;
+    }
+
+    .p-plugin-manager__item-title-row {
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+
+    .p-plugin-manager__item-name {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: unset;
+        overflow-wrap: anywhere;
+        min-width: 0;
+    }
+
+    .p-plugin-manager__item-version {
+        white-space: nowrap;
+    }
+
+    .p-plugin-manager__item-main {
+        flex-wrap: nowrap;
+        align-items: flex-start;
+        gap: var(--space-3);
+        min-width: 0;
+    }
+
+    .p-plugin-manager__item-info {
+        min-width: 0;
+    }
+
+    .p-plugin-manager__item-right {
+        padding-top: 2px;
+    }
+
+    .p-plugin-manager__item-actions {
+        padding-left: 0;
+        gap: var(--space-2);
+
+        .btn {
+            flex: 1 1 calc(50% - var(--space-2));
+            min-width: 0;
+            justify-content: center;
+        }
+    }
+
+    .p-plugin-manager__item-meta,
+    .p-plugin-manager__group-meta {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: unset;
+        overflow-wrap: anywhere;
+    }
+
+    .local-themes,
+    .remote-themes__grid,
+    .p-theme__grid,
+    .p-theme .theme-card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .p-search__artist-grid-inner {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-4);
+    }
+
+    .p-search__artist-avatar.artwork {
+        width: 88px !important;
+        height: 88px !important;
+    }
+
+    .p-toplist__grid {
+        grid-template-columns: 1fr;
+    }
+
+    .p-netease-recommend__header {
+        padding: var(--space-4);
+    }
+
+    .p-netease-recommend__user {
+        min-width: 0;
+    }
+
+    // ── Fullscreen player ──
+    .l-fullscreen-player__header {
+        padding: calc(env(safe-area-inset-top, 0px) + 8px) var(--space-4) 8px;
+    }
+
+    .l-fullscreen-player__drag-region {
+        display: none;
+    }
+
+    .l-fullscreen-player__body {
+        flex-direction: column;
+        padding: 0 var(--space-5) calc(env(safe-area-inset-bottom, 0px) + var(--space-6));
+        gap: var(--space-4);
+        justify-content: flex-start;
+        overflow-y: auto;
+        align-items: stretch;
+    }
+
+    .l-fullscreen-player__artwork-wrapper {
+        width: min(72vw, 280px);
+        margin: 0 auto;
+        flex-shrink: 0;
+    }
+
+    .l-fullscreen-player__right {
+        width: 100%;
+        padding: 0;
+        flex: 1 1 auto;
+    }
+
+    .l-fullscreen-player__song-title {
+        font-size: 20px;
+        text-align: center;
+    }
+
+    .l-fullscreen-player__song-info {
+        text-align: center;
+        margin-bottom: var(--space-4);
+    }
+
+    .l-fullscreen-player__settings {
+        width: min(100vw - 24px, 360px);
+        max-height: min(70dvh, 480px);
+        overflow-y: auto;
+    }
+
+    .modal {
+        width: calc(100vw - 24px) !important;
+        max-width: calc(100vw - 24px);
+        max-height: calc(100dvh - 24px);
+    }
+
+    .modal__body {
+        max-height: min(70dvh, 520px);
+        overflow-y: auto;
+    }
+
+    .drawer {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 0;
+    }
+
+    .context-menu {
+        max-width: calc(100vw - 16px);
+    }
+
+    .select__content,
+    .popover,
+    .dropdown {
+        max-width: calc(100vw - 16px);
+    }
+}

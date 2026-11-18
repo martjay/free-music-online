@@ -110,6 +110,7 @@ fn windows_system_proxy() -> Option<String> {
     parse_windows_proxy_server(&server)
 }
 
+#[cfg(windows)]
 fn parse_windows_proxy_server(server: &str) -> Option<String> {
     let server = server.trim();
     if server.is_empty() {

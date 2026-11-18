@@ -1346,6 +1346,179 @@
     }
 }
 
+.p-radio-explorer--mobile {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    user-select: auto;
+
+    .radio-scene,
+    .p-radio-explorer__drag-region,
+    .p-radio-explorer__win-controls,
+    .p-radio-explorer__view-switch,
+    .p-radio-explorer__icon-btn--fullscreen,
+    .p-radio-explorer__crosshair,
+    .p-radio-explorer__tooltip,
+    .p-radio-explorer__attribution,
+    .p-radio-explorer__chips-arrow {
+        display: none;
+    }
+
+    .p-radio-explorer__topbar {
+        position: relative;
+        inset: auto;
+        order: 1;
+        height: auto;
+        padding: 8px 0 12px;
+        pointer-events: auto;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .p-radio-explorer__exit-btn {
+        display: none;
+    }
+
+    .p-radio-explorer__brand {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .p-radio-explorer__top-left,
+    .p-radio-explorer__top-right,
+    .p-radio-explorer__tools {
+        flex-wrap: wrap;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .p-radio-explorer__top-right {
+        width: auto;
+        justify-content: flex-end;
+        flex: 1 1 auto;
+    }
+
+    .p-radio-explorer__saved-btn {
+        width: 36px;
+        padding: 0;
+        font-size: 0;
+        gap: 0;
+    }
+
+    .p-radio-explorer__search-panel,
+    .p-radio-explorer__favorites,
+    .p-radio-explorer__history-drawer {
+        position: relative;
+        top: auto;
+        right: auto;
+        left: auto;
+        width: 100%;
+        max-width: 100%;
+        margin: 0 0 8px;
+        order: 3;
+    }
+
+    .p-radio-explorer__search-results {
+        position: relative;
+        top: auto;
+        max-height: 40vh;
+    }
+
+    .p-radio-explorer__bottom {
+        position: relative !important;
+        inset: auto !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: auto !important;
+        order: 2;
+        width: 100%;
+        margin: 0 0 12px;
+        align-items: stretch;
+        pointer-events: auto;
+    }
+
+    .p-radio-explorer__chips-bar,
+    .p-radio-explorer__chips {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .p-radio-explorer__status {
+        position: relative;
+        inset: auto;
+        top: auto;
+        left: auto;
+        transform: none;
+        order: 4;
+        width: 100%;
+        margin: 24px 0;
+        box-sizing: border-box;
+        z-index: 1;
+    }
+
+    .p-radio-explorer__mobile-list {
+        display: flex;
+        flex-direction: column;
+        order: 5;
+        gap: 4px;
+        min-height: 0;
+        padding-bottom: var(--space-4);
+    }
+
+    .p-radio-explorer__mobile-item {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        width: 100%;
+        min-height: 48px;
+        padding: 10px 12px;
+        border: 0;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.04);
+        text-align: left;
+        cursor: pointer;
+
+        &.is-active,
+        &.is-playing {
+            background: rgba(56, 214, 162, 0.16);
+        }
+    }
+
+    .p-radio-explorer__mobile-item-title {
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+    }
+
+    .p-radio-explorer__mobile-item-sub {
+        color: rgba(255, 255, 255, 0.65);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+    }
+
+    .p-radio-explorer__station-hud {
+        display: none;
+    }
+
+    .p-radio-explorer__volume-ctrl {
+        display: none;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .p-radio-explorer *,
     .p-radio-explorer *::before,

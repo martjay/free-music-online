@@ -72,6 +72,7 @@ impl Default for LyricWindowState {
 
 /// 网页可视区域内的矩形。`unlock` 才能取消穿透，其余只用来把解锁按钮显示出来。
 #[derive(Clone, serde::Deserialize)]
+#[cfg_attr(mobile, allow(dead_code))]
 pub struct LyricHoverRect {
     x: f64,
     y: f64,
@@ -176,7 +177,7 @@ pub fn handle_lyric_window_event(window: &Window, event: &WindowEvent) {
 pub fn sync_lyric_window(
     app: AppHandle,
     enabled: bool,
-    always_on_top: bool,
+    #[cfg_attr(mobile, allow(unused_variables))] always_on_top: bool,
     locked: bool,
 ) -> Result<(), String> {
     let Some(window) = app.get_webview_window(LYRIC_WINDOW_LABEL) else {
@@ -199,6 +200,7 @@ pub fn sync_lyric_window(
 
     let _ = window.set_size(PhysicalSize::new(width, height));
     let _ = window.set_position(PhysicalPosition::new(x, y));
+    #[cfg(desktop)]
     let _ = window.set_always_on_top(always_on_top);
     if locked {
         start_locked_hover(&app);
@@ -286,7 +288,10 @@ pub fn set_lyric_display_span(app: AppHandle, multi_line: bool) -> Result<(), St
 #[tauri::command]
 pub fn set_lyric_topmost(app: AppHandle, topmost: bool) {
     if let Some(window) = app.get_webview_window(LYRIC_WINDOW_LABEL) {
+        #[cfg(desktop)]
         let _ = window.set_always_on_top(topmost);
+        #[cfg(mobile)]
+        let _ = (window, topmost);
     }
 }
 
@@ -521,7 +526,10 @@ fn stop_locked_hover(app: &AppHandle) {
         state.hover_rects.lock().unwrap().clear();
     }
     if let Some(window) = app.get_webview_window(LYRIC_WINDOW_LABEL) {
+        #[cfg(desktop)]
         let _ = window.set_ignore_cursor_events(false);
+        #[cfg(mobile)]
+        let _ = window;
     }
     let _ = app.emit(LYRIC_HOVER_EVENT, false);
 }
@@ -535,7 +543,10 @@ fn start_locked_hover(app: &AppHandle) {
     let Some(window) = app.get_webview_window(LYRIC_WINDOW_LABEL) else {
         return;
     };
+    #[cfg(desktop)]
     let _ = window.set_ignore_cursor_events(true);
+    #[cfg(mobile)]
+    let _ = &window;
     let _ = app.emit(LYRIC_HOVER_EVENT, false);
 
     let (tx, rx) = std::sync::mpsc::channel::<()>();
@@ -608,6 +619,7 @@ fn start_locked_hover(app: &AppHandle) {
             let should_capture = shown && over_button;
             if should_capture != capturing {
                 capturing = should_capture;
+                #[cfg(desktop)]
                 let _ = window.set_ignore_cursor_events(!should_capture);
             }
         }
@@ -616,6 +628,13 @@ fn start_locked_hover(app: &AppHandle) {
 
 /// `unlock` 为真时只命中解锁按钮。否则命中歌词文字；还没收到文字范围时用整窗判断是否该把按钮显示出来。
 fn cursor_over_hover_kind(app: &AppHandle, window: &tauri::WebviewWindow, unlock: bool) -> bool {
+    #[cfg(mobile)]
+    {
+        let _ = (app, window, unlock);
+        return false;
+    }
+    #[cfg(desktop)]
+    {
     let rects: Vec<LyricHoverRect> = app
         .state::<LyricWindowState>()
         .hover_rects
@@ -647,10 +666,18 @@ fn cursor_over_hover_kind(app: &AppHandle, window: &tauri::WebviewWindow, unlock
         let bottom = top + rect.height * scale + pad * 2.0;
         cursor.x >= left && cursor.y >= top && cursor.x < right && cursor.y < bottom
     })
+    }
 }
 
 /// 解锁按钮所在的顶栏。只在鼠标已经进入歌词区之后参与命中。
 fn cursor_over_toolbar_strip(window: &tauri::WebviewWindow) -> bool {
+    #[cfg(mobile)]
+    {
+        let _ = window;
+        return false;
+    }
+    #[cfg(desktop)]
+    {
     let Ok(cursor) = window.cursor_position() else {
         return false;
     };
@@ -670,8 +697,10 @@ fn cursor_over_toolbar_strip(window: &tauri::WebviewWindow) -> bool {
         && cursor.y >= origin.y as f64
         && cursor.x < origin.x as f64 + size.width as f64
         && cursor.y < origin.y as f64 + strip
+    }
 }
 
+#[cfg(desktop)]
 fn cursor_inside_window(window: &tauri::WebviewWindow) -> bool {
     let Ok(cursor) = window.cursor_position() else {
         return false;

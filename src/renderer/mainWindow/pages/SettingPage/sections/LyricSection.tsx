@@ -130,6 +130,7 @@ export function LyricSection() {
             subtitle={t('settings.lyric.subtitle')}
         >
             <SettingRow
+                desktopOnly
                 label={t('settings.lyric.enable_desktop_label')}
                 description={t('settings.lyric.enable_desktop_desc')}
                 control={
@@ -150,11 +151,13 @@ export function LyricSection() {
                 control={<Toggle checked={traditional ?? false} onChange={setTraditional} />}
             />
             <SettingRow
+                desktopOnly
                 label={t('settings.lyric.always_on_top_label')}
                 description={t('settings.lyric.always_on_top_desc')}
                 control={<Toggle checked={alwaysOnTop ?? false} onChange={setAlwaysOnTop} />}
             />
             <SettingRow
+                desktopOnly
                 label={t('settings.lyric.lock_label')}
                 description={t('settings.lyric.lock_desc')}
                 control={<Toggle checked={lockLyric ?? false} onChange={setLockLyric} />}

@@ -67,6 +67,11 @@
         display: none !important;
     }
 
+    .l-mobile-tabbar,
+    .l-mobile-nav {
+        display: none !important;
+    }
+
     .l-app-shell__main {
         width: 100vw;
         height: 100vh;
@@ -78,5 +83,196 @@
         margin-bottom: 0 !important;
         padding: 0 !important;
         overflow: hidden !important;
+    }
+}
+
+// ─── Android / iOS shell. Gated by runtime class, never by viewport width. ───
+
+html.is-mobile-app {
+    --size-player-h: 60px;
+    --size-player-progress-h: 24px;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+
+    body,
+    #root {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .l-app-shell {
+        width: 100%;
+        height: 100%;
+        max-height: 100dvh;
+        flex-direction: column;
+    }
+
+    .l-app-shell__main {
+        flex: 1 1 auto;
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+        padding-bottom: calc(
+            var(--size-player-h) + var(--size-player-progress-h) + var(--size-mobile-tab-h) +
+                env(safe-area-inset-bottom, 0px)
+        );
+    }
+
+    .l-app-shell__content {
+        flex: 1 1 auto;
+        min-height: 0;
+        padding: 0 var(--space-4) var(--space-5);
+        margin-bottom: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+        touch-action: pan-y;
+        scrollbar-gutter: auto;
+    }
+
+    .l-app-shell__content--immersive {
+        margin-bottom: 0;
+        padding-bottom: var(--space-3);
+    }
+
+    .l-topbar {
+        height: auto;
+        min-height: 48px;
+        padding: calc(env(safe-area-inset-top, 0px) + 6px) var(--space-3) 6px;
+        gap: var(--space-2);
+        flex-shrink: 0;
+    }
+
+    .l-topbar__window-controls,
+    .l-topbar__drag-region {
+        display: none;
+    }
+
+    .l-topbar__search {
+        flex: 1;
+        width: auto;
+        min-width: 0;
+    }
+
+    .l-player-bar {
+        left: 0;
+        right: 0;
+        bottom: calc(var(--size-mobile-tab-h) + env(safe-area-inset-bottom, 0px));
+        background-color: var(--color-bg-player);
+        backdrop-filter: blur(var(--blur-xl));
+    }
+
+    .l-player-bar__progress {
+        margin: 0;
+        padding: 10px 12px 6px;
+        box-sizing: border-box;
+        min-height: var(--size-player-progress-h);
+    }
+
+    .l-player-bar .progress-bar--slim {
+        padding: 8px 0;
+
+        .progress-bar__track {
+            height: 6px;
+        }
+
+        .progress-bar__fill {
+            opacity: 1;
+        }
+
+        .progress-bar__thumb {
+            width: 14px;
+            height: 14px;
+            transform: translate(-50%, -50%) scale(1);
+        }
+    }
+
+    .l-player-bar__body {
+        display: flex;
+        align-items: center;
+        height: var(--size-player-h);
+        padding: 0 var(--space-3);
+        gap: var(--space-2);
+    }
+
+    .l-player-bar__left {
+        flex: 1;
+        min-width: 0;
+        gap: var(--space-2);
+    }
+
+    .l-player-bar__cover {
+        width: 40px !important;
+        height: 40px !important;
+        flex-shrink: 0;
+
+        .artwork__overlay {
+            display: none;
+        }
+    }
+
+    .l-player-bar__info {
+        gap: 0;
+    }
+
+    .l-player-bar__actions,
+    .l-player-bar__desktop-tools,
+    .l-player-bar__desktop-lyric,
+    .l-player-bar__divider,
+    .l-player-bar__center
+        .l-player-bar__ctrl-btn:not(.l-player-bar__ctrl-btn--lg):not(
+            .l-player-bar__ctrl-btn--play
+        ) {
+        display: none;
+    }
+
+    .l-player-bar__center {
+        flex: none;
+        gap: 2px;
+    }
+
+    .l-player-bar__right {
+        flex: none;
+        min-width: 0;
+    }
+
+    .l-player-bar__ctrl-btn--lg {
+        width: 36px;
+        height: 36px;
+    }
+
+    .l-player-bar__ctrl-btn--play {
+        width: 40px;
+        height: 40px;
+    }
+
+    .l-sidebar__tool-btn--minimode {
+        display: none;
+    }
+
+    .p-recommend-sheets__grid .media-grid__grid,
+    .media-grid__grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-3);
+    }
+
+    .l-queue-drawer.drawer {
+        top: calc(48px + env(safe-area-inset-top, 0px));
+        bottom: calc(
+            var(--size-player-h) + var(--size-player-progress-h) + var(--size-mobile-tab-h) +
+                env(safe-area-inset-bottom, 0px)
+        );
+        width: 100%;
+        max-width: 100%;
+        border-radius: 0;
+    }
+
+    .l-app-shell--mobile-radio .l-app-shell__content {
+        overflow: auto;
+        padding-left: var(--space-4);
+        padding-right: var(--space-4);
     }
 }

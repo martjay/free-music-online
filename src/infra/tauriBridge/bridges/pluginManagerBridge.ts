@@ -39,15 +39,12 @@ import type {
 import { tauriInvoke } from '../ipc';
 import { getLyricAdapterWeb } from './pluginManager/lyricAdapter';
 import localPluginDefine from './pluginManager/localPlugin';
+import { joinPath } from './data/pathUtils';
 
 /** localStorage 首帧缓存键 */
 const PLUGIN_CACHE_STORAGE_KEY = 'anhe-player-plugin-cache';
 
 // ─── fs / 哈希工具 ───
-
-function joinPath(dir: string, name: string): string {
-    return `${dir.replace(/[\\/]+$/, '')}\\${name}`;
-}
 
 async function fsReadText(path: string): Promise<string | null> {
     try {
@@ -61,8 +58,43 @@ async function fsReadText(path: string): Promise<string | null> {
     }
 }
 
+const WRITE_CHUNK_SIZE = 240 * 1024;
+
+function errorMessage(err: unknown): string {
+    if (typeof err === 'string' && err.trim()) return err;
+    if (err instanceof Error && err.message) return err.message;
+    if (err && typeof err === 'object') {
+        const record = err as { message?: unknown; error?: unknown };
+        if (typeof record.message === 'string' && record.message.trim()) return record.message;
+        if (typeof record.error === 'string' && record.error.trim()) return record.error;
+        try {
+            const text = JSON.stringify(err);
+            if (text && text !== '{}') return text;
+        } catch {
+            /* ignore */
+        }
+    }
+    return 'Unknown error';
+}
+
 async function fsWriteText(path: string, content: string): Promise<void> {
-    await tauriInvoke('fs_write_file', { path, content, isBinary: false });
+    if (content.length <= WRITE_CHUNK_SIZE) {
+        await tauriInvoke('fs_write_file', { path, content, isBinary: false });
+        return;
+    }
+    await tauriInvoke('fs_write_file', {
+        path,
+        content: content.slice(0, WRITE_CHUNK_SIZE),
+        isBinary: false,
+    });
+    for (let offset = WRITE_CHUNK_SIZE; offset < content.length; offset += WRITE_CHUNK_SIZE) {
+        await tauriInvoke('fs_write_file', {
+            path,
+            content: content.slice(offset, offset + WRITE_CHUNK_SIZE),
+            isBinary: false,
+            append: true,
+        });
+    }
 }
 
 async function fsRemove(path: string): Promise<void> {
@@ -588,7 +620,7 @@ class TauriPluginManagerService {
             return await this.installCode(code, subscribeUrl);
         } catch (err: any) {
             console.error('[PluginManager] Install failed:', err);
-            return { success: false, message: err?.message ?? 'Unknown error' };
+            return { success: false, message: errorMessage(err) };
         }
     }
 
@@ -602,7 +634,7 @@ class TauriPluginManagerService {
             return await this.installCode(code);
         } catch (err: any) {
             console.error('[PluginManager] Install from code failed:', err);
-            return { success: false, message: err?.message ?? 'Unknown error' };
+            return { success: false, message: errorMessage(err) };
         }
     }
 
@@ -629,6 +661,10 @@ class TauriPluginManagerService {
         }
 
         // 写入文件
+        if (!this.pluginBasePath) {
+            return { success: false, message: 'Plugin storage is not ready' };
+        }
+        await fsMkdir(this.pluginBasePath);
         const fileName = `${nanoid()}.js`;
         const filePath = joinPath(this.pluginBasePath, fileName);
         await fsWriteText(filePath, code);
@@ -807,7 +843,7 @@ class TauriPluginManagerService {
             return { success: true };
         } catch (err: any) {
             console.error('[PluginManager] Update failed:', err);
-            return { success: false, message: err?.message ?? 'Unknown error' };
+            return { success: false, message: errorMessage(err) };
         }
     }
 

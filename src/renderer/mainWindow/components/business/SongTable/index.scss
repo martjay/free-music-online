@@ -278,6 +278,31 @@
 
 // ── 拖拽多选计数 badge ──
 
+.song-table__mobile-title {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.song-table__mobile-title-name,
+.song-table__mobile-title-artist {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.song-table__mobile-title-artist {
+    font-size: var(--text-caption-size);
+    font-weight: var(--font-weight-normal);
+    color: var(--color-text-secondary);
+}
+
+.song-table__row.is-active .song-table__mobile-title-artist {
+    color: inherit;
+    opacity: 0.8;
+}
+
 .song-table__drag-count-badge {
     display: inline-flex;
     align-items: center;

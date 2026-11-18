@@ -34,6 +34,7 @@ import i18n from '@infra/i18n/renderer';
 import { isDisliked, parseDislikeRules } from '@common/dislikeRules';
 import LyricParser from '@common/lyricParser';
 import { type IAudioController, createAudioController } from './audioController';
+import { bindMediaSessionHandlers } from './mediaSession';
 import PlayQueue from './playQueue';
 import LyricManager from './lyricManager';
 import { bindSleepTimer } from './sleepTimer';
@@ -1035,10 +1036,12 @@ class TrackPlayer {
     }
 
     private bindMediaSession(): void {
-        navigator.mediaSession.setActionHandler('nexttrack', () => this.skipToNext());
-        navigator.mediaSession.setActionHandler('previoustrack', () => this.skipToPrev());
-        navigator.mediaSession.setActionHandler('play', () => this.resume());
-        navigator.mediaSession.setActionHandler('pause', () => this.pause());
+        bindMediaSessionHandlers({
+            nexttrack: () => this.skipToNext(),
+            previoustrack: () => this.skipToPrev(),
+            play: () => this.resume(),
+            pause: () => this.pause(),
+        });
     }
 
     // ─── 错误处理 ───

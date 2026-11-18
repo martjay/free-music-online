@@ -9,6 +9,7 @@
  */
 import Hls from 'hls.js';
 import { atom, getDefaultStore, useAtomValue, type PrimitiveAtom } from 'jotai';
+import { compositeKey } from '@common/mediaKey';
 import type { IRadioBrowserMusicItem } from '@common/radioBrowser';
 import { isSafeRadioRemoteUrl } from '@common/radioBrowser';
 import requestForwarder from '@infra/requestForwarder/renderer';
@@ -38,6 +39,9 @@ export const radioPlaybackStateAtom: PrimitiveAtom<RadioPlaybackState> = atom(
     'idle' as RadioPlaybackState,
 );
 export const radioVolumeAtom: PrimitiveAtom<number> = atom(isNaN(savedVolume) ? 1 : savedVolume);
+export const radioPlaylistAtom: PrimitiveAtom<IRadioBrowserMusicItem[]> = atom(
+    [] as IRadioBrowserMusicItem[],
+);
 
 export function useRadioCurrentStation(): IRadioBrowserMusicItem | null {
     return useAtomValue(radioCurrentStationAtom);
@@ -165,16 +169,32 @@ class RadioAudioPlayer {
 
     togglePlayPause(): void {
         const state = store.get(radioPlaybackStateAtom);
-        if (state === 'playing') {
+        if (state === 'playing' || state === 'buffering') {
             this.pause();
         } else if (state === 'paused') {
             this.resume();
         } else {
-            const station = store.get(radioCurrentStationAtom);
+            const station = store.get(radioCurrentStationAtom) ?? store.get(radioPlaylistAtom)[0];
             if (station) {
                 this.play(station).catch(() => {});
             }
         }
+    }
+
+    setPlaylist(stations: IRadioBrowserMusicItem[]): void {
+        store.set(radioPlaylistAtom, stations);
+    }
+
+    skip(direction: -1 | 1): void {
+        const list = store.get(radioPlaylistAtom);
+        if (list.length === 0) return;
+        const current = store.get(radioCurrentStationAtom);
+        const currentKey = current ? compositeKey(current.platform, String(current.id)) : null;
+        const index = currentKey
+            ? list.findIndex((item) => compositeKey(item.platform, String(item.id)) === currentKey)
+            : -1;
+        const next = list[(index + direction + list.length) % list.length] ?? list[0];
+        void this.play(next);
     }
 
     /** 退出电台或停止播放：立即释放音频和 Hls 资源并重置状态 */

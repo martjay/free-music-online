@@ -1,35 +1,118 @@
 use std::fs;
+use std::io::Write;
 use std::path::Path;
+use tauri::AppHandle;
+
+#[cfg(mobile)]
+use tauri_plugin_fs::{FsExt, OpenOptions as PluginOpenOptions};
+
+fn is_uri_path(path: &str) -> bool {
+    path.starts_with("content:") || path.starts_with("file:") || path.starts_with("asset:")
+}
+
+#[cfg(mobile)]
+fn to_plugin_path(path: &str) -> tauri_plugin_fs::FilePath {
+    path.parse().unwrap()
+}
+
+fn read_bytes(app: &AppHandle, path: &str) -> Result<Vec<u8>, String> {
+    #[cfg(mobile)]
+    {
+        if is_uri_path(path) {
+            return app.fs().read(to_plugin_path(path)).map_err(|e| e.to_string());
+        }
+        return fs::read(path).map_err(|e| e.to_string());
+    }
+    #[cfg(not(mobile))]
+    {
+        let _ = app;
+        fs::read(path).map_err(|e| e.to_string())
+    }
+}
+
+fn write_bytes(app: &AppHandle, path: &str, bytes: &[u8], append: bool) -> Result<(), String> {
+    #[cfg(mobile)]
+    {
+        if is_uri_path(path) {
+            let payload = if append {
+                let mut existing = app.fs().read(to_plugin_path(path)).unwrap_or_default();
+                existing.extend_from_slice(bytes);
+                existing
+            } else {
+                bytes.to_vec()
+            };
+            let mut options = PluginOpenOptions::new();
+            options.write(true).create(true).truncate(true);
+            let mut file = app
+                .fs()
+                .open(to_plugin_path(path), options)
+                .map_err(|e| e.to_string())?;
+            file.write_all(&payload).map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        return write_path(path, bytes, append);
+    }
+    #[cfg(not(mobile))]
+    {
+        let _ = app;
+        write_path(path, bytes, append)
+    }
+}
+
+fn write_path(path: &str, bytes: &[u8], append: bool) -> Result<(), String> {
+    if append {
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .and_then(|mut file| file.write_all(bytes))
+            .map_err(|e| e.to_string())
+    } else {
+        fs::write(path, bytes).map_err(|e| e.to_string())
+    }
+}
 
 #[tauri::command]
-pub fn fs_write_file(path: String, content: serde_json::Value, is_binary: bool) -> Result<(), String> {
+pub fn fs_write_file(
+    app: AppHandle,
+    path: String,
+    content: serde_json::Value,
+    is_binary: bool,
+    append: Option<bool>,
+) -> Result<(), String> {
+    let append = append.unwrap_or(false);
     if is_binary {
         if let Some(arr) = content.as_array() {
             let bytes: Vec<u8> = arr.iter().filter_map(|v| v.as_u64().map(|n| n as u8)).collect();
-            fs::write(path, bytes).map_err(|e| e.to_string())?;
-            return Ok(());
+            return write_bytes(&app, &path, &bytes, append);
         }
     }
     if let Some(s) = content.as_str() {
-        fs::write(path, s).map_err(|e| e.to_string())?;
-        return Ok(());
+        return write_bytes(&app, &path, s.as_bytes(), append);
     }
     Err("Invalid content format".to_string())
 }
 
 #[tauri::command]
-pub fn fs_read_file(path: String, encoding: Option<String>) -> Result<serde_json::Value, String> {
+pub fn fs_read_file(
+    app: AppHandle,
+    path: String,
+    encoding: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let bytes = read_bytes(&app, &path)?;
     if encoding.is_some() {
-        let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
+        let text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
         return Ok(serde_json::Value::String(text));
     }
-    let bytes = fs::read(path).map_err(|e| e.to_string())?;
-    let json_bytes: Vec<serde_json::Value> = bytes.into_iter().map(|b| serde_json::Value::from(b)).collect();
+    let json_bytes: Vec<serde_json::Value> = bytes.into_iter().map(serde_json::Value::from).collect();
     Ok(serde_json::Value::Array(json_bytes))
 }
 
 #[tauri::command]
 pub fn fs_is_file(path: String) -> bool {
+    if is_uri_path(&path) {
+        return true;
+    }
     Path::new(&path).is_file()
 }
 
@@ -65,7 +148,11 @@ pub fn fs_mkdir(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn fs_copy_file(src: String, dest: String) -> Result<(), String> {
+pub fn fs_copy_file(app: AppHandle, src: String, dest: String) -> Result<(), String> {
+    if is_uri_path(&src) || is_uri_path(&dest) {
+        let bytes = read_bytes(&app, &src)?;
+        return write_bytes(&app, &dest, &bytes, false);
+    }
     fs::copy(src, dest).map(|_| ()).map_err(|e| e.to_string())
 }
 

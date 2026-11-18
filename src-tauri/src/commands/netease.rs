@@ -119,13 +119,14 @@ pub async fn netease_login_open(app: AppHandle) -> Result<(), String> {
     let url = Url::parse(LOGIN_URL).map_err(|e| e.to_string())?;
     let (width, height) = login_window_size(&app);
 
-    WebviewWindowBuilder::new(&app, LOGIN_WINDOW_LABEL, WebviewUrl::External(url))
+    let builder = WebviewWindowBuilder::new(&app, LOGIN_WINDOW_LABEL, WebviewUrl::External(url))
         .title("网易云音乐账号登录")
         .inner_size(width, height)
         .min_inner_size(480.0, 420.0)
-        .resizable(true)
-        .center()
-        .focused(true)
+        .resizable(true);
+    #[cfg(desktop)]
+    let builder = builder.center().focused(true);
+    builder
         .on_navigation(|url| {
             if is_login_allowed(url) {
                 return true;

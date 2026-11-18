@@ -27,6 +27,7 @@ import { useMusicSheetList, useStarredSheets } from '@infra/musicSheet/renderer'
 import systemUtil from '@infra/systemUtil/renderer';
 import { showModal } from '../../ui/Modal/modalManager';
 import Badge from '../../ui/Badge';
+import { isMobileApp } from '@common/runtimePlatform';
 import { RoutePaths } from '../../../routes';
 import type { RoutePath } from '../../../routes';
 import { pendingUpdateAtom } from '@renderer/mainWindow/common/updateNotice';
@@ -168,6 +169,9 @@ export default function Sidebar() {
                                 onClick={handleImportSheet}
                             >
                                 <ImportIcon size={14} />
+                                <span className="l-sidebar__group-action-label">
+                                    {t('plugin.method_import_music_sheet')}
+                                </span>
                             </button>
                             <button
                                 className="l-sidebar__group-action"
@@ -176,6 +180,9 @@ export default function Sidebar() {
                                 onClick={handleCreateSheet}
                             >
                                 <Plus size={14} />
+                                <span className="l-sidebar__group-action-label">
+                                    {t('playlist.create_sheet')}
+                                </span>
                             </button>
                         </div>
                     </div>
@@ -224,11 +231,12 @@ export default function Sidebar() {
                         onClick={() => navigate(`/${tool.key}`)}
                     >
                         <tool.icon size={16} />
+                        {isMobileApp() ? <span>{t(tool.titleKey)}</span> : null}
                     </button>
                 ))}
 
                 <button
-                    className="l-sidebar__tool-btn"
+                    className="l-sidebar__tool-btn l-sidebar__tool-btn--minimode"
                     type="button"
                     title={t('app.minimode')}
                     onClick={() => systemUtil.enterMinimode()}

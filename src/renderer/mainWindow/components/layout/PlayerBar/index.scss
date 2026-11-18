@@ -188,6 +188,12 @@
         gap: var(--space-1);
     }
 
+    &__desktop-tools {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+    }
+
     &__quality {
         font-size: var(--text-caption-size);
         font-weight: var(--font-weight-bold);

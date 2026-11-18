@@ -10,6 +10,7 @@ import {
     DatabaseBackup,
     Info,
 } from 'lucide-react';
+import { isMobileApp } from '@common/runtimePlatform';
 import { TabBar, type TabItem } from '@renderer/mainWindow/components/ui/TabBar';
 import { GeneralSection } from './sections/GeneralSection';
 import { PlaybackSection } from './sections/PlaybackSection';
@@ -85,6 +86,9 @@ export default function SettingPage() {
         ],
         [t],
     );
+    const visibleTabs = isMobileApp()
+        ? sectionTabs.filter((tab) => tab.key !== 'shortcuts')
+        : sectionTabs;
 
     const sectionContent = useMemo(() => {
         const factory = SECTION_MAP[activeKey];
@@ -99,7 +103,7 @@ export default function SettingPage() {
                     <h2 className="p-setting__title">{t('settings.title')}</h2>
                 </div>
 
-                <TabBar items={sectionTabs} activeKey={activeKey} onChange={setActiveKey} />
+                <TabBar items={visibleTabs} activeKey={activeKey} onChange={setActiveKey} />
             </div>
 
             {/* 独立滚动区域 */}

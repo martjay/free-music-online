@@ -70,7 +70,10 @@
         "update_installing": "下载完成，正在安装并重启",
         "update_failed": "更新失败，可以稍后再试，或前往下载页面手动安装",
         "download_link": "下载地址 {{index}}",
-        "read_more": "阅读更多"
+        "read_more": "阅读更多",
+        "mobile_tab_discover": "发现",
+        "mobile_tab_charts": "排行",
+        "mobile_tab_library": "我的"
     },
     "search": {
         "placeholder": "搜索歌曲、歌手、专辑...",
@@ -367,11 +370,14 @@
         "check_source": "检测",
         "export_plugins": "导出",
         "import_plugins": "导入",
-        "export_plugins_success": "已导出 {{count}} 个平台的开关和检测排序",
+        "export_plugins_success": "已导出 {{count}} 个插件（含脚本）",
         "export_plugins_fail": "导出失败：{{reason}}",
         "import_plugins_success": "已恢复 {{count}} 个平台的开关和检测排序",
         "import_plugins_partial": "已恢复 {{count}} 个平台，{{skipped}} 个当前没安装",
-        "import_plugins_none": "这份文件里的平台都还没安装",
+        "import_plugins_installed": "已安装 {{scripts}} 个插件，并恢复 {{count}} 个平台",
+        "import_plugins_scripts_only": "已安装 {{scripts}} 个插件",
+        "import_plugins_fail": "插件安装失败：{{reason}}",
+        "import_plugins_none": "这份文件没有插件脚本。请在 Windows 重新导出后再导入",
         "import_plugins_invalid": "这个文件不是插件配置",
         "check_plugin_update": "检查更新",
         "check_plugin_update_progress": "正在检查更新",

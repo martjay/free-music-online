@@ -4,9 +4,11 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
 
+import { applyRuntimePlatformAttr } from '@common/runtimePlatform';
 import { bootstrapMainWindowServices, bootstrapMainWindowShell } from '../bootstrap/mainWindow';
 import router from './router';
 
+applyRuntimePlatformAttr();
 document.body.dataset.window = 'main';
 
 const container = document.getElementById('root');

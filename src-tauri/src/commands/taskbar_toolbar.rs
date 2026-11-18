@@ -1,30 +1,44 @@
 //! Windows 任务栏缩略图工具栏：悬停图标时，预览窗口下方显示上一首 / 播放暂停 / 下一首。
 
+#[cfg(windows)]
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+#[cfg(windows)]
 use std::sync::{Mutex, OnceLock};
+#[cfg(windows)]
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+use tauri::{AppHandle, WebviewWindow};
+#[cfg(windows)]
+use tauri::{Emitter, Manager};
+#[cfg(windows)]
 use windows::core::{w, BOOL};
+#[cfg(windows)]
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+#[cfg(windows)]
 use windows::Win32::Graphics::Gdi::{
     CreateBitmap, CreateDIBSection, DeleteObject, GetDC, ReleaseDC, BITMAPINFO, BITMAPINFOHEADER,
     DIB_RGB_COLORS,
 };
+#[cfg(windows)]
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
 };
+#[cfg(windows)]
 use windows::Win32::UI::Shell::{
     DefSubclassProc, ITaskbarList3, SetWindowSubclass, TaskbarList, THUMBBUTTON, THUMBBUTTONFLAGS,
     THB_FLAGS, THB_ICON, THB_TOOLTIP, THBF_ENABLED,
 };
+#[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::{
     ChangeWindowMessageFilterEx, CreateIconIndirect, GetAncestor, GetSystemMetrics,
     RegisterWindowMessageW, GA_ROOT, ICONINFO, MSGFLT_ALLOW, SM_CXSMICON, WM_COMMAND,
 };
 
+#[cfg(windows)]
 const BUTTON_PREV: u32 = 40001;
+#[cfg(windows)]
 const BUTTON_PLAY: u32 = 40002;
+#[cfg(windows)]
 const BUTTON_NEXT: u32 = 40003;
 
 #[cfg(windows)]
@@ -38,7 +52,23 @@ static ADDED: Mutex<Vec<isize>> = Mutex::new(Vec::new());
 #[cfg(windows)]
 static PENDING: Mutex<Vec<isize>> = Mutex::new(Vec::new());
 
+#[cfg(not(windows))]
+pub fn install_taskbar_windows(_app: &AppHandle) {}
+#[cfg(not(windows))]
+pub fn install_taskbar_window(_window: &WebviewWindow) {}
+#[cfg(not(windows))]
+pub fn detach_taskbar_window(_window: &WebviewWindow) {}
+#[cfg(not(windows))]
+pub fn reinstall_taskbar_window(_window: &WebviewWindow) {}
+#[cfg(not(windows))]
+#[tauri::command]
+pub fn taskbar_toolbar_install(_window: WebviewWindow) {}
+#[cfg(not(windows))]
+#[tauri::command]
+pub fn taskbar_toolbar_set_playing(_app: AppHandle, _playing: bool) {}
+
 /// 给主窗口和小播放器都装上任务栏按钮。
+#[cfg(windows)]
 pub fn install_taskbar_windows(app: &AppHandle) {
     for label in ["main", "minimode"] {
         if let Some(window) = app.get_webview_window(label) {
@@ -47,11 +77,13 @@ pub fn install_taskbar_windows(app: &AppHandle) {
     }
 }
 
+#[cfg(windows)]
 pub fn install_taskbar_window(window: &WebviewWindow) {
     schedule_install(window, false);
 }
 
 /// 窗口收进托盘后，系统会拆掉缩略图按钮。先忘掉挂过的记录，避免下次只更新播放图标。
+#[cfg(windows)]
 pub fn detach_taskbar_window(window: &WebviewWindow) {
     if let Some(hwnd) = root_hwnd(window) {
         forget_added(hwnd);
@@ -59,6 +91,7 @@ pub fn detach_taskbar_window(window: &WebviewWindow) {
 }
 
 /// 窗口从托盘重新出现时，任务栏会丢掉缩略图按钮。必须重新挂，不能只更新播放图标。
+#[cfg(windows)]
 pub fn reinstall_taskbar_window(window: &WebviewWindow) {
     if let Some(hwnd) = root_hwnd(window) {
         forget_added(hwnd);
@@ -66,6 +99,7 @@ pub fn reinstall_taskbar_window(window: &WebviewWindow) {
     schedule_install(window, true);
 }
 
+#[cfg(windows)]
 fn schedule_install(window: &WebviewWindow, reset_tab: bool) {
     let _ = TASKBAR_APP.set(window.app_handle().clone());
     let Some(hwnd) = root_hwnd(window) else {
@@ -88,11 +122,13 @@ fn schedule_install(window: &WebviewWindow, reset_tab: bool) {
     });
 }
 
+#[cfg(windows)]
 #[tauri::command]
 pub fn taskbar_toolbar_install(window: WebviewWindow) {
     install_taskbar_window(&window);
 }
 
+#[cfg(windows)]
 #[tauri::command]
 pub fn taskbar_toolbar_set_playing(app: AppHandle, playing: bool) {
     PLAYING.store(playing, Ordering::Release);
@@ -152,6 +188,8 @@ fn clear_pending(hwnd: isize) {
     }
 }
 
+#[cfg(windows)]
+#[cfg(windows)]
 fn forget_added(hwnd: isize) {
     if let Ok(mut list) = ADDED.lock() {
         list.retain(|item| *item != hwnd);

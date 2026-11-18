@@ -67,6 +67,7 @@ export function GeneralSection() {
                 control={<Toggle checked={checkUpdate ?? true} onChange={setCheckUpdate} />}
             />
             <SettingRow
+                desktopOnly
                 label={t('settings.general.close_behavior_label')}
                 description={t('settings.general.close_behavior_desc')}
                 control={
@@ -132,6 +133,7 @@ export function GeneralSection() {
                 }
             />
             <SettingRow
+                desktopOnly
                 label={t('settings.general.hide_columns_label')}
                 description={t('settings.general.hide_columns_desc')}
                 control={

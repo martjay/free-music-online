@@ -1,0 +1,20 @@
+{
+    "app": {
+        "windows": [
+            {
+                "label": "main",
+                "title": "Free Music Online",
+                "url": "/mainWindow.html",
+                "fullscreen": false,
+                "resizable": true,
+                "decorations": true,
+                "backgroundColor": "#121212"
+            }
+        ]
+    },
+    "bundle": {
+        "android": {
+            "minSdkVersion": 24
+        }
+    }
+}

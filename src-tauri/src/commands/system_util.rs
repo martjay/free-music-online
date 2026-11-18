@@ -88,14 +88,16 @@ pub fn apply_app_update(app: AppHandle, installer_path: String) -> Result<(), St
     }
 
     #[cfg(windows)]
-    launch_installer_elevated(&installer)?;
+    {
+        launch_installer_elevated(&installer)?;
+        app.exit(0);
+        return Ok(());
+    }
     #[cfg(not(windows))]
     {
-        return Err("仅支持在 Windows 上安装更新".to_string());
+        let _ = app;
+        Err("仅支持在 Windows 上安装更新".to_string())
     }
-
-    app.exit(0);
-    Ok(())
 }
 
 /// 用 runas 启动安装包，让系统弹出 UAC。用户取消授权时不退出当前程序。
@@ -130,17 +132,24 @@ fn launch_installer_elevated(installer: &std::path::Path) -> Result<(), String> 
 
 #[tauri::command]
 pub fn minimize_window(window: WebviewWindow, skip_task_bar: Option<bool>) {
-    let _ = window.minimize();
-    if let Some(true) = skip_task_bar {
-        let _ = window.set_skip_taskbar(true);
+    #[cfg(desktop)]
+    {
+        let _ = window.minimize();
+        if let Some(true) = skip_task_bar {
+            let _ = window.set_skip_taskbar(true);
+        }
     }
+    #[cfg(mobile)]
+    let _ = (window, skip_task_bar);
 }
 
 #[tauri::command]
 pub fn show_main_window(app: AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         // 关闭到托盘时窗口可能被最小化并隐藏任务栏按钮，恢复显示时一并还原
+        #[cfg(desktop)]
         let _ = window.set_skip_taskbar(false);
+        #[cfg(desktop)]
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
@@ -150,6 +159,7 @@ pub fn show_main_window(app: AppHandle) {
 
 #[tauri::command]
 pub fn toggle_maximize(window: WebviewWindow) {
+    #[cfg(desktop)]
     if let Ok(is_max) = window.is_maximized() {
         if is_max {
             let _ = window.unmaximize();
@@ -157,6 +167,8 @@ pub fn toggle_maximize(window: WebviewWindow) {
             let _ = window.maximize();
         }
     }
+    #[cfg(mobile)]
+    let _ = window;
 }
 
 #[tauri::command]
@@ -256,9 +268,17 @@ pub fn show_item_in_folder(path: String) -> Result<bool, String> {
 /// 忽略鼠标事件（歌词窗口穿透点击等）
 #[tauri::command]
 pub fn ignore_mouse_event(window: WebviewWindow, ignore: bool) -> Result<(), String> {
-    window
-        .set_ignore_cursor_events(ignore)
-        .map_err(|e| e.to_string())
+    #[cfg(desktop)]
+    {
+        window
+            .set_ignore_cursor_events(ignore)
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(mobile)]
+    {
+        let _ = (window, ignore);
+        Ok(())
+    }
 }
 
 /// 前端日志落点：输出到 stderr（env_logger 接管）
@@ -470,6 +490,7 @@ fn restore_main_placement(window: &WebviewWindow) {
         }
     }
     if maximized {
+        #[cfg(desktop)]
         let _ = window.maximize();
     }
 }

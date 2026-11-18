@@ -18,13 +18,14 @@ use commands::{
     open_api::*,
     system_util::*,
     taskbar_toolbar::*,
-    tray_menu::{on_tray_menu_blur, show_tray_menu, tray_menu_click},
+    tray_menu::tray_menu_click,
     webdav::*,
 };
-use tauri::{
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, WindowEvent,
-};
+#[cfg(desktop)]
+use commands::tray_menu::{on_tray_menu_blur, show_tray_menu};
+use tauri::{AppHandle, Manager, WindowEvent};
+#[cfg(desktop)]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 /// 从配置文件读取关闭行为。
 fn read_close_behavior() -> String {
@@ -39,7 +40,9 @@ fn read_close_behavior() -> String {
 /// 注意：命名需避开 `system_util::show_main_window` 命令，否则会遮蔽同名命令
 fn restore_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
+        #[cfg(desktop)]
         let _ = window.set_skip_taskbar(false);
+        #[cfg(desktop)]
         let _ = window.unminimize();
         let _ = window.show();
         reinstall_taskbar_window(&window);
@@ -53,6 +56,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(ForwarderPortState::default())
         .manage(DownloadCancelState::default())
         .manage(LyricWindowState::default())
@@ -132,61 +136,66 @@ pub fn run() {
             open_api_set_status,
         ])
         .setup(|app| {
+            commands::global_context::init_user_data_dir(app.handle());
             commands::forwarder::init_forwarder(app.handle().clone());
             lyric_window::init_lyric_window(app.handle());
             restore_saved_placements(app.handle());
             install_taskbar_windows(app.handle());
 
-            // ── 系统托盘 ──
-            // 关闭按钮在「最小化」模式下只会隐藏窗口，必须提供托盘入口将其找回。
-            // 右键用应用自己的菜单，系统菜单改不了行距。
-            let mut tray_builder = TrayIconBuilder::with_id("main-tray")
-                .show_menu_on_left_click(false)
-                .tooltip("Free Music Online")
-                .on_tray_icon_event(|tray, event| {
-                    let TrayIconEvent::Click {
-                        button,
-                        button_state: MouseButtonState::Up,
-                        rect,
-                        ..
-                    } = event
-                    else {
-                        return;
-                    };
-                    if button == MouseButton::Left {
-                        restore_main_window(tray.app_handle());
-                        return;
-                    }
-                    if button == MouseButton::Right {
-                        let tauri::Position::Physical(tauri::PhysicalPosition { x, y }) =
-                            rect.position
+            #[cfg(desktop)]
+            {
+                // ── 系统托盘 ──
+                // 关闭按钮在「最小化」模式下只会隐藏窗口，必须提供托盘入口将其找回。
+                // 右键用应用自己的菜单，系统菜单改不了行距。
+                let mut tray_builder = TrayIconBuilder::with_id("main-tray")
+                    .show_menu_on_left_click(false)
+                    .tooltip("Free Music Online")
+                    .on_tray_icon_event(|tray, event| {
+                        let TrayIconEvent::Click {
+                            button,
+                            button_state: MouseButtonState::Up,
+                            rect,
+                            ..
+                        } = event
                         else {
                             return;
                         };
-                        let tauri::Size::Physical(tauri::PhysicalSize { width, height }) = rect.size
-                        else {
+                        if button == MouseButton::Left {
+                            restore_main_window(tray.app_handle());
                             return;
-                        };
-                        show_tray_menu(tray.app_handle(), x, y, width as i32, height as i32);
-                    }
-                });
+                        }
+                        if button == MouseButton::Right {
+                            let tauri::Position::Physical(tauri::PhysicalPosition { x, y }) =
+                                rect.position
+                            else {
+                                return;
+                            };
+                            let tauri::Size::Physical(tauri::PhysicalSize { width, height }) =
+                                rect.size
+                            else {
+                                return;
+                            };
+                            show_tray_menu(tray.app_handle(), x, y, width as i32, height as i32);
+                        }
+                    });
 
-            if let Some(icon) = app.default_window_icon() {
-                tray_builder = tray_builder.icon(icon.clone());
-            }
-            tray_builder.build(app)?;
+                if let Some(icon) = app.default_window_icon() {
+                    tray_builder = tray_builder.icon(icon.clone());
+                }
+                tray_builder.build(app)?;
 
-            // 启动时按磁盘配置对齐一次歌词窗口（隐藏状态下也会正确设置穿透与置顶）
-            let enabled = app_config::get_config_bool("lyric.enableDesktopLyric", false);
-            let always_on_top = app_config::get_config_bool("lyric.alwaysOnTop", true);
-            let locked = app_config::get_config_bool("lyric.lockLyric", false);
-            if let Err(err) = lyric_window::sync_lyric_window(
-                app.handle().clone(),
-                enabled,
-                always_on_top,
-                locked,
-            ) {
-                log::warn!("[tray] sync lyric window on startup failed: {err}");
+                // 启动时按磁盘配置对齐一次歌词窗口（隐藏状态下也会正确设置穿透与置顶）
+                let enabled = app_config::get_config_bool("lyric.enableDesktopLyric", false);
+                let always_on_top = app_config::get_config_bool("lyric.alwaysOnTop", true);
+                let locked = app_config::get_config_bool("lyric.lockLyric", false);
+                if let Err(err) = lyric_window::sync_lyric_window(
+                    app.handle().clone(),
+                    enabled,
+                    always_on_top,
+                    locked,
+                ) {
+                    log::warn!("[tray] sync lyric window on startup failed: {err}");
+                }
             }
 
             Ok(())
@@ -212,6 +221,7 @@ pub fn run() {
                         }
                         api.prevent_close();
                         let _ = window.hide();
+                        #[cfg(desktop)]
                         let _ = window.set_skip_taskbar(true);
                         if let Some(webview) = window.app_handle().get_webview_window("main") {
                             detach_taskbar_window(&webview);
@@ -225,6 +235,7 @@ pub fn run() {
                         api.prevent_close();
                         let _ = window.hide();
                     }
+                    #[cfg(desktop)]
                     if let WindowEvent::Focused(false) = event {
                         on_tray_menu_blur(window);
                     }

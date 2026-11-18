@@ -15,10 +15,14 @@
 
 import { Outlet, useLocation } from 'react-router';
 import { cn } from '@common/cn';
+import { isMobileApp } from '@common/runtimePlatform';
 import { RoutePaths } from './routes';
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
 import PlayerBar from './components/layout/PlayerBar';
+import RadioPlayerBar from './components/layout/RadioPlayerBar';
+import MobileTabBar from './components/layout/MobileTabBar';
+import MobileNavDrawer from './components/layout/MobileNavDrawer';
 import QueueDrawer from './components/layout/QueueDrawer';
 import FullscreenPlayer from './components/layout/FullscreenPlayer';
 import { ToastContainer } from './components/ui/Toast';
@@ -30,14 +34,23 @@ import './components/business/modals';
 import './components/business/contextMenus';
 
 import './App.scss';
+import './mobileApp.scss';
 
 export default function App() {
     const location = useLocation();
     const isRadioPage = location.pathname.split('/')[1] === RoutePaths.Radio;
+    const mobile = isMobileApp();
 
     return (
-        <div className={cn('l-app-shell', isRadioPage && 'l-app-shell--immersive-radio')}>
-            <Sidebar />
+        <div
+            className={cn(
+                'l-app-shell',
+                mobile && 'l-app-shell--mobile',
+                isRadioPage && !mobile && 'l-app-shell--immersive-radio',
+                isRadioPage && mobile && 'l-app-shell--mobile-radio',
+            )}
+        >
+            {mobile ? <MobileNavDrawer /> : <Sidebar />}
             <main className="l-app-shell__main">
                 <TopBar />
                 <div
@@ -49,7 +62,8 @@ export default function App() {
                     <Outlet />
                 </div>
             </main>
-            <PlayerBar />
+            {isRadioPage ? mobile ? <RadioPlayerBar /> : null : <PlayerBar />}
+            {mobile ? <MobileTabBar /> : null}
             <QueueDrawer />
             <FullscreenPlayer />
             <ToastContainer />

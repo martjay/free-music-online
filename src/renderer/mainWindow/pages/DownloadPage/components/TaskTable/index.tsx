@@ -167,14 +167,14 @@ export function TaskTable({ tasks }: TaskTableProps) {
                             onMouseDown={(event) => onResizeStart(event, 'artist')}
                         />
                     </th>
-                    <th className="p-download__header-cell">
+                    <th className="p-download__header-cell p-download__header-cell--album">
                         {t('download.col_album')}
                         <span
                             className="p-download__resize"
                             onMouseDown={(event) => onResizeStart(event, 'album')}
                         />
                     </th>
-                    <th className="p-download__header-cell">
+                    <th className="p-download__header-cell p-download__header-cell--size">
                         {t('download.col_size')}
                         <span
                             className="p-download__resize"

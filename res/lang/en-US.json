@@ -67,7 +67,10 @@
         "update_installing": "Download finished. Installing and restarting",
         "update_failed": "Update failed. Try again, or download the installer manually",
         "download_link": "Download {{index}}",
-        "read_more": "Read more"
+        "read_more": "Read more",
+        "mobile_tab_discover": "Discover",
+        "mobile_tab_charts": "Charts",
+        "mobile_tab_library": "Library"
     },
     "search": {
         "placeholder": "Search songs, artists, albums...",
@@ -300,11 +303,14 @@
         "check_source": "Check",
         "export_plugins": "Export",
         "import_plugins": "Import",
-        "export_plugins_success": "Exported switches and check order for {{count}} platforms",
+        "export_plugins_success": "Exported {{count}} plugins (with scripts)",
         "export_plugins_fail": "Export failed: {{reason}}",
         "import_plugins_success": "Restored switches and check order for {{count}} platforms",
         "import_plugins_partial": "Restored {{count}} platforms, {{skipped}} are not installed",
-        "import_plugins_none": "None of the platforms in this file are installed",
+        "import_plugins_installed": "Installed {{scripts}} plugins and restored {{count}} platforms",
+        "import_plugins_scripts_only": "Installed {{scripts}} plugins",
+        "import_plugins_fail": "Plugin install failed: {{reason}}",
+        "import_plugins_none": "This file has no plugin scripts. Export again from Windows, then import",
         "import_plugins_invalid": "This file is not a plugin settings file",
         "check_plugin_update": "Check updates",
         "check_plugin_update_progress": "Checking updates",

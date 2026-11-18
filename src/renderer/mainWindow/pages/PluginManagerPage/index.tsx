@@ -7,10 +7,12 @@ import { showToast } from '@renderer/mainWindow/components/ui/Toast';
 import { usePlugins } from '@infra/pluginManager/renderer/hooks';
 import pluginManager from '@infra/pluginManager/renderer';
 import {
+    importPluginSettingsText,
     readPluginSettingsFile,
     writePluginSettingsFile,
 } from '@infra/pluginManager/renderer/pluginSettingsTransfer';
 import systemUtil from '@infra/systemUtil/renderer';
+import { isMobileApp } from '@common/runtimePlatform';
 import { pluginGroupKey } from '@infra/pluginManager/common/pluginIdentity';
 import { LOCAL_PLUGIN_HASH } from '@common/constant';
 import PluginList from './components/PluginList';
@@ -113,35 +115,95 @@ export default function PluginManagerPage() {
         }
     }, [t]);
 
-    const handleImport = useCallback(async () => {
-        const dialogResult = await systemUtil.showOpenDialog({
-            title: t('plugin.import_plugins'),
-            filters: [{ name: 'JSON', extensions: ['json'] }],
-            properties: ['openFile'],
-        });
-        const filePath = dialogResult.filePaths?.[0];
-        if (dialogResult.canceled || !filePath) return;
-        setTransferring(true);
-        try {
-            const result = await readPluginSettingsFile(filePath);
+    const handleImportResult = useCallback(
+        (result: Awaited<ReturnType<typeof readPluginSettingsFile>>) => {
+            if (result.installed > 0 && result.applied > 0) {
+                showToast(
+                    t('plugin.import_plugins_installed', {
+                        scripts: result.installed,
+                        count: result.applied,
+                    }),
+                );
+                return;
+            }
+            if (result.installed > 0) {
+                showToast(t('plugin.import_plugins_scripts_only', { scripts: result.installed }));
+                return;
+            }
+            if (result.failed > 0) {
+                showToast(
+                    t('plugin.import_plugins_fail', {
+                        reason: result.error || t('plugin.import_plugins_none'),
+                    }),
+                    { type: 'warn' },
+                );
+                return;
+            }
             if (result.applied === 0) {
-                showToast(t('plugin.import_plugins_none'), { type: 'warn' });
-            } else if (result.skipped > 0) {
+                showToast(
+                    result.hasScripts
+                        ? t('plugin.import_plugins_none')
+                        : t('plugin.import_plugins_none'),
+                    { type: 'warn' },
+                );
+                return;
+            }
+            if (result.skipped > 0) {
                 showToast(
                     t('plugin.import_plugins_partial', {
                         count: result.applied,
                         skipped: result.skipped,
                     }),
                 );
-            } else {
-                showToast(t('plugin.import_plugins_success', { count: result.applied }));
+                return;
             }
+            showToast(t('plugin.import_plugins_success', { count: result.applied }));
+        },
+        [t],
+    );
+
+    const handleImport = useCallback(async () => {
+        setTransferring(true);
+        try {
+            if (isMobileApp()) {
+                const text = await new Promise<string | null>((resolve, reject) => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'application/json,.json,text/plain,*/*';
+                    input.onchange = async () => {
+                        const file = input.files?.[0];
+                        if (!file) {
+                            resolve(null);
+                            return;
+                        }
+                        try {
+                            resolve(await file.text());
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+                    input.oncancel = () => resolve(null);
+                    input.click();
+                });
+                if (!text) return;
+                handleImportResult(await importPluginSettingsText(text));
+                return;
+            }
+
+            const dialogResult = await systemUtil.showOpenDialog({
+                title: t('plugin.import_plugins'),
+                filters: [{ name: 'JSON', extensions: ['json'] }],
+                properties: ['openFile'],
+            });
+            const filePath = dialogResult.filePaths?.[0];
+            if (dialogResult.canceled || !filePath) return;
+            handleImportResult(await readPluginSettingsFile(filePath));
         } catch {
             showToast(t('plugin.import_plugins_invalid'), { type: 'warn' });
         } finally {
             setTransferring(false);
         }
-    }, [t]);
+    }, [handleImportResult, t]);
 
     const checkLabel =
         checking && progress && progress.total > 0

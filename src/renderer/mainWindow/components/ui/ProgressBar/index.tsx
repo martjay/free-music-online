@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useRef, type HTMLAttributes, type MouseEvent } from 'react';
+import { forwardRef, useCallback, useRef, type HTMLAttributes, type PointerEvent } from 'react';
 import { cn } from '@common/cn';
 import './index.scss';
 
@@ -61,34 +61,37 @@ const ProgressBar = forwardRef<HTMLDivElement, ProgressBarProps>(
             return clamp(Math.round(pct));
         }, []);
 
-        const handleMouseDown = useCallback(
-            (e: MouseEvent) => {
+        const handlePointerDown = useCallback(
+            (e: PointerEvent<HTMLDivElement>) => {
                 if (!interactive) return;
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
                 e.preventDefault();
                 draggingRef.current = true;
+                e.currentTarget.setPointerCapture(e.pointerId);
                 onDragStart?.();
-                const newVal = getValueFromEvent(e.clientX);
-                onChange?.(newVal);
-
-                const handleMouseMove = (ev: globalThis.MouseEvent) => {
-                    if (!draggingRef.current) return;
-                    const v = getValueFromEvent(ev.clientX);
-                    onChange?.(v);
-                };
-
-                const handleMouseUp = (ev: globalThis.MouseEvent) => {
-                    if (!draggingRef.current) return;
-                    draggingRef.current = false;
-                    const v = getValueFromEvent(ev.clientX);
-                    onDragEnd?.(v);
-                    window.removeEventListener('mousemove', handleMouseMove);
-                    window.removeEventListener('mouseup', handleMouseUp);
-                };
-
-                window.addEventListener('mousemove', handleMouseMove);
-                window.addEventListener('mouseup', handleMouseUp);
+                onChange?.(getValueFromEvent(e.clientX));
             },
-            [interactive, onChange, onDragStart, onDragEnd, getValueFromEvent],
+            [interactive, onChange, onDragStart, getValueFromEvent],
+        );
+
+        const handlePointerMove = useCallback(
+            (e: PointerEvent<HTMLDivElement>) => {
+                if (!interactive || !draggingRef.current) return;
+                onChange?.(getValueFromEvent(e.clientX));
+            },
+            [interactive, onChange, getValueFromEvent],
+        );
+
+        const handlePointerUp = useCallback(
+            (e: PointerEvent<HTMLDivElement>) => {
+                if (!interactive || !draggingRef.current) return;
+                draggingRef.current = false;
+                onDragEnd?.(getValueFromEvent(e.clientX));
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+            },
+            [interactive, onDragEnd, getValueFromEvent],
         );
 
         const wrapperClassNames = cn(
@@ -99,8 +102,16 @@ const ProgressBar = forwardRef<HTMLDivElement, ProgressBarProps>(
         );
 
         return (
-            <div ref={ref} className={wrapperClassNames} {...rest}>
-                <div ref={trackRef} className="progress-bar__track" onMouseDown={handleMouseDown}>
+            <div
+                ref={ref}
+                className={wrapperClassNames}
+                {...rest}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+            >
+                <div ref={trackRef} className="progress-bar__track">
                     {/* 缓冲条（仅 slim） */}
                     {variant === 'slim' && safeBuffered > 0 && (
                         <div

@@ -43,6 +43,7 @@ import systemUtil from '@infra/systemUtil/renderer';
 import appConfig from '@infra/appConfig/renderer';
 import musicSheet, { useRadioFavorites, useRadioIsFavorite } from '@infra/musicSheet/renderer';
 import { useCurrentThemePack } from '@infra/themepack/renderer';
+import { isMobileApp } from '@common/runtimePlatform';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import { RoutePaths } from '../../routes';
 import { A } from '../../components/ui/A';
@@ -169,6 +170,9 @@ export default function RadioPage() {
         return [...stations.slice(0, 1199), injectedStation];
     }, [injectedStation, stations]);
     const nodes = useMemo(() => buildRadioSceneNodes(allStations), [allStations]);
+    useEffect(() => {
+        radioAudioPlayer.setPlaylist(allStations);
+    }, [allStations]);
     const nodeByKey = useMemo(() => new Map(nodes.map((node) => [node.key, node])), [nodes]);
     const tagCounts = useMemo(
         () => new Map(facets.tags.map((tag) => [tag.value.toLowerCase(), tag.count] as const)),
@@ -574,25 +578,60 @@ export default function RadioPage() {
                 ? t('radio.play_failed')
                 : t('radio.tuning_ready');
 
+    const mobile = isMobileApp();
+
     return (
-        <div className="p-radio-explorer">
-            <RadioScene
-                ref={sceneRef}
-                nodes={nodes}
-                layout={layout}
-                selectedKey={selectedKey}
-                playingKey={playingKey}
-                isLivePlaying={isPlaying}
-                onHover={setHoveredKey}
-                onSelect={(key) => setSelectedKey(key)}
-                onInteractionStart={handleInteractionStart}
-                onInteractionEnd={handleInteractionEnd}
-                onContextLost={() => {
-                    setWebglLost(true);
-                    setTuningState('error');
-                }}
-                onContextRestored={() => setWebglLost(false)}
-            />
+        <div className={`p-radio-explorer${mobile ? ' p-radio-explorer--mobile' : ''}`}>
+            {mobile ? (
+                <div className="p-radio-explorer__mobile-list">
+                    {nodes.map((node) => (
+                        <button
+                            key={node.key}
+                            type="button"
+                            className={`p-radio-explorer__mobile-item${
+                                node.key === selectedKey ? ' is-active' : ''
+                            }${node.key === playingKey ? ' is-playing' : ''}`}
+                            onClick={() => {
+                                setSelectedKey(node.key);
+                                void tuneStation(node.station);
+                            }}
+                        >
+                            <span className="p-radio-explorer__mobile-item-title">
+                                {node.station.title}
+                            </span>
+                            <span className="p-radio-explorer__mobile-item-sub">
+                                {[
+                                    formatCountryName(
+                                        node.station.radioBrowser.countryCode,
+                                        node.station.radioBrowser.country,
+                                    ),
+                                    formatLanguageName(node.station.radioBrowser.language),
+                                ]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            ) : (
+                <RadioScene
+                    ref={sceneRef}
+                    nodes={nodes}
+                    layout={layout}
+                    selectedKey={selectedKey}
+                    playingKey={playingKey}
+                    isLivePlaying={isPlaying}
+                    onHover={setHoveredKey}
+                    onSelect={(key) => setSelectedKey(key)}
+                    onInteractionStart={handleInteractionStart}
+                    onInteractionEnd={handleInteractionEnd}
+                    onContextLost={() => {
+                        setWebglLost(true);
+                        setTuningState('error');
+                    }}
+                    onContextRestored={() => setWebglLost(false)}
+                />
+            )}
 
             <header className="p-radio-explorer__topbar">
                 <div className="p-radio-explorer__drag-region" data-tauri-drag-region />
@@ -718,7 +757,7 @@ export default function RadioPage() {
                             {t('radio.favorites')} {favorites.length}
                         </button>
                         <button
-                            className="p-radio-explorer__icon-btn"
+                            className="p-radio-explorer__icon-btn p-radio-explorer__icon-btn--fullscreen"
                             type="button"
                             title={
                                 isFullscreen ? t('radio.exit_fullscreen') : t('radio.fullscreen')

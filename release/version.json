@@ -2,7 +2,9 @@
     "version": "1.0.54",
     "changeLog": [
         "在线歌单可以加载歌曲列表",
-        "收藏的歌单会同步到本地，线上失败时仍能打开"
+        "收藏的歌单会同步到本地，线上失败时仍能打开",
+        "新增安卓安装包，并适配手机排版",
+        "修复 Windows 播放条音质按钮叠在音量控件上"
     ],
     "download": [
         "https://github.com/martjay/free-music-online/releases/latest"

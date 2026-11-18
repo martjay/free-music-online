@@ -202,6 +202,7 @@ export default function PlayerBar() {
                         <button
                             className={cn(
                                 'l-player-bar__ctrl-btn',
+                                'l-player-bar__desktop-lyric',
                                 enableDesktopLyric && 'is-active',
                             )}
                             type="button"
@@ -258,13 +259,15 @@ export default function PlayerBar() {
 
                 {/* ── 右侧: 工具 ── */}
                 <div className="l-player-bar__right">
-                    {!isLive && (
-                        <>
-                            <QualityPopover />
-                            <SpeedPopover />
-                        </>
-                    )}
-                    <VolumePopover />
+                    <div className="l-player-bar__desktop-tools">
+                        {!isLive && (
+                            <>
+                                <QualityPopover />
+                                <SpeedPopover />
+                            </>
+                        )}
+                        <VolumePopover />
+                    </div>
 
                     <div className="l-player-bar__divider l-player-bar__divider--tall" />
                     <button

@@ -1,13 +1,21 @@
+#[cfg(desktop)]
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(desktop)]
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Window};
+use tauri::{AppHandle, Emitter, Manager};
+#[cfg(desktop)]
+use tauri::{LogicalSize, PhysicalPosition, Window};
 
 /// 与托盘菜单页面的盒模型一致。改样式时两边一起改。
+#[cfg(desktop)]
 const MENU_WIDTH: f64 = 180.0;
+#[cfg(desktop)]
 const MENU_HEIGHT: f64 = 196.0;
+#[cfg(desktop)]
 static SHOWN_AT_MS: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(desktop)]
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -16,6 +24,7 @@ fn now_ms() -> u64 {
 }
 
 /// 刚弹出时系统可能先送一次失焦，这段时间内不要把菜单关掉。
+#[cfg(desktop)]
 pub fn on_tray_menu_blur(window: &Window) {
     let shown = SHOWN_AT_MS.load(Ordering::Acquire);
     if now_ms().saturating_sub(shown) < 250 {
@@ -24,6 +33,7 @@ pub fn on_tray_menu_blur(window: &Window) {
     let _ = window.hide();
 }
 
+#[cfg(desktop)]
 pub fn show_tray_menu(app: &AppHandle, icon_x: i32, icon_y: i32, icon_w: i32, icon_h: i32) {
     let Some(window) = app.get_webview_window("tray-menu") else {
         return;

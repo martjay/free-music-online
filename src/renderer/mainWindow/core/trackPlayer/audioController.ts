@@ -12,6 +12,7 @@ import { PlayerState, ErrorReason } from '@common/constant';
 import requestForwarder from '@infra/requestForwarder/renderer';
 import { syncKV } from '@renderer/common/kvStore';
 import type { IResolvedMediaSource } from './types';
+import { setMediaSessionMetadata, setMediaSessionPlaybackState } from './mediaSession';
 
 // ─── 事件类型 ───
 
@@ -101,7 +102,7 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
     }
 
     prepareTrack(musicItem: IMusicItemSlim): void {
-        navigator.mediaSession.metadata = new MediaMetadata({
+        setMediaSessionMetadata({
             title: musicItem.title,
             artist: musicItem.artist,
             album: musicItem.album ?? undefined,
@@ -116,7 +117,7 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
         this.audio.removeAttribute('src');
         this.audio.volume = this.intendedVolume;
         this.audio.playbackRate = this.intendedSpeed;
-        navigator.mediaSession.playbackState = 'none';
+        setMediaSessionPlaybackState('none');
     }
 
     setTrackSource(source: IResolvedMediaSource, _musicItem: IMusic.IMusicItem): void {
@@ -279,8 +280,8 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
         this.revokeBlobUrl();
         this.audio.src = '';
         this.audio.removeAttribute('src');
-        navigator.mediaSession.metadata = null;
-        navigator.mediaSession.playbackState = 'none';
+        setMediaSessionMetadata(null);
+        setMediaSessionPlaybackState('none');
     }
 
     destroy(): void {
@@ -307,12 +308,12 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
         this.audio.onplaying = () => {
             this.pendingHlsPlay = false;
             this.setPlayerState(PlayerState.Playing);
-            navigator.mediaSession.playbackState = 'playing';
+            setMediaSessionPlaybackState('playing');
         };
 
         this.audio.onpause = () => {
             this.setPlayerState(PlayerState.Paused);
-            navigator.mediaSession.playbackState = 'paused';
+            setMediaSessionPlaybackState('paused');
         };
 
         this.audio.onerror = (event) => {

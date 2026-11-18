@@ -37,6 +37,7 @@ import { showToast } from '../../ui/Toast';
 import { useColumnWidths } from '@renderer/common/hooks/useColumnWidths';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import { shortPlatformName } from '@infra/pluginManager/common/pluginIdentity';
+import { isMobileApp } from '@common/runtimePlatform';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -449,7 +450,19 @@ export function SongTable({
     // 每次渲染产生新引用，导致 columns → colGroup → virtuosoComponents 级联重建，
     // 行 DOM 被销毁重建后浏览器无法在同一元素上触发 dblclick。
     const hideColumnsKey = (hideColumns ?? []).join(',');
-    const hideSet = useMemo(() => new Set(hideColumns ?? []), [hideColumnsKey]);
+    const mobileLayout = isMobileApp();
+    const tableRowHeight = mobileLayout ? Math.max(rowHeight, 56) : rowHeight;
+    const hideSet = useMemo(() => {
+        const set = new Set(hideColumns ?? []);
+        if (mobileLayout) {
+            set.add('index');
+            set.add('album');
+            set.add('duration');
+            set.add('platform');
+            set.add('artist');
+        }
+        return set;
+    }, [hideColumnsKey, mobileLayout]);
 
     const columns = useMemo<InternalColumn[]>(() => {
         const cols: InternalColumn[] = [];
@@ -469,11 +482,24 @@ export function SongTable({
         cols.push({
             id: 'title',
             header: t('media.title'),
-            width: defaultColumnWidths?.title,
+            width: mobileLayout ? undefined : defaultColumnWidths?.title,
             cellClassName: 'song-table__cell--title',
-            resizable: true,
-            textOf: (item) => item.title ?? '',
-            render: (item) => item.title,
+            resizable: !mobileLayout,
+            textOf: (item) =>
+                mobileLayout && item.artist
+                    ? `${item.title ?? ''} · ${item.artist}`
+                    : (item.title ?? ''),
+            render: (item) =>
+                mobileLayout ? (
+                    <span className="song-table__mobile-title">
+                        <span className="song-table__mobile-title-name">{item.title}</span>
+                        {item.artist ? (
+                            <span className="song-table__mobile-title-artist">{item.artist}</span>
+                        ) : null}
+                    </span>
+                ) : (
+                    item.title
+                ),
         });
 
         if (!hideSet.has('artist')) {
@@ -481,6 +507,7 @@ export function SongTable({
                 id: 'artist',
                 header: t('media.artist'),
                 width: defaultColumnWidths?.artist ?? '18%',
+                cellClassName: 'song-table__cell--artist',
                 resizable: true,
                 textOf: (item) => item.artist ?? '',
                 render: (item) => item.artist,
@@ -492,6 +519,7 @@ export function SongTable({
                 id: 'album',
                 header: t('media.album'),
                 width: defaultColumnWidths?.album ?? '22%',
+                cellClassName: 'song-table__cell--album',
                 resizable: true,
                 textOf: (item) => item.album ?? '',
                 render: (item) => item.album ?? '',
@@ -530,6 +558,7 @@ export function SongTable({
                 id: 'platform',
                 header: t('media.platform'),
                 width: defaultColumnWidths?.platform ?? 120,
+                cellClassName: 'song-table__cell--platform',
                 resizable: true,
                 textOf: (item) => shortPlatformName(item.platform),
                 render: (item) => (
@@ -541,7 +570,7 @@ export function SongTable({
         }
 
         return cols;
-    }, [hideSet, t, defaultColumnWidths, extraColumns, showIndexHeader]);
+    }, [hideSet, t, defaultColumnWidths, extraColumns, showIndexHeader, mobileLayout]);
 
     // ── colgroup（控制列宽） ──
     const colGroup = useMemo(
@@ -551,7 +580,7 @@ export function SongTable({
                     <col key="__status" style={{ width: `${statusColumnWidth}px` }} />
                 )}
                 {columns.map((col) => {
-                    const width = savedWidths[col.id] ?? col.width;
+                    const width = mobileLayout ? col.width : (savedWidths[col.id] ?? col.width);
                     return (
                         <col
                             key={col.id}
@@ -568,7 +597,7 @@ export function SongTable({
                 })}
             </colgroup>
         ),
-        [columns, hasStatusColumn, statusColumnWidth, savedWidths],
+        [columns, hasStatusColumn, statusColumnWidth, savedWidths, mobileLayout],
     );
 
     // ── 外部回调 ref（避免 useCallback 依赖外部函数引用） ──
@@ -767,6 +796,10 @@ export function SongTable({
                             'song-table__header-cell',
                             col.id === 'index' && 'song-table__header-cell--index',
                             col.id === 'title' && 'song-table__header-cell--title',
+                            col.id === 'artist' && 'song-table__header-cell--artist',
+                            col.id === 'album' && 'song-table__header-cell--album',
+                            col.id === 'duration' && 'song-table__header-cell--duration',
+                            col.id === 'platform' && 'song-table__header-cell--platform',
                             col.align && `song-table__header-cell--${col.align}`,
                         )}
                     >
@@ -912,7 +945,7 @@ export function SongTable({
                         isSelected={isSelected}
                         isDragEnabled
                         isDragGhost={isDragGhost}
-                        rowHeight={rowHeight}
+                        rowHeight={tableRowHeight}
                         onClick={onClick}
                         onDoubleClick={onDblClick}
                         onContextMenu={onCtxMenu}
@@ -929,7 +962,7 @@ export function SongTable({
                         isSelected && 'is-selected',
                         trProps.className,
                     )}
-                    style={{ ...trProps.style, height: rowHeight }}
+                    style={{ ...trProps.style, height: tableRowHeight }}
                     onClick={onClick}
                     onDoubleClick={onDblClick}
                     onContextMenu={onCtxMenu}
@@ -938,7 +971,7 @@ export function SongTable({
         };
 
         return { Table, TableHead, TableRow };
-    }, [colGroup, enableDragSort, rowHeight, showActiveIndicator]);
+    }, [colGroup, enableDragSort, tableRowHeight, showActiveIndicator]);
 
     const totalColumnCount = columns.length + (statusColumn ? 1 : 0);
 
@@ -995,8 +1028,8 @@ export function SongTable({
                 data={visibleData}
                 customScrollParent={scrollParent}
                 useWindowScroll={!scrollParent}
-                fixedHeaderContent={fixedHeaderContent}
-                fixedItemHeight={rowHeight}
+                fixedHeaderContent={mobileLayout ? undefined : fixedHeaderContent}
+                fixedItemHeight={tableRowHeight}
                 increaseViewportBy={320}
                 itemContent={itemContent}
                 endReached={enableLoadMore && onLoadMore ? handleEndReached : undefined}

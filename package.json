@@ -8,6 +8,8 @@
         "tauri": "tauri",
         "tauri:dev": "tauri dev",
         "tauri:build": "tauri build",
+        "tauri:android-init": "tauri android init",
+        "tauri:android-build": "tauri android build --apk --target aarch64",
         "dev:tauri-prepare": "vite",
         "build:tauri-prepare": "vite build",
         "format": "prettier . --write",
