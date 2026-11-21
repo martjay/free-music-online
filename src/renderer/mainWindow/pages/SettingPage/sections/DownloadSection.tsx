@@ -6,6 +6,7 @@ import { SettingRow } from '../components/SettingRow';
 import { Select } from '@renderer/mainWindow/components/ui/Select';
 import { Button } from '@renderer/mainWindow/components/ui/Button';
 import { Toggle } from '@renderer/mainWindow/components/ui/Toggle';
+import { isMobileApp } from '@common/runtimePlatform';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import systemUtil from '@infra/systemUtil/renderer';
 
@@ -30,7 +31,10 @@ export function DownloadSection() {
         'download.shortPreviewLimitSec',
     );
 
-    const effectiveDownloadPath = downloadPath || window.globalContext.appPath.defaultDownloadPath;
+    const mobile = isMobileApp();
+    const effectiveDownloadPath = mobile
+        ? window.globalContext.appPath.defaultDownloadPath
+        : downloadPath || window.globalContext.appPath.defaultDownloadPath;
 
     const handleChoosePath = useCallback(async () => {
         const result = await systemUtil.showOpenDialog({
@@ -69,13 +73,19 @@ export function DownloadSection() {
         >
             <SettingRow
                 label={t('settings.download.path_label')}
-                description={t('settings.download.path_desc')}
+                description={
+                    mobile
+                        ? t('settings.download.path_desc_mobile')
+                        : t('settings.download.path_desc')
+                }
                 control={
                     <div className="p-setting__path-picker">
                         <div className="p-setting__path-display">{effectiveDownloadPath}</div>
-                        <Button variant="secondary" size="sm" onClick={handleChoosePath}>
-                            {t('settings.download.change')}
-                        </Button>
+                        {mobile ? null : (
+                            <Button variant="secondary" size="sm" onClick={handleChoosePath}>
+                                {t('settings.download.change')}
+                            </Button>
+                        )}
                         <Button
                             variant="icon"
                             size="sq"

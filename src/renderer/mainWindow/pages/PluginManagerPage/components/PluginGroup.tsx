@@ -109,6 +109,10 @@ function PluginGroup({ group, meta, availability, onToggleEnabled }: PluginGroup
         });
     }, [group.id]);
     const handleCheckAll = useCallback(async () => {
+        if (checking) {
+            pluginManager.cancelPluginAvailabilityCheck();
+            return;
+        }
         const hashes = group.plugins.map((plugin) => plugin.hash);
         if (hashes.length === 0) return;
         setChecking(true);
@@ -118,12 +122,12 @@ function PluginGroup({ group, meta, availability, onToggleEnabled }: PluginGroup
                 includeDisabled: true,
                 onProgress: (done, total) => setProgress({ done, total }),
             });
-            showToast(t('plugin.source_check_summary', summary));
+            if (!summary.cancelled) showToast(t('plugin.source_check_summary', summary));
         } finally {
             setChecking(false);
             setProgress(null);
         }
-    }, [group.plugins, t]);
+    }, [checking, group.plugins, t]);
     const checkLabel =
         checking && progress && progress.total > 0
             ? t('plugin.check_plugin_platforms_progress', progress)
@@ -178,10 +182,9 @@ function PluginGroup({ group, meta, availability, onToggleEnabled }: PluginGroup
                         variant="secondary"
                         size="sm"
                         icon={<Activity size={14} />}
-                        loading={checking}
                         onClick={handleCheckAll}
                     >
-                        {checkLabel}
+                        {checking ? t('plugin.check_source_stop') : checkLabel}
                     </Button>
                     <button
                         type="button"

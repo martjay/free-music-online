@@ -75,12 +75,23 @@ pub struct GlobalContext {
     pub is_win10_or_above: bool,
 }
 
+fn default_download_dir(app: &AppHandle) -> PathBuf {
+    #[cfg(mobile)]
+    {
+        let dir = user_data_dir(Some(app)).join("downloads");
+        let _ = std::fs::create_dir_all(&dir);
+        return dir;
+    }
+    #[cfg(not(mobile))]
+    {
+        let _ = app;
+        dirs::download_dir().unwrap_or_else(|| PathBuf::from("."))
+    }
+}
+
 #[tauri::command]
 pub fn global_context_get(app: tauri::AppHandle) -> GlobalContext {
-    let download_dir = dirs::download_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .to_string_lossy()
-        .to_string();
+    let download_dir = default_download_dir(&app).to_string_lossy().to_string();
 
     let config_dir = user_data_dir(Some(&app)).to_string_lossy().to_string();
 

@@ -209,6 +209,7 @@ interface IPluginVersionReport {
     failed: number;
     /** 是否读到了音源目录。读不到时不要把结果说成“已是最新”。 */
     catalog: boolean;
+    cancelled?: boolean;
 }
 
 function scriptKey(name: string): string {
@@ -296,6 +297,7 @@ class TauriPluginManagerService {
 
     /** 版本检查进行中时复用同一次结果 */
     private versionCheck: Promise<IPluginVersionReport> | null = null;
+    private versionCheckAbort: AbortController | null = null;
 
     /** 榜单和歌单目录。不进入插件列表，也不受平台开关影响。 */
     private catalogHost: LxPluginHost | null = null;
@@ -853,11 +855,18 @@ class TauriPluginManagerService {
      */
     public checkPluginVersions(): Promise<IPluginVersionReport> {
         if (!this.versionCheck) {
-            this.versionCheck = this.runVersionCheck().finally(() => {
+            const abort = new AbortController();
+            this.versionCheckAbort = abort;
+            this.versionCheck = this.runVersionCheck(abort.signal).finally(() => {
                 this.versionCheck = null;
+                this.versionCheckAbort = null;
             });
         }
         return this.versionCheck;
+    }
+
+    public cancelPluginVersionCheck(): void {
+        this.versionCheckAbort?.abort();
     }
 
     /** 批量更新全部插件 */
@@ -1206,16 +1215,23 @@ class TauriPluginManagerService {
         }
     }
 
-    private async runVersionCheck(): Promise<IPluginVersionReport> {
+    private async runVersionCheck(signal: AbortSignal): Promise<IPluginVersionReport> {
         await this.pluginsReadyPromise;
         const updated: IPluginVersionChange[] = [];
         let failed = 0;
+        const stopped = (): IPluginVersionReport => ({
+            updated,
+            failed,
+            catalog: false,
+            cancelled: true,
+        });
 
         const subscribed = [...this.plugins.values()].filter(
             (loaded) => loaded.delegate.srcUrl && !this.isBuiltinPlugin(loaded),
         );
         const seenSourceHashes = new Set<string>();
         for (const loaded of subscribed) {
+            if (signal.aborted) return stopped();
             if (seenSourceHashes.has(loaded.sourceHash)) continue;
             seenSourceHashes.add(loaded.sourceHash);
             const name = loaded.delegate.scriptName?.trim() || loaded.delegate.platform;
@@ -1234,7 +1250,8 @@ class TauriPluginManagerService {
             }
         }
 
-        const catalog = await this.loadSourceCatalog();
+        if (signal.aborted) return stopped();
+        const catalog = await this.loadSourceCatalog(signal);
         const installed = new Map<string, { name: string; version: string; hash: string }>();
         for (const loaded of this.plugins.values()) {
             if (this.isBuiltinPlugin(loaded)) continue;
@@ -1249,7 +1266,8 @@ class TauriPluginManagerService {
 
         const newest = new Map<string, { url: string; version: string }>();
         await mapLimit(catalog, 4, async (url) => {
-            const head = await this.downloadScriptHead(url);
+            if (signal.aborted) return;
+            const head = await this.downloadScriptHead(url, signal);
             if (!head?.name || !head.version) return;
             const key = scriptKey(head.name);
             if (!installed.has(key)) return;
@@ -1262,6 +1280,7 @@ class TauriPluginManagerService {
         });
 
         for (const [key, candidate] of newest) {
+            if (signal.aborted) return stopped();
             const current = installed.get(key);
             if (!current || !isVersionNewer(current.version, candidate.version)) continue;
             const result = await this.installPlugin(candidate.url);
@@ -1276,15 +1295,18 @@ class TauriPluginManagerService {
     }
 
     /** 音源目录：稳定订阅链接，以及状态页收集的脚本快照 */
-    private async loadSourceCatalog(): Promise<string[]> {
+    private async loadSourceCatalog(signal?: AbortSignal): Promise<string[]> {
         const urls = new Set<string>();
         const remoteMirrors = [
             'https://cdn.jsdelivr.net/gh/raclen/cf-anheplayer@main/sources/remote.json',
             'https://raw.githubusercontent.com/raclen/cf-anheplayer/main/sources/remote.json',
         ];
         for (const remoteUrl of remoteMirrors) {
+            if (signal?.aborted) return [...urls];
             try {
-                const list = JSON.parse(await this.downloadText(remoteUrl)) as Array<{
+                const list = JSON.parse(
+                    await this.downloadText(remoteUrl, undefined, 8000, signal),
+                ) as Array<{
                     url?: string;
                 }>;
                 for (const item of list) {
@@ -1298,6 +1320,7 @@ class TauriPluginManagerService {
 
         const folders = ['sources/优质', 'sources/一般'];
         for (const folder of folders) {
+            if (signal?.aborted) return [...urls];
             try {
                 const listing = JSON.parse(
                     await this.downloadText(
@@ -1306,6 +1329,8 @@ class TauriPluginManagerService {
                             Accept: 'application/vnd.github+json',
                             'User-Agent': 'AnhePlayer',
                         },
+                        8000,
+                        signal,
                     ),
                 ) as Array<{ name?: string; download_url?: string }>;
                 if (!Array.isArray(listing)) continue;
@@ -1324,13 +1349,20 @@ class TauriPluginManagerService {
     /** 只取脚本头，用来比较名字和版本 */
     private async downloadScriptHead(
         url: string,
+        signal?: AbortSignal,
     ): Promise<{ name?: string; version?: string } | null> {
         for (const candidate of scriptMirrors(url)) {
+            if (signal?.aborted) return null;
             try {
-                const text = await this.downloadText(candidate, {
-                    Range: 'bytes=0-4095',
-                    'User-Agent': 'AnhePlayer',
-                });
+                const text = await this.downloadText(
+                    candidate,
+                    {
+                        Range: 'bytes=0-4095',
+                        'User-Agent': 'AnhePlayer',
+                    },
+                    8000,
+                    signal,
+                );
                 const meta = readScriptHeader(text);
                 if (meta.name || meta.version) return meta;
             } catch {
@@ -1341,20 +1373,43 @@ class TauriPluginManagerService {
     }
 
     /** 下载文本（优先 Tauri http_request，回退原生 fetch） */
-    private async downloadText(url: string, headers?: Record<string, string>): Promise<string> {
+    private async downloadText(
+        url: string,
+        headers?: Record<string, string>,
+        timeoutMs = 20000,
+        signal?: AbortSignal,
+    ): Promise<string> {
+        if (signal?.aborted) throw new Error('aborted');
+        const timed = async <T>(task: Promise<T>): Promise<T> => {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            try {
+                return await Promise.race([
+                    task,
+                    new Promise<never>((_, reject) => {
+                        timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
+                    }),
+                ]);
+            } finally {
+                if (timer) clearTimeout(timer);
+            }
+        };
         try {
-            const res = await tauriInvoke<{ statusCode: number; body: string } | null>(
-                'http_request',
-                { url, options: { method: 'GET', headers } },
+            const res = await timed(
+                tauriInvoke<{ statusCode: number; body: string } | null>('http_request', {
+                    url,
+                    options: { method: 'GET', headers },
+                }),
             );
             if (res && typeof res.body === 'string' && res.statusCode < 400) {
                 return res.body;
             }
-        } catch {
+        } catch (err) {
+            if (signal?.aborted || (err instanceof Error && err.message === 'timeout')) throw err;
             /* 回退 fetch */
         }
+        if (signal?.aborted) throw new Error('aborted');
 
-        const resp = await fetch(url, { headers });
+        const resp = await timed(fetch(url, { headers, signal }));
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return await resp.text();
     }
@@ -1429,6 +1484,7 @@ export function registerTauriPluginManagerBridge(): void {
         updatePlugin: (hash: string) => service.updatePlugin(hash),
         updateAllPlugins: () => service.updateAllPlugins(),
         checkPluginVersions: () => service.checkPluginVersions(),
+        cancelPluginVersionCheck: () => service.cancelPluginVersionCheck(),
         getAllPlugins: () => service.getAllPlugins(),
         setPluginMeta: (hash: string, meta: Partial<IPlugin.IPluginMeta>) =>
             service.setPluginMeta(hash, meta),

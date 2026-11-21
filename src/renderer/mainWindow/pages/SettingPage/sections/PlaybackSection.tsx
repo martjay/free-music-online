@@ -183,7 +183,7 @@ export function PlaybackSection() {
         [outputDevices, setAudioOutputDevice],
     );
 
-    const previewLimit = shortPreviewLimitSec ?? 65;
+    const previewLimit = shortPreviewLimitSec ?? 120;
     const previewMinutes = Math.floor(previewLimit / 60);
     const previewSeconds = previewLimit % 60;
     const commitPreviewLimit = useCallback(

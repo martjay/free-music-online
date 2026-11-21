@@ -6,6 +6,7 @@ import { RouterProvider } from 'react-router';
 
 import { applyRuntimePlatformAttr } from '@common/runtimePlatform';
 import { bootstrapMainWindowServices, bootstrapMainWindowShell } from '../bootstrap/mainWindow';
+import { AppErrorBoundary, renderStartupFailure } from './AppFailure';
 import router from './router';
 
 applyRuntimePlatformAttr();
@@ -18,53 +19,8 @@ if (!container) {
 
 const root = createRoot(container);
 
-function renderErrorFallback(error: any) {
-    const errorMsg =
-        error instanceof Error ? `${error.name}: ${error.message}\n${error.stack}` : String(error);
-    root.render(
-        <div
-            style={{
-                padding: 32,
-                fontFamily: 'Segoe UI, sans-serif',
-                background: '#18181b',
-                color: '#f4f4f5',
-                height: '100vh',
-                boxSizing: 'border-box',
-                overflow: 'auto',
-            }}
-        >
-            <h2 style={{ color: '#ef4444', marginTop: 0 }}>⚠️ 播放器初始化异常 (Renderer Error)</h2>
-            <p style={{ color: '#a1a1aa' }}>如果在启动过程中发生错误，请将以下堆栈信息反馈：</p>
-            <pre
-                style={{
-                    background: '#09090b',
-                    padding: 16,
-                    borderRadius: 8,
-                    border: '1px solid #27272a',
-                    color: '#f87171',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-all',
-                    fontSize: 13,
-                }}
-            >
-                {errorMsg}
-            </pre>
-            <button
-                style={{
-                    marginTop: 16,
-                    padding: '8px 16px',
-                    borderRadius: 6,
-                    background: '#3b82f6',
-                    color: '#fff',
-                    border: 'none',
-                    cursor: 'pointer',
-                }}
-                onClick={() => window.location.reload()}
-            >
-                重新加载应用
-            </button>
-        </div>,
-    );
+function renderErrorFallback(error: unknown) {
+    renderStartupFailure((node) => root.render(node), error);
 }
 
 window.addEventListener('error', (event) => {
@@ -85,7 +41,9 @@ bootstrapMainWindowShell()
     .then(() => {
         root.render(
             <React.StrictMode>
-                <RouterProvider router={router} />
+                <AppErrorBoundary>
+                    <RouterProvider router={router} />
+                </AppErrorBoundary>
             </React.StrictMode>,
         );
         // 插件、歌单和上次歌曲的音源继续在后台准备，不再挡住第一帧。

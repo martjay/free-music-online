@@ -11,6 +11,7 @@ import { useAtomValue } from 'jotai/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@common/cn';
 import { isRadioBrowserMedia } from '@common/radioBrowser';
+import { isMobileApp } from '@common/runtimePlatform';
 import { transition as motionTransition } from '@common/motionTokens';
 import { useCurrentMusic, useLyric } from '@renderer/mainWindow/core/trackPlayer/hooks';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
@@ -224,23 +225,25 @@ const FullscreenPlayer = memo(function FullscreenPlayer() {
                                     >
                                         <Languages size={16} />
                                     </button>
-                                    <button
-                                        className={cn(
-                                            'l-fullscreen-player__tool-btn',
-                                            desktopLyricEnabled && 'is-active',
-                                        )}
-                                        type="button"
-                                        title={
-                                            desktopLyricEnabled
-                                                ? t('lyric.close_desktop')
-                                                : t('lyric.open_desktop')
-                                        }
-                                        aria-label={t('playback.desktop_lyric')}
-                                        aria-pressed={!!desktopLyricEnabled}
-                                        onClick={handleDesktopLyricToggle}
-                                    >
-                                        <DesktopLyric size={16} />
-                                    </button>
+                                    {isMobileApp() ? null : (
+                                        <button
+                                            className={cn(
+                                                'l-fullscreen-player__tool-btn',
+                                                desktopLyricEnabled && 'is-active',
+                                            )}
+                                            type="button"
+                                            title={
+                                                desktopLyricEnabled
+                                                    ? t('lyric.close_desktop')
+                                                    : t('lyric.open_desktop')
+                                            }
+                                            aria-label={t('playback.desktop_lyric')}
+                                            aria-pressed={!!desktopLyricEnabled}
+                                            onClick={handleDesktopLyricToggle}
+                                        >
+                                            <DesktopLyric size={16} />
+                                        </button>
+                                    )}
                                     <button
                                         ref={settingsTriggerRef}
                                         type="button"

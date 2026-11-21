@@ -56,6 +56,10 @@ export interface IAudioController extends EventEmitter<IAudioControllerEvents> {
     readonly playerState: PlayerState;
     readonly hasSource: boolean;
     readonly hasUsableSource: boolean;
+    /** 元素时钟。进度事件晚到时，用它判断是不是已经在出声。 */
+    readonly currentTime: number;
+    /** 已经开始出声，或已经缓冲到可以出声。这时不要再当成失败换源。 */
+    readonly isOutputStarted: boolean;
 }
 
 // ─── WebAudioController 实现 ───
@@ -82,6 +86,20 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
     /** 地址还在，但上次加载已经失败。这种地址再点播放不会出声。 */
     get hasUsableSource(): boolean {
         return this.hasSource && this.audio.error == null;
+    }
+
+    get currentTime(): number {
+        const time = this.audio.currentTime;
+        return Number.isFinite(time) ? time : 0;
+    }
+
+    get isOutputStarted(): boolean {
+        if (!this.hasSource || this.audio.paused || this.audio.ended || this.audio.error) {
+            return false;
+        }
+        return (
+            this.currentTime > 0.05 || this.audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+        );
     }
 
     constructor() {
@@ -317,6 +335,11 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
         };
 
         this.audio.onerror = (event) => {
+            const code = this.audio.error?.code ?? 0;
+            // 换地址时旧请求会被中止，这个错误不属于当前这首歌。
+            if (!this.hasSource || code === MediaError.MEDIA_ERR_ABORTED) return;
+            // 已经听得到就别拆掉。真停住后由卡顿检查再换源。
+            if (this.currentTime > 0.05 && !this.audio.paused) return;
             this.setPlayerState(PlayerState.Paused);
             this.emit('error', ErrorReason.EmptyResource, event);
         };

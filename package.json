@@ -1,7 +1,7 @@
 {
     "name": "anhe-player",
     "productName": "Free Music Online",
-    "version": "1.0.54",
+    "version": "1.0.55",
     "description": "一个插件化的音乐播放器",
     "private": true,
     "scripts": {
@@ -14,6 +14,7 @@
         "build:tauri-prepare": "vite build",
         "format": "prettier . --write",
         "format:check": "prettier . --check",
+        "test:core": "node --experimental-strip-types --test src/common/downloadPath.test.ts src/infra/pluginManager/common/playbackLatency.test.ts",
         "lint": "eslint ./src",
         "lint:fix": "eslint ./src --fix",
         "lint-staged": "lint-staged",

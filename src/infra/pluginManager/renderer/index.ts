@@ -40,7 +40,9 @@ interface IMod {
         updated: Array<{ name: string; from: string; to: string }>;
         failed: number;
         catalog: boolean;
+        cancelled?: boolean;
     }>;
+    cancelPluginVersionCheck?(): void;
     getAllPlugins(): Promise<IPlugin.IPluginDelegate[]>;
     setPluginMeta(hash: string, meta: Partial<IPlugin.IPluginMeta>): Promise<void>;
     batchSetPluginMeta(
@@ -154,8 +156,13 @@ async function checkPluginVersions(): Promise<{
     updated: Array<{ name: string; from: string; to: string }>;
     failed: number;
     catalog: boolean;
+    cancelled?: boolean;
 }> {
     return mod.checkPluginVersions();
+}
+
+function cancelPluginVersionCheck(): void {
+    mod.cancelPluginVersionCheck?.();
 }
 
 /** 设置插件 meta（排序、用户变量等） */
@@ -350,6 +357,7 @@ const adapters = {
 
 /** 单次探测超时（毫秒）：搜索 + 取播放地址 + 拉流校验 */
 const CHECK_TIMEOUT = 30_000;
+let availabilityToken = 0;
 /** 并发探测数，避免同时打满多个音源接口 */
 const CHECK_CONCURRENCY = 2;
 /** 搜索探测关键词：热门歌手，正常音源必有结果 */
@@ -361,6 +369,7 @@ export interface IPluginCheckSummary {
     unsupported: number;
     /** 因平台已关闭而跳过的数量 */
     skipped: number;
+    cancelled?: boolean;
 }
 
 export interface IPluginCheckOptions {
@@ -572,6 +581,10 @@ function fallbackTestMusic(plugin: IPlugin.IPluginDelegate): IMusic.IMusicItem |
  * 已关闭的平台默认跳过，不会被标成「检测中」。
  * 检测过程中实时写入 pluginAvailabilityAtom。
  */
+function cancelPluginAvailabilityCheck(): void {
+    availabilityToken += 1;
+}
+
 async function checkPluginsAvailability(
     hashes: string[],
     options?: IPluginCheckOptions,
@@ -596,6 +609,7 @@ async function checkPluginsAvailability(
 
     options?.onProgress?.(0, active.length);
     if (active.length === 0) return summary;
+    const token = availabilityToken;
 
     // 只把即将检测的平台标成检测中，关闭的行保持原状态
     const initial = { ...store.get(pluginAvailabilityAtom) };
@@ -608,7 +622,7 @@ async function checkPluginsAvailability(
     const queue = [...active];
     let done = 0;
     const workers = Array.from({ length: Math.min(CHECK_CONCURRENCY, queue.length) }, async () => {
-        while (queue.length > 0) {
+        while (queue.length > 0 && token === availabilityToken) {
             const hash = queue.shift()!;
             const result = await checkSinglePlugin(hash);
             store.set(pluginAvailabilityAtom, {
@@ -626,7 +640,7 @@ async function checkPluginsAvailability(
     });
     await Promise.all(workers);
 
-    return summary;
+    return { ...summary, cancelled: token !== availabilityToken };
 }
 
 // ─── 导出 ───
@@ -638,6 +652,8 @@ const pluginManager = {
     whenReady,
     callPluginMethod,
     checkPluginsAvailability,
+    cancelPluginAvailabilityCheck,
+    cancelPluginVersionCheck,
     installPlugin,
     installPluginFromCode,
     uninstallPlugin,

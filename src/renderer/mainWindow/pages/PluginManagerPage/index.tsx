@@ -45,9 +45,17 @@ export default function PluginManagerPage() {
     const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
     const handleCheckVersions = useCallback(async () => {
+        if (updatingPlugins) {
+            pluginManager.cancelPluginVersionCheck();
+            return;
+        }
         setUpdatingPlugins(true);
         try {
             const report = await pluginManager.checkPluginVersions();
+            if (report.cancelled) {
+                showToast(t('plugin.plugin_update_cancelled'));
+                return;
+            }
             if (report.updated.length > 0) {
                 const detail = report.updated
                     .map((item) => `${item.name} ${item.from} → ${item.to}`)
@@ -65,10 +73,14 @@ export default function PluginManagerPage() {
         } finally {
             setUpdatingPlugins(false);
         }
-    }, [t]);
+    }, [t, updatingPlugins]);
 
     /** 检测已开启的平台。关闭的平台由检测函数跳过。 */
     const handleCheckSources = useCallback(async () => {
+        if (checking) {
+            pluginManager.cancelPluginAvailabilityCheck();
+            return;
+        }
         const hashes = installed.map((plugin) => plugin.hash);
         if (hashes.length === 0) return;
 
@@ -78,6 +90,10 @@ export default function PluginManagerPage() {
             const summary = await pluginManager.checkPluginsAvailability(hashes, {
                 onProgress: (done, total) => setProgress({ done, total }),
             });
+            if (summary.cancelled) {
+                showToast(t('plugin.source_check_cancelled'));
+                return;
+            }
             showToast(
                 t('plugin.source_check_summary', {
                     available: summary.available,
@@ -90,7 +106,7 @@ export default function PluginManagerPage() {
             setChecking(false);
             setProgress(null);
         }
-    }, [installed, t]);
+    }, [checking, installed, t]);
 
     const handleExport = useCallback(async () => {
         const dialogResult = await systemUtil.showSaveDialog({
@@ -104,12 +120,10 @@ export default function PluginManagerPage() {
             const count = await writePluginSettingsFile(dialogResult.filePath);
             showToast(t('plugin.export_plugins_success', { count }));
         } catch (error) {
-            showToast(
-                t('plugin.export_plugins_fail', {
-                    reason: error instanceof Error ? error.message : String(error),
-                }),
-                { type: 'warn' },
-            );
+            console.error('[plugin export]', error);
+            showToast(t('plugin.export_plugins_fail', { reason: t('common.action_failed') }), {
+                type: 'warn',
+            });
         } finally {
             setTransferring(false);
         }
@@ -232,7 +246,7 @@ export default function PluginManagerPage() {
                             size="md"
                             icon={<Download size={16} />}
                             loading={transferring}
-                            disabled={installed.length === 0 || checking || updatingPlugins}
+                            disabled={installed.length === 0}
                             onClick={handleExport}
                         >
                             {t('plugin.export_plugins')}
@@ -242,7 +256,6 @@ export default function PluginManagerPage() {
                             size="md"
                             icon={<Upload size={16} />}
                             loading={transferring}
-                            disabled={checking || updatingPlugins}
                             onClick={handleImport}
                         >
                             {t('plugin.import_plugins')}
@@ -251,23 +264,21 @@ export default function PluginManagerPage() {
                             variant="secondary"
                             size="md"
                             icon={<ArrowUpCircle size={16} />}
-                            loading={updatingPlugins}
-                            disabled={installed.length === 0 || checking || transferring}
+                            disabled={installed.length === 0 || transferring}
                             onClick={handleCheckVersions}
                         >
                             {updatingPlugins
-                                ? t('plugin.check_plugin_update_progress')
+                                ? t('plugin.check_plugin_update_stop')
                                 : t('plugin.check_plugin_update')}
                         </Button>
                         <Button
                             variant="secondary"
                             size="md"
                             icon={<Activity size={16} />}
-                            loading={checking}
-                            disabled={installed.length === 0 || updatingPlugins || transferring}
+                            disabled={installed.length === 0 || transferring}
                             onClick={handleCheckSources}
                         >
-                            {checkLabel}
+                            {checking ? t('plugin.check_source_stop') : checkLabel}
                         </Button>
                         <Button
                             variant="primary"
@@ -279,6 +290,7 @@ export default function PluginManagerPage() {
                         </Button>
                     </div>
                 </div>
+                <p className="p-plugin-manager__hint">{t('plugin.lx_source_hint')}</p>
                 {installed.length > 0 && (
                     <p className="p-plugin-manager__hint">{t('plugin.toggle_hint')}</p>
                 )}

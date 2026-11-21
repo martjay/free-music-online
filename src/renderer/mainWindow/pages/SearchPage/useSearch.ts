@@ -72,12 +72,16 @@ function mergeResults<T extends SearchMediaType>(
 
 async function fetchAllPage<T extends SearchMediaType>(query: string, type: T, nextPage: boolean) {
     const plugins = searchablePlugins(type);
-    const progress =
-        allSourcePages.get(allKey(type, query)) ?? new Map<string, SourcePage>();
+    const progress = allSourcePages.get(allKey(type, query)) ?? new Map<string, SourcePage>();
     if (!nextPage) {
+        const key = allKey(type, query);
+        for (const existing of allSourcePages.keys()) {
+            if (existing.startsWith(`${type}\0`) && existing !== key)
+                allSourcePages.delete(existing);
+        }
         progress.clear();
         for (const plugin of plugins) progress.set(plugin.hash, { page: 0, isEnd: false });
-        allSourcePages.set(allKey(type, query), progress);
+        allSourcePages.set(key, progress);
     }
 
     const batches = await Promise.all(

@@ -19,7 +19,12 @@ import {
 import musicSheet from '@infra/musicSheet/renderer';
 import pluginManager from '@infra/pluginManager/renderer';
 import { shortPlatformName } from '@infra/pluginManager/common/pluginIdentity';
-import { getPluginPlaybackLatency } from '@infra/pluginManager/common/playbackLatency';
+import {
+    getPluginPlaybackLatency,
+    getProvenPlaybackPlugins,
+    playbackSourceRank,
+    rememberProvenPlaybackPlugin,
+} from '@infra/pluginManager/common/playbackLatency';
 import appConfig from '@infra/appConfig/renderer';
 import downloadManager from '@infra/downloadManager/renderer';
 import fsUtil from '@infra/fsUtil/renderer';
@@ -208,7 +213,9 @@ class TrackPlayer {
     /** 最近播放失败的音源，短时间内切歌不再等待它。 */
     private sourceUnhealthyUntil = new Map<string, number>();
     private sourceFailureAnnounced = new Set<string>();
-    private preferredFallbackHash = '';
+    /** 同一对来源名称只提示一次，避免每切一首歌都弹。 */
+    private announcedFallbackLabels = new Set<string>();
+    private provenPlaybackHashes = new Set(getProvenPlaybackPlugins());
     private playbackAttempt = 0;
     /** 用户点过播放。恢复阶段的失效地址不要自己换源出声。 */
     private userAskedToPlay = false;
@@ -227,7 +234,6 @@ class TrackPlayer {
     private static readonly STALL_SWITCH_MS = 4000;
     private static readonly SOURCE_UNHEALTHY_MS = 8 * 60 * 1000;
     private static readonly SOURCE_RESOLVE_TIMEOUT_MS = 5000;
-    private static readonly SOURCE_SLOW_TIMEOUT_MS = 12000;
     private static readonly PLAYBACK_START_TIMEOUT_MS = 5000;
     private wakeLock: WakeLockSentinel | null = null;
 
@@ -331,11 +337,11 @@ class TrackPlayer {
         return configured && QUALITY_KEYS.includes(configured) ? configured : 'standard';
     }
 
-    /** 关闭时返回 null。缺省 65 秒，用来拦住固定 1:00 的会员试听。 */
+    /** 关闭时返回 null。缺省 2 分钟，短于此时长就换源。 */
     private shortPreviewLimitSec(): number | null {
         if (appConfig.getConfigByKey('playMusic.rejectShortPreview') === false) return null;
         const raw = appConfig.getConfigByKey('playMusic.shortPreviewLimitSec');
-        const seconds = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : 65;
+        const seconds = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : 120;
         return Math.min(30 * 60, Math.max(1, seconds));
     }
 
@@ -551,7 +557,6 @@ class TrackPlayer {
             this.audioController.play();
             if (!isLive) this.armPlaybackStartWatch(targetSlim, attempt);
             this.consecutiveErrors = 0;
-            this.resetSourceRetryState();
 
             this.setCurrentMusic(musicItem, false);
             if (!isLive) {
@@ -1070,6 +1075,7 @@ class TrackPlayer {
             return;
         }
 
+        if (this.activeSourceHash) this.sourceRetryTriedHashes.add(this.activeSourceHash);
         this.markSourceUnhealthy(this.activeSourceKey);
 
         this.consecutiveErrors++;
@@ -1216,8 +1222,15 @@ class TrackPlayer {
             }
             const musicItem = store.get(currentMusicAtom);
             if (!musicItem || isRadioBrowserMedia(musicItem)) return;
+            const liveTime = this.audioController.currentTime;
+            if (liveTime > this.lastProgressTime + 0.2) {
+                this.notePlaybackProgress(liveTime);
+                return;
+            }
             const progress = store.get(progressAtom);
-            if (state === PlayerState.Buffering && progress.currentTime < 0.5) return;
+            if (state === PlayerState.Buffering && liveTime < 0.5 && progress.currentTime < 0.5) {
+                return;
+            }
             if (
                 Number.isFinite(progress.duration) &&
                 progress.duration - progress.currentTime < 1.5
@@ -1250,8 +1263,8 @@ class TrackPlayer {
     }
 
     /**
-     * 原平台最近失败过就直接换源；否则最多等几秒，同时提前查找可用音源。
-     * 同一个平台失败后的 8 分钟内，后续歌曲不再重复等待。
+     * 先按检测耗时排序，再把实际播通过的源整组提前。
+     * 某一首歌没有地址只跳过这一次，不把这个源从优先名单里划掉。
      */
     private async resolvePlayableSource(
         musicItem: IMusic.IMusicItem,
@@ -1267,53 +1280,78 @@ class TrackPlayer {
         if (configured) return configured;
 
         const identity = this.sourceIdentity(musicItem);
-        if (this.isSourceUnhealthy(identity.key)) {
-            const alt = await this.findAlternativeSource(musicItem, attempt);
-            if (!alt || attempt !== this.playbackAttempt) return null;
+        const candidates = this.rankedPlaybackPlugins(musicItem);
+        const triedOriginal = candidates.some((plugin) => plugin.hash === identity.hash);
+        if (!triedOriginal && !this.isSourceUnhealthy(identity.key)) {
+            const direct = await this.withTimeout(
+                this.resolveMediaSource(musicItem, quality),
+                TrackPlayer.SOURCE_RESOLVE_TIMEOUT_MS,
+            );
+            if (attempt !== this.playbackAttempt) return null;
+            if (direct?.url) return { result: direct, musicItem, notify: false };
+        }
+
+        for (const plugin of candidates) {
+            if (attempt !== this.playbackAttempt) return null;
+            const original = plugin.hash === identity.hash;
+            const hit = original
+                ? await this.withTimeout(
+                      this.resolveMediaSource(musicItem, quality).then((result) =>
+                          result?.url ? { result, musicItem } : null,
+                      ),
+                      TrackPlayer.SOURCE_RESOLVE_TIMEOUT_MS,
+                  )
+                : await this.withTimeout(
+                      this.resolvePluginSource(musicItem, plugin),
+                      TrackPlayer.SOURCE_RESOLVE_TIMEOUT_MS,
+                  );
+            if (attempt !== this.playbackAttempt) return null;
+            // 这首歌没有地址只跳过，不把已经播通过的源划掉。
+            if (!hit?.result?.url) {
+                this.sourceRetryTriedHashes.add(plugin.hash);
+                continue;
+            }
+            const switched = hit.musicItem.platform !== musicItem.platform;
             return {
-                result: alt.result,
-                musicItem: alt.musicItem,
-                fallbackFrom: musicItem.platform,
-                notify: this.consumeFallbackNotice(identity.key),
+                result: hit.result,
+                musicItem: hit.musicItem,
+                fallbackFrom: switched ? musicItem.platform : undefined,
+                notify: switched && this.consumeFallbackNotice(identity.key),
             };
         }
+        return null;
+    }
 
-        const alternatives = this.fallbackPlugins(musicItem);
-        const timeout =
-            alternatives.length > 0
-                ? TrackPlayer.SOURCE_RESOLVE_TIMEOUT_MS
-                : TrackPlayer.SOURCE_SLOW_TIMEOUT_MS;
-        let earlyFallback: Promise<IAlternativeSourceHit | null> | null = null;
-        const earlyTimer =
-            alternatives.length > 0
-                ? window.setTimeout(() => {
-                      if (attempt === this.playbackAttempt) {
-                          earlyFallback = this.findAlternativeSource(musicItem, attempt);
-                      }
-                  }, 1000)
-                : 0;
-        const original = await this.withTimeout(
-            this.resolveMediaSource(musicItem, quality),
-            timeout,
-        );
-        window.clearTimeout(earlyTimer);
-        if (attempt !== this.playbackAttempt) return null;
-        if (original?.url) {
-            this.pendingAlternative = earlyFallback;
-            return { result: original, musicItem, notify: false };
-        }
+    /**
+     * 检测耗时是底序。出过声的源整组排在前面，组内仍按检测耗时。
+     * 这首歌已经试过、或是短试听的跳过。没出过声且刚播放失败的源暂时不试。
+     */
+    private rankedPlaybackPlugins(musicItem: IMusic.IMusicItem): IPlugin.IPluginDelegate[] {
+        const originalHash = this.sourceIdentity(musicItem).hash;
+        return pluginManager
+            .getSortedSupportedPlugin('getMediaSource')
+            .filter((plugin) => this.canTryPlugin(plugin.hash))
+            .sort(
+                (left, right) =>
+                    playbackSourceRank(
+                        left.hash,
+                        originalHash,
+                        this.provenPlaybackHashes,
+                        getPluginPlaybackLatency(left.hash),
+                    ) -
+                    playbackSourceRank(
+                        right.hash,
+                        originalHash,
+                        this.provenPlaybackHashes,
+                        getPluginPlaybackLatency(right.hash),
+                    ),
+            );
+    }
 
-        this.markSourceUnhealthy(identity.key);
-        const alt = earlyFallback
-            ? await earlyFallback
-            : await this.findAlternativeSource(musicItem, attempt);
-        if (!alt || attempt !== this.playbackAttempt) return null;
-        return {
-            result: alt.result,
-            musicItem: alt.musicItem,
-            fallbackFrom: musicItem.platform,
-            notify: this.consumeFallbackNotice(identity.key),
-        };
+    private canTryPlugin(hash: string): boolean {
+        if (this.sourceRetryTriedHashes.has(hash) || this.previewSkipHashes.has(hash)) return false;
+        if (this.provenPlaybackHashes.has(hash)) return true;
+        return !this.isSourceUnhealthy(hash);
     }
 
     private async findAlternativeSource(
@@ -1337,31 +1375,28 @@ class TrackPlayer {
         const originalHash = this.sourceIdentity(musicItem).hash;
         const plugins = pluginManager
             .getSortedSupportedPlugin('getMediaSource')
-            .filter(
-                (plugin) =>
-                    plugin.hash !== originalHash &&
-                    !this.sourceRetryTriedHashes.has(plugin.hash) &&
-                    !this.isSourceUnhealthy(plugin.hash) &&
-                    !this.previewSkipHashes.has(plugin.hash),
-            );
+            .filter((plugin) => plugin.hash !== originalHash && this.canTryPlugin(plugin.hash));
         const configured = appConfig.getConfigByKey('playMusic.defaultPlaybackPlugin') ?? '';
-        return [...plugins].sort((a, b) => {
-            const rank = this.pluginRank(a.hash, configured) - this.pluginRank(b.hash, configured);
-            if (rank !== 0) return rank;
-            return this.latencyRank(a.hash) - this.latencyRank(b.hash);
+        return [...plugins].sort((left, right) => {
+            const preferred =
+                Number(configured !== '' && right.hash === configured) -
+                Number(configured !== '' && left.hash === configured);
+            if (preferred !== 0) return preferred;
+            return (
+                playbackSourceRank(
+                    left.hash,
+                    originalHash,
+                    this.provenPlaybackHashes,
+                    getPluginPlaybackLatency(left.hash),
+                ) -
+                playbackSourceRank(
+                    right.hash,
+                    originalHash,
+                    this.provenPlaybackHashes,
+                    getPluginPlaybackLatency(right.hash),
+                )
+            );
         });
-    }
-
-    private pluginRank(hash: string, configured: string): number {
-        if (configured && hash === configured) return 0;
-        if (this.preferredFallbackHash && hash === this.preferredFallbackHash) return 1;
-        return 2;
-    }
-
-    /** 没测过的平台排在测过的后面，测过的按耗时从短到长。 */
-    private latencyRank(hash: string): number {
-        const latency = getPluginPlaybackLatency(hash);
-        return latency == null ? Number.MAX_SAFE_INTEGER : latency;
     }
 
     /** 设置了默认播放平台，且它不是歌曲自带平台时，先用它搜可播放地址。 */
@@ -1376,15 +1411,13 @@ class TrackPlayer {
     } | null> {
         const plugin = this.configuredPlaybackPlugin();
         if (!plugin || plugin.hash === this.sourceIdentity(musicItem).hash) return null;
-        if (
-            this.isSourceUnhealthy(plugin.hash) ||
-            this.sourceRetryTriedHashes.has(plugin.hash) ||
-            this.previewSkipHashes.has(plugin.hash)
-        ) {
+        if (!this.canTryPlugin(plugin.hash)) return null;
+        const hit = await this.withTimeout(this.resolvePluginSource(musicItem, plugin), 6000);
+        if (attempt !== this.playbackAttempt) return null;
+        if (!hit) {
+            this.sourceRetryTriedHashes.add(plugin.hash);
             return null;
         }
-        const hit = await this.withTimeout(this.resolvePluginSource(musicItem, plugin), 6000);
-        if (!hit || attempt !== this.playbackAttempt) return null;
         return {
             result: hit.result,
             musicItem: hit.musicItem,
@@ -1440,14 +1473,15 @@ class TrackPlayer {
     private markSourceUnhealthy(key: string): void {
         if (!key) return;
         this.sourceUnhealthyUntil.set(key, Date.now() + TrackPlayer.SOURCE_UNHEALTHY_MS);
-        if (this.preferredFallbackHash === key) this.preferredFallbackHash = '';
     }
 
     private markSourceHealthy(key: string, hash: string): void {
         if (!key) return;
         this.sourceUnhealthyUntil.delete(key);
         this.sourceFailureAnnounced.delete(key);
-        if (hash) this.preferredFallbackHash = hash;
+        if (!hash) return;
+        this.provenPlaybackHashes.add(hash);
+        rememberProvenPlaybackPlugin(hash);
     }
 
     private consumeFallbackNotice(key: string): boolean {
@@ -1466,6 +1500,7 @@ class TrackPlayer {
         window.setTimeout(() => {
             if (attempt !== this.playbackAttempt || !this.isCurrentMusic(musicItem)) return;
             if (
+                this.audioController.isOutputStarted ||
                 store.get(playerStateAtom) === PlayerState.Playing ||
                 store.get(progressAtom).currentTime > 0
             ) {
@@ -1647,17 +1682,26 @@ class TrackPlayer {
         notify = true,
         toastKey = 'playback.source_fallback_toast',
     ): void {
-        const fallback = !!originalPlatform && originalPlatform !== platform;
-        store.set(playbackSourceAtom, { platform, fallback, originalPlatform });
-        if (fallback && notify) {
-            showToast(
-                i18n.t(toastKey, {
-                    original: shortPlatformName(originalPlatform) || originalPlatform,
-                    platform: shortPlatformName(platform) || platform,
-                }) as string,
-                { type: 'warn', duration: 5000 },
-            );
-        }
+        const originalLabel = shortPlatformName(originalPlatform) || originalPlatform || '';
+        const platformLabel = shortPlatformName(platform) || platform;
+        const fallback =
+            !!originalPlatform && originalPlatform !== platform && originalLabel !== platformLabel;
+        store.set(playbackSourceAtom, {
+            platform,
+            fallback,
+            originalPlatform: fallback ? originalPlatform : undefined,
+        });
+        if (!fallback || !notify) return;
+        const noticeKey = `${originalLabel}\0${platformLabel}`;
+        if (this.announcedFallbackLabels.has(noticeKey)) return;
+        this.announcedFallbackLabels.add(noticeKey);
+        showToast(
+            i18n.t(toastKey, {
+                original: originalLabel,
+                platform: platformLabel,
+            }) as string,
+            { type: 'warn', duration: 5000 },
+        );
     }
 
     /**

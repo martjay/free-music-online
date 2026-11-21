@@ -103,10 +103,11 @@ export function DownloadButton({
                 }
             } catch (err) {
                 const message = err instanceof Error ? err.message : '';
+                console.error('[download]', err);
                 if (message.includes('已下载')) {
                     showToast(t('download.already_downloaded'), { type: 'warn' });
                 } else {
-                    showToast(message || t('download.failed'), { type: 'warn' });
+                    showToast(t('download.failed'), { type: 'warn' });
                 }
             } finally {
                 lockRef.current = false;

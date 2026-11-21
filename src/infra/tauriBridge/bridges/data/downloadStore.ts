@@ -12,6 +12,8 @@
  * - 标签写入：任务完成后异步调用 Rust write_audio_meta 嵌入封面与歌词（尽力而为，失败不阻断）
  */
 import { nanoid } from 'nanoid';
+import { resolveDownloadDirectory } from '@common/downloadPath';
+import { isMobileApp } from '@common/runtimePlatform';
 import { QUALITY_KEYS, INTERNAL_SLIM_KEY } from '@common/constant';
 import { pickSameMusicItem } from '@common/matchMusicItem';
 import sanitizeFileName from '@common/sanitizeFileName';
@@ -221,10 +223,13 @@ class DownloadStore {
 
         const targetQuality =
             params.quality ?? this.config['download.defaultQuality'] ?? 'standard';
-        const downloadPath =
-            this.config['download.path'] ||
-            (globalThis as any).globalContext?.appPath?.defaultDownloadPath ||
-            getUserDataDir();
+        const appPath = (globalThis as any).globalContext?.appPath;
+        const fallback = appPath?.defaultDownloadPath || getUserDataDir();
+        const downloadPath = resolveDownloadDirectory({
+            configured: this.config['download.path'],
+            fallback,
+            restrictToDir: isMobileApp() ? appPath?.userData || getUserDataDir() : undefined,
+        });
 
         const platform = musicItem.platform;
         const musicId = String(musicItem.id);

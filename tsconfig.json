@@ -23,5 +23,5 @@
         }
     },
     "include": ["src/**/*"],
-    "exclude": ["src/infra/tauriBridge/**", "src/infra/pluginManager/worker/**"]
+    "exclude": ["src/infra/tauriBridge/**", "src/infra/pluginManager/worker/**", "src/**/*.test.ts"]
 }

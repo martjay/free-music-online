@@ -16,7 +16,7 @@ const defaultAppConfig: IAppConfig = {
     'playMusic.playError': 'retry_with_source',
     'playMusic.whenDeviceRemoved': 'play',
     'playMusic.rejectShortPreview': true,
-    'playMusic.shortPreviewLimitSec': 65,
+    'playMusic.shortPreviewLimitSec': 120,
     'playMusic.dislikeRules': '',
     'playMusic.startupAutoPlay': false,
     'playMusic.preventSleep': false,
