@@ -74,15 +74,10 @@ export const searchResultsAtom = atom<SearchResultMap>(emptyResultMap());
 export const activeMediaTypeAtom = atom<SearchMediaType>('music');
 
 /**
- * 每种媒体类型各自记忆上次选中的插件 hash。
- * 值为 pluginHash，空字符串表示尚未选择（将使用第一个可用插件）。
+ * 音乐、专辑、作者、歌单共用的平台。
+ * 空字符串表示还没选过；多个平台时默认「全部」。
  */
-export const activePluginPerTypeAtom = atom<Record<SearchMediaType, string>>({
-    music: '',
-    album: '',
-    artist: '',
-    sheet: '',
-});
+export const activeSearchSourceAtom = atom('');
 
 // ── Store 实例 ──
 
@@ -131,4 +126,29 @@ export function setPluginResult<T extends SearchMediaType>(
 /** 重置全部搜索结果（通常在 query 变化时调用） */
 export function resetSearchResults(): void {
     store.set(searchResultsAtom, emptyResultMap());
+}
+
+const searchScrollTops = new Map<string, number>();
+
+function searchScroller(): HTMLElement | null {
+    const node = document.querySelector('.l-app-shell__content');
+    return node instanceof HTMLElement ? node : null;
+}
+
+/** 离开搜索页前记下滚动位置，返回时还能停在点过的歌单附近。 */
+export function rememberSearchScroll(query: string): void {
+    const scroller = searchScroller();
+    if (!query || !scroller) return;
+    searchScrollTops.set(query, scroller.scrollTop);
+}
+
+export function forgetSearchScroll(query: string): void {
+    searchScrollTops.delete(query);
+}
+
+export function restoreSearchScroll(query: string): void {
+    const scroller = searchScroller();
+    const top = searchScrollTops.get(query);
+    if (!query || !scroller || top == null) return;
+    scroller.scrollTop = top;
 }

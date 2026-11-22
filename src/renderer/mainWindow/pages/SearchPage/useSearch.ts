@@ -13,7 +13,13 @@
 
 import { useCallback, useRef } from 'react';
 import { RequestStatus } from '@common/constant';
+import {
+    MUSIC_CATALOG_SOURCES,
+    catalogPlatform,
+    type MusicCatalogSource,
+} from '@common/musicCatalog';
 import { textSimilar } from '@common/textSimilar';
+import appConfig from '@infra/appConfig/renderer';
 import pluginManager from '@infra/pluginManager/renderer';
 import { ALL_SOURCE, type SearchMediaType, getPluginResult, setPluginResult } from './store';
 
@@ -26,13 +32,62 @@ interface SourcePage {
 }
 
 const allSourcePages = new Map<string, Map<string, SourcePage>>();
+/** 新一次「全部」搜索会作废还在飞的旧结果，避免慢平台写回上一轮。 */
+let allFetchEpoch = 0;
 
 function allKey(type: SearchMediaType, query: string) {
     return `${type}\0${query}`;
 }
 
-function searchablePlugins(type: SearchMediaType) {
-    return pluginManager.getSortedSearchablePlugins(type);
+function isCatalogSource(value: string | undefined): value is MusicCatalogSource {
+    return !!value && (MUSIC_CATALOG_SOURCES as readonly string[]).includes(value);
+}
+
+/** 默认走 LX Music：五个平台都搜。installed 才退回「只搜已启用插件」。 */
+function usesLxSearch(): boolean {
+    return appConfig.getConfigByKey('playMusic.searchSourceMode') !== 'installed';
+}
+
+function searchSources(type: SearchMediaType): MusicCatalogSource[] {
+    if (usesLxSearch()) return [...MUSIC_CATALOG_SOURCES];
+    return representativePlugins(type).flatMap((plugin) =>
+        isCatalogSource(plugin.sourceKey) ? [plugin.sourceKey] : [],
+    );
+}
+
+async function requestSourceSearch(
+    sourceKey: MusicCatalogSource,
+    query: string,
+    page: number,
+    type: SearchMediaType,
+) {
+    if (usesLxSearch()) {
+        return pluginManager.callPluginMethod({
+            platform: catalogPlatform(sourceKey),
+            method: 'search',
+            args: [query, page, type],
+        });
+    }
+    const plugin = representativePlugins(type).find((item) => item.sourceKey === sourceKey);
+    if (!plugin) return null;
+    return pluginManager.callPluginMethod({
+        hash: plugin.hash,
+        method: 'search',
+        args: [query, page, type],
+    });
+}
+
+/** 每个平台只留一份脚本。搜索接口是平台自己的，换脚本不会多出结果。 */
+function representativePlugins(type: SearchMediaType): IPlugin.IPluginDelegate[] {
+    const chosen = new Map<MusicCatalogSource, IPlugin.IPluginDelegate>();
+    for (const plugin of pluginManager.getSortedSearchablePlugins(type)) {
+        if (!isCatalogSource(plugin.sourceKey) || chosen.has(plugin.sourceKey)) continue;
+        chosen.set(plugin.sourceKey, plugin);
+    }
+    return MUSIC_CATALOG_SOURCES.flatMap((source) => {
+        const plugin = chosen.get(source);
+        return plugin ? [plugin] : [];
+    });
 }
 
 function identityOf(item: IMedia.SupportMediaItem[SearchMediaType], type: SearchMediaType) {
@@ -44,6 +99,34 @@ function identityOf(item: IMedia.SupportMediaItem[SearchMediaType], type: Search
     }
     const named = item as { title?: string; id?: string; name?: string };
     return `${(named.title ?? named.name ?? '').trim().toLocaleLowerCase()}\0${named.id ?? ''}`;
+}
+
+/** 和 LX「全部」一样：歌名/专辑名拼上歌手，歌单和作者只比名称。 */
+function lxSearchScore(
+    query: string,
+    item: { title?: string; name?: string; artist?: string },
+    type: SearchMediaType,
+) {
+    const title = item.title ?? item.name ?? '';
+    if (type === 'sheet' || type === 'artist') return textSimilar(query, title);
+    return textSimilar(query, `${title} ${item.artist ?? ''}`);
+}
+
+function sourceOrder(platform: string | undefined) {
+    const key = platform?.startsWith('catalog:') ? platform.slice('catalog:'.length) : platform;
+    const index = MUSIC_CATALOG_SOURCES.indexOf(key as MusicCatalogSource);
+    return index < 0 ? MUSIC_CATALOG_SOURCES.length : index;
+}
+
+/** 相似度高的在前。一样时按酷我、酷狗、QQ、网易云、咪咕的顺序，和各平台原序。 */
+function sortMerged<
+    T extends { title?: string; name?: string; artist?: string; platform?: string },
+>(query: string, type: SearchMediaType, items: T[]) {
+    return items.toSorted((a, b) => {
+        const score = lxSearchScore(query, b, type) - lxSearchScore(query, a, type);
+        if (score !== 0) return score;
+        return sourceOrder(a.platform) - sourceOrder(b.platform);
+    });
 }
 
 function mergeResults<T extends SearchMediaType>(
@@ -59,19 +142,12 @@ function mergeResults<T extends SearchMediaType>(
         seen.add(key);
         return true;
     });
-    const merged = [...previous, ...fresh];
-    if (type !== 'music') return merged;
-    return merged.toSorted((a, b) => {
-        const left = a as IMusic.IMusicItem;
-        const right = b as IMusic.IMusicItem;
-        const leftScore = textSimilar(query, `${left.title ?? ''} ${left.artist ?? ''}`);
-        const rightScore = textSimilar(query, `${right.title ?? ''} ${right.artist ?? ''}`);
-        return rightScore - leftScore;
-    });
+    return sortMerged(query, type, [...previous, ...fresh]);
 }
 
 async function fetchAllPage<T extends SearchMediaType>(query: string, type: T, nextPage: boolean) {
-    const plugins = searchablePlugins(type);
+    const epoch = ++allFetchEpoch;
+    const sources = searchSources(type);
     const progress = allSourcePages.get(allKey(type, query)) ?? new Map<string, SourcePage>();
     if (!nextPage) {
         const key = allKey(type, query);
@@ -80,46 +156,58 @@ async function fetchAllPage<T extends SearchMediaType>(query: string, type: T, n
                 allSourcePages.delete(existing);
         }
         progress.clear();
-        for (const plugin of plugins) progress.set(plugin.hash, { page: 0, isEnd: false });
+        for (const sourceKey of sources) {
+            progress.set(sourceKey, { page: 0, isEnd: false });
+        }
         allSourcePages.set(key, progress);
     }
 
-    const batches = await Promise.all(
-        plugins.map(async (plugin) => {
-            const state = progress.get(plugin.hash) ?? { page: 0, isEnd: false };
-            if (state.isEnd) return [] as IMedia.SupportMediaItem[T][];
+    const stale = () => {
+        if (epoch !== allFetchEpoch) return true;
+        const current = getPluginResult(type, ALL_SOURCE);
+        return !!current && current.query !== query;
+    };
+
+    let merged = nextPage
+        ? ((getPluginResult(type, ALL_SOURCE)?.data ?? []) as IMedia.SupportMediaItem[T][])
+        : [];
+
+    const publish = () => {
+        if (stale()) return;
+        const isEnd = sources.every((sourceKey) => progress.get(sourceKey)?.isEnd);
+        const page = Math.max(0, ...[...progress.values()].map((item) => item.page));
+        setPluginResult(type, ALL_SOURCE, {
+            query,
+            page: Math.max(1, page),
+            isEnd,
+            status: isEnd ? RequestStatus.Done : RequestStatus.Pending,
+            data: merged,
+        });
+    };
+
+    await Promise.all(
+        sources.map(async (sourceKey) => {
+            const state = progress.get(sourceKey) ?? { page: 0, isEnd: false };
+            if (state.isEnd) return;
             const page = state.page + 1;
             try {
-                const result = await pluginManager.callPluginMethod({
-                    hash: plugin.hash,
-                    method: 'search',
-                    args: [query, page, type],
-                });
-                const current = getPluginResult(type, ALL_SOURCE);
-                if (current && current.query !== query) return [] as IMedia.SupportMediaItem[T][];
-                progress.set(plugin.hash, { page, isEnd: result?.isEnd ?? true });
-                return (result?.data ?? []) as IMedia.SupportMediaItem[T][];
+                const result = await requestSourceSearch(sourceKey, query, page, type);
+                if (stale()) return;
+                progress.set(sourceKey, { page, isEnd: result?.isEnd ?? true });
+                const incoming = (result?.data ?? []) as IMedia.SupportMediaItem[T][];
+                if (incoming.length > 0) {
+                    merged = mergeResults(query, type, incoming, merged);
+                }
             } catch (err) {
-                console.error(`[useSearch] all-source failed: ${plugin.hash}`, err);
-                progress.set(plugin.hash, { page: state.page, isEnd: true });
-                return [] as IMedia.SupportMediaItem[T][];
+                console.error(`[useSearch] all-source failed: ${sourceKey}`, err);
+                if (stale()) return;
+                progress.set(sourceKey, { page: state.page, isEnd: true });
             }
+            publish();
         }),
     );
 
-    const current = getPluginResult(type, ALL_SOURCE);
-    if (current && current.query !== query) return;
-    const previous = nextPage ? ((current?.data ?? []) as IMedia.SupportMediaItem[T][]) : [];
-    const data = mergeResults(query, type, batches.flat(), previous);
-    const isEnd = plugins.every((plugin) => progress.get(plugin.hash)?.isEnd);
-    const page = Math.max(1, ...[...progress.values()].map((item) => item.page));
-    setPluginResult(type, ALL_SOURCE, {
-        query,
-        page,
-        isEnd,
-        status: RequestStatus.Done,
-        data,
-    });
+    publish();
 }
 
 /**
@@ -132,17 +220,22 @@ async function fetchPage<T extends SearchMediaType>(
     query: string,
     page: number,
     type: T,
-    pluginHash: string,
+    sourceKey: string,
 ): Promise<{ success: boolean; isEnd: boolean; dataLen: number }> {
+    if (!isCatalogSource(sourceKey) || !searchSources(type).includes(sourceKey)) {
+        setPluginResult(type, sourceKey, { status: RequestStatus.Error });
+        return { success: false, isEnd: true, dataLen: 0 };
+    }
+
     try {
-        const result = await pluginManager.callPluginMethod({
-            hash: pluginHash,
-            method: 'search',
-            args: [query, page, type],
-        });
+        const result = await requestSourceSearch(sourceKey, query, page, type);
+        if (!result) {
+            setPluginResult(type, sourceKey, { status: RequestStatus.Error });
+            return { success: false, isEnd: true, dataLen: 0 };
+        }
 
         // ── Stale guard：写入前确认 slot 的 query 没有被更新 ──
-        const current = getPluginResult(type, pluginHash);
+        const current = getPluginResult(type, sourceKey);
         if (current && current.query !== query) {
             // 用户已切换关键词，丢弃本次结果
             return { success: false, isEnd: true, dataLen: 0 };
@@ -153,7 +246,7 @@ async function fetchPage<T extends SearchMediaType>(
 
         if (__DEV__) {
             console.log(
-                `[useSearch] ${pluginHash} / ${type} / page ${page}:`,
+                `[useSearch] ${sourceKey} / ${type} / page ${page}:`,
                 `${resData.length} items, isEnd=${resIsEnd}`,
                 resData,
             );
@@ -161,7 +254,7 @@ async function fetchPage<T extends SearchMediaType>(
 
         const prevData = (current?.data ?? []) as IMedia.SupportMediaItem[T][];
 
-        setPluginResult(type, pluginHash, {
+        setPluginResult(type, sourceKey, {
             query,
             page,
             isEnd: resIsEnd,
@@ -172,13 +265,13 @@ async function fetchPage<T extends SearchMediaType>(
         return { success: true, isEnd: resIsEnd, dataLen: resData.length };
     } catch (err) {
         // Stale guard on error path too
-        const current = getPluginResult(type, pluginHash);
+        const current = getPluginResult(type, sourceKey);
         if (current && current.query !== query) {
             return { success: false, isEnd: true, dataLen: 0 };
         }
 
-        console.error(`[useSearch] search failed: ${pluginHash} / ${type} / page ${page}`, err);
-        setPluginResult(type, pluginHash, {
+        console.error(`[useSearch] search failed: ${sourceKey} / ${type} / page ${page}`, err);
+        setPluginResult(type, sourceKey, {
             status: RequestStatus.Error,
         });
         return { success: false, isEnd: true, dataLen: 0 };

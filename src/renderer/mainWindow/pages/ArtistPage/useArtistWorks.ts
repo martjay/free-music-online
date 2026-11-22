@@ -11,6 +11,7 @@ import pluginManager from '@infra/pluginManager/renderer';
  */
 export function useArtistWorks(originalItem: IArtist.IArtistItem, type: IArtist.ArtistMediaType) {
     const [data, setData] = useState<(IMusic.IMusicItem | IAlbum.IAlbumItem)[]>([]);
+    const [profile, setProfile] = useState<Partial<IArtist.IArtistItem> | null>(null);
     const [requestStatus, setRequestStatus] = useState<RequestStatus>(RequestStatus.Idle);
     const [isEnd, setIsEnd] = useState(false);
 
@@ -44,6 +45,7 @@ export function useArtistWorks(originalItem: IArtist.IArtistItem, type: IArtist.
                 const resIsEnd = result?.isEnd ?? true;
 
                 setData((prev) => (isFirstPage ? resData : [...prev, ...resData]));
+                if (isFirstPage) setProfile(result?.profile ?? null);
                 setIsEnd(resIsEnd);
                 setRequestStatus(RequestStatus.Done);
                 pageRef.current = page;
@@ -61,6 +63,7 @@ export function useArtistWorks(originalItem: IArtist.IArtistItem, type: IArtist.
         itemKeyRef.current = `${compositeKey(originalItem.platform, originalItem.id)}:${type}`;
         pendingRef.current = false;
         setData([]);
+        setProfile(null);
         setIsEnd(false);
         pageRef.current = 1;
         fetchPage(originalItem, 1, type, true);
@@ -76,5 +79,5 @@ export function useArtistWorks(originalItem: IArtist.IArtistItem, type: IArtist.
         fetchPage(originalItem, isFirstPage ? 1 : pageRef.current + 1, type, isFirstPage);
     }, [originalItem, type, data.length, fetchPage]);
 
-    return { data, requestStatus, isEnd, loadMore, retry };
+    return { data, profile, requestStatus, isEnd, loadMore, retry };
 }

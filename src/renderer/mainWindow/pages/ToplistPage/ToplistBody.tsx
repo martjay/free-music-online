@@ -1,6 +1,9 @@
 import { useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
+import { Heart } from 'lucide-react';
+import { safeStringify } from '@common/safeSerialize';
+import { toggleLibraryEntry, useIsLibraryEntry } from '@infra/library/renderer';
 import { RequestStatus } from '@common/constant';
 import { catalogPlatform, type MusicCatalogSource } from '@common/musicCatalog';
 import { Artwork } from '../../components/ui/Artwork';
@@ -98,30 +101,64 @@ export function ToplistBody({ source }: ToplistBodyProps) {
                     )}
                     <div className="p-toplist__grid">
                         {(group.data ?? []).map((item) => (
-                            <button
-                                type="button"
+                            <ToplistCard
                                 key={item.id}
-                                className="p-toplist__card"
-                                onClick={() => handleCardClick(item)}
-                            >
-                                <div className="p-toplist__card-header">
-                                    <div className="p-toplist__card-cover">
-                                        <Artwork
-                                            src={item.artwork}
-                                            alt={item.title}
-                                            size="sm"
-                                            rounded="sm"
-                                        />
-                                    </div>
-                                    <div className="p-toplist__card-title" title={item.title}>
-                                        {item.title}
-                                    </div>
-                                </div>
-                            </button>
+                                item={{ ...item, platform }}
+                                onOpen={handleCardClick}
+                            />
                         ))}
                     </div>
                 </div>
             ))}
         </div>
+    );
+}
+
+function ToplistCard({
+    item,
+    onOpen,
+}: {
+    item: IMusic.IMusicSheetItem;
+    onOpen: (item: IMusic.IMusicSheetItem) => void;
+}) {
+    return (
+        <div className="p-toplist__card">
+            <button type="button" className="p-toplist__card-open" onClick={() => onOpen(item)}>
+                <div className="p-toplist__card-header">
+                    <div className="p-toplist__card-cover">
+                        <Artwork src={item.artwork} alt={item.title} size="sm" rounded="sm" />
+                    </div>
+                    <div className="p-toplist__card-title" title={item.title}>
+                        {item.title}
+                    </div>
+                </div>
+            </button>
+            <ChartStar item={item} />
+        </div>
+    );
+}
+
+function ChartStar({ item }: { item: IMusic.IMusicSheetItem }) {
+    const { t } = useTranslation();
+    const collected = useIsLibraryEntry('chart', item.platform, String(item.id));
+    return (
+        <button
+            type="button"
+            className={`p-toplist__star${collected ? ' is-on' : ''}`}
+            title={collected ? t('playlist.unstar') : t('playlist.star')}
+            aria-label={collected ? t('playlist.unstar') : t('playlist.star')}
+            onClick={() => {
+                void toggleLibraryEntry({
+                    kind: 'chart',
+                    platform: item.platform,
+                    id: String(item.id),
+                    title: item.title,
+                    artwork: item.artwork || null,
+                    raw: safeStringify(item),
+                });
+            }}
+        >
+            <Heart size={15} fill={collected ? 'currentColor' : 'none'} />
+        </button>
     );
 }

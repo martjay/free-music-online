@@ -9,6 +9,7 @@ import ToplistDetailPage from './pages/ToplistDetailPage';
 import RecommendSheetsPage from './pages/RecommendSheetsPage';
 import NeteaseRecommendPage from './pages/NeteaseRecommendPage';
 import LocalSheetPage from './pages/LocalSheetPage';
+import LibraryPage from './pages/LibraryPage';
 import SheetPage from './pages/SheetPage';
 import AlbumPage from './pages/AlbumPage';
 import ArtistPage from './pages/ArtistPage';
@@ -64,6 +65,10 @@ const router = createHashRouter([
             {
                 path: `${RoutePaths.LocalSheet}/:id`,
                 Component: LocalSheetPage,
+            },
+            {
+                path: RoutePaths.Library,
+                Component: LibraryPage,
             },
             {
                 path: `${RoutePaths.MusicSheet}/:platform/:id`,

@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, MoreHorizontal, Languages } from 'lucide-react';
 import { DesktopLyric } from '@renderer/common/icons';
@@ -17,6 +18,13 @@ import { useCurrentMusic, useLyric } from '@renderer/mainWindow/core/trackPlayer
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import { syncKV } from '@renderer/common/kvStore';
 import defaultCover from '@assets/imgs/album-cover.jpg';
+import { albumRoute, artistRoute } from '../../../routes';
+import {
+    resolveCatalogAlbum,
+    resolveCatalogArtist,
+    splitArtistNames,
+} from '../../../core/mediaLink';
+import { showToast } from '../../ui/Toast';
 import { fullscreenPlayerOpenAtom, closeFullscreenPlayer } from './fullscreenPlayerState';
 import LyricPanel from './LyricPanel';
 import LyricSettingsPopover from './LyricSettingsPopover';
@@ -38,8 +46,10 @@ const overlayVariants = {
  */
 const FullscreenPlayer = memo(function FullscreenPlayer() {
     const open = useAtomValue(fullscreenPlayerOpenAtom);
+    const navigate = useNavigate();
     const currentMusic = useCurrentMusic();
     const isLive = isRadioBrowserMedia(currentMusic);
+    const canLink = !!currentMusic?.platform && currentMusic.platform !== 'local' && !isLive;
     const { t } = useTranslation();
 
     // 歌词设置状态
@@ -176,16 +186,112 @@ const FullscreenPlayer = memo(function FullscreenPlayer() {
                                     {currentMusic?.title ?? t('playback.not_playing')}
                                 </h2>
                                 <p className="l-fullscreen-player__song-artist">
-                                    {currentMusic?.artist && (
+                                    {splitArtistNames(currentMusic?.artist ?? '').map(
+                                        (name, index, names) =>
+                                            canLink && currentMusic ? (
+                                                <span key={`${name}\0${index}`}>
+                                                    {index > 0 && (
+                                                        <span className="l-fullscreen-player__dot">
+                                                            /
+                                                        </span>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        className="l-fullscreen-player__song-link"
+                                                        onClick={() => {
+                                                            const music = currentMusic;
+                                                            void resolveCatalogArtist({
+                                                                platform: music.platform,
+                                                                artist: name,
+                                                                artistId:
+                                                                    names.length === 1
+                                                                        ? music.artistId
+                                                                        : undefined,
+                                                                raw:
+                                                                    names.length === 1
+                                                                        ? music.raw
+                                                                        : undefined,
+                                                            }).then((artist) => {
+                                                                if (!artist?.id) {
+                                                                    showToast(
+                                                                        t(
+                                                                            'media.artist_link_missing',
+                                                                        ),
+                                                                    );
+                                                                    return;
+                                                                }
+                                                                closeFullscreenPlayer();
+                                                                navigate(
+                                                                    artistRoute(
+                                                                        music.platform,
+                                                                        artist.id,
+                                                                    ),
+                                                                    {
+                                                                        state: {
+                                                                            artistItem: {
+                                                                                ...artist,
+                                                                                name:
+                                                                                    artist.name ||
+                                                                                    name,
+                                                                            },
+                                                                        },
+                                                                    },
+                                                                );
+                                                            });
+                                                        }}
+                                                    >
+                                                        {name}
+                                                    </button>
+                                                </span>
+                                            ) : (
+                                                <span key={`${name}\0${index}`}>
+                                                    {index > 0 ? ` / ${name}` : name}
+                                                </span>
+                                            ),
+                                    )}
+                                    {currentMusic?.album && (
                                         <>
-                                            {currentMusic.artist}
-                                            {currentMusic.album && (
-                                                <>
-                                                    <span className="l-fullscreen-player__dot">
-                                                        •
-                                                    </span>
+                                            {currentMusic.artist && (
+                                                <span className="l-fullscreen-player__dot">•</span>
+                                            )}
+                                            {canLink ? (
+                                                <button
+                                                    type="button"
+                                                    className="l-fullscreen-player__song-link"
+                                                    onClick={() => {
+                                                        const music = currentMusic;
+                                                        if (!music.album) return;
+                                                        void resolveCatalogAlbum({
+                                                            platform: music.platform,
+                                                            artist: music.artist,
+                                                            album: music.album,
+                                                            artwork: music.artwork,
+                                                            albumId: music.albumId,
+                                                            raw: music.raw,
+                                                        }).then((album) => {
+                                                            if (!album?.id) {
+                                                                showToast(
+                                                                    t('media.album_link_missing'),
+                                                                );
+                                                                return;
+                                                            }
+                                                            closeFullscreenPlayer();
+                                                            navigate(
+                                                                albumRoute(
+                                                                    music.platform,
+                                                                    album.id,
+                                                                ),
+                                                                {
+                                                                    state: { albumItem: album },
+                                                                },
+                                                            );
+                                                        });
+                                                    }}
+                                                >
                                                     {currentMusic.album}
-                                                </>
+                                                </button>
+                                            ) : (
+                                                currentMusic.album
                                             )}
                                         </>
                                     )}

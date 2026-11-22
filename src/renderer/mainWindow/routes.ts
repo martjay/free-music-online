@@ -19,6 +19,8 @@ export const RoutePaths = {
     Radio: 'radio',
     /** 搜索 — 需 :query */
     Search: 'search',
+    /** 收藏：歌单、专辑、作者、排行榜 */
+    Library: 'library',
     /** 歌单详情（远程） — 需 :platform/:id */
     MusicSheet: 'musicsheet',
     /** 本地歌单详情 — 需 :id */

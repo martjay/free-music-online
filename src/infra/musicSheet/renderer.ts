@@ -281,6 +281,27 @@ class MusicSheetRenderer {
         this.addMusicToSheet(musicItems, DEFAULT_FAVORITE_SHEET_ID);
     }
 
+    async exportFavoriteMusic(): Promise<IMusic.IMusicItem[]> {
+        const detail = await mod.getSheetDetail(DEFAULT_FAVORITE_SHEET_ID);
+        if (!detail?.musicList.length) return [];
+        const raws = await mod.getRawMusicItems(detail.musicList);
+        const byKey = new Map(
+            raws.map((item) => [compositeKey(item.platform, String(item.id)), item]),
+        );
+        return detail.musicList.map(
+            (item) =>
+                byKey.get(compositeKey(item.platform, item.id)) ?? (item as IMusic.IMusicItem),
+        );
+    }
+
+    importFavoriteMusic(items: IMusic.IMusicItem[]): number {
+        const fresh = items.filter(
+            (item) => item?.platform && item.id != null && !this.isFavoriteMusic(item),
+        );
+        if (fresh.length > 0) this.addMusicToFavorite(fresh);
+        return fresh.length;
+    }
+
     removeMusicFromSheet(
         musicItems: IMedia.IMediaBase | IMedia.IMediaBase[],
         sheetId: string,
@@ -456,6 +477,51 @@ class MusicSheetRenderer {
         } catch (e) {
             this.events.emit('error', e instanceof Error ? e : new Error(String(e)));
         }
+    }
+
+    async importStarredSheets(
+        sheets: Array<{
+            platform: string;
+            id: string;
+            title?: string | null;
+            artwork?: string | null;
+            raw?: string;
+            tracks?: IMusic.IMusicItem[];
+        }>,
+    ): Promise<number> {
+        let added = 0;
+        for (const entry of sheets) {
+            let sheet: IMusic.IMusicSheetItem | null = null;
+            if (entry.raw) {
+                try {
+                    const parsed = JSON.parse(entry.raw) as IMusic.IMusicSheetItem;
+                    if (parsed?.platform && parsed.id != null) sheet = parsed;
+                } catch {
+                    sheet = null;
+                }
+            }
+            if (!sheet && entry.platform && entry.id != null) {
+                sheet = {
+                    platform: entry.platform,
+                    id: String(entry.id),
+                    title: entry.title || '',
+                    artwork: entry.artwork || undefined,
+                };
+            }
+            if (!sheet) continue;
+            const existed = this.isSheetStarred(sheet);
+            if (!existed) {
+                await this.starMusicSheet(sheet);
+                added += 1;
+            }
+            const tracks = Array.isArray(entry.tracks) ? entry.tracks : [];
+            if (!tracks.length) continue;
+            const current = await this.getStarredSheetMusic(sheet.platform, String(sheet.id));
+            if (current.length === 0) {
+                await this.saveStarredSheetMusic(sheet, tracks, true);
+            }
+        }
+        return added;
     }
 
     async getStarredSheetMusic(platform: string, id: string): Promise<IMusic.IMusicItem[]> {

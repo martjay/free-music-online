@@ -5,7 +5,7 @@ import { Button } from '@renderer/mainWindow/components/ui/Button';
 import { showModal } from '@renderer/mainWindow/components/ui/Modal/modalManager';
 import { showToast } from '@renderer/mainWindow/components/ui/Toast';
 import { usePlugins } from '@infra/pluginManager/renderer/hooks';
-import pluginManager from '@infra/pluginManager/renderer';
+import pluginManager, { type IPluginVersionProgress } from '@infra/pluginManager/renderer';
 import {
     importPluginSettingsText,
     readPluginSettingsFile,
@@ -43,6 +43,7 @@ export default function PluginManagerPage() {
     const [updatingPlugins, setUpdatingPlugins] = useState(false);
     const [transferring, setTransferring] = useState(false);
     const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+    const [updateProgress, setUpdateProgress] = useState<IPluginVersionProgress | null>(null);
 
     const handleCheckVersions = useCallback(async () => {
         if (updatingPlugins) {
@@ -50,8 +51,9 @@ export default function PluginManagerPage() {
             return;
         }
         setUpdatingPlugins(true);
+        setUpdateProgress(null);
         try {
-            const report = await pluginManager.checkPluginVersions();
+            const report = await pluginManager.checkPluginVersions(setUpdateProgress);
             if (report.cancelled) {
                 showToast(t('plugin.plugin_update_cancelled'));
                 return;
@@ -72,6 +74,7 @@ export default function PluginManagerPage() {
             showToast(t('plugin.plugin_update_offline'), { type: 'warn' });
         } finally {
             setUpdatingPlugins(false);
+            setUpdateProgress(null);
         }
     }, [t, updatingPlugins]);
 
@@ -117,8 +120,14 @@ export default function PluginManagerPage() {
         if (dialogResult.canceled || !dialogResult.filePath) return;
         setTransferring(true);
         try {
-            const count = await writePluginSettingsFile(dialogResult.filePath);
-            showToast(t('plugin.export_plugins_success', { count }));
+            const exported = await writePluginSettingsFile(dialogResult.filePath);
+            showToast(
+                t('plugin.export_plugins_success', {
+                    count: exported.plugins,
+                    favorites: exported.favorites,
+                    library: exported.library,
+                }),
+            );
         } catch (error) {
             console.error('[plugin export]', error);
             showToast(t('plugin.export_plugins_fail', { reason: t('common.action_failed') }), {
@@ -131,6 +140,14 @@ export default function PluginManagerPage() {
 
     const handleImportResult = useCallback(
         (result: Awaited<ReturnType<typeof readPluginSettingsFile>>) => {
+            if (result.favoritesAdded > 0 || result.libraryAdded > 0) {
+                showToast(
+                    t('plugin.import_library_merged', {
+                        favorites: result.favoritesAdded,
+                        library: result.libraryAdded,
+                    }),
+                );
+            }
             if (result.installed > 0 && result.applied > 0) {
                 showToast(
                     t('plugin.import_plugins_installed', {
@@ -219,10 +236,23 @@ export default function PluginManagerPage() {
         }
     }, [handleImportResult, t]);
 
-    const checkLabel =
-        checking && progress && progress.total > 0
-            ? t('plugin.source_check_progress', progress)
-            : t('plugin.check_source');
+    const checkLabel = checking
+        ? progress && progress.total > 0
+            ? t('plugin.check_source_stop_progress', progress)
+            : t('plugin.check_source_stop')
+        : t('plugin.check_source');
+    const updateLabel = !updatingPlugins
+        ? t('plugin.check_plugin_update')
+        : !updateProgress || updateProgress.total <= 0
+          ? updateProgress?.phase === 'catalog'
+              ? t('plugin.check_plugin_update_catalog')
+              : t('plugin.check_plugin_update_stop')
+          : t(
+                updateProgress.phase === 'catalog'
+                    ? 'plugin.check_plugin_update_catalog_progress'
+                    : 'plugin.check_plugin_update_stop_progress',
+                updateProgress,
+            );
 
     return (
         <div className="p-plugin-manager">
@@ -264,21 +294,21 @@ export default function PluginManagerPage() {
                             variant="secondary"
                             size="md"
                             icon={<ArrowUpCircle size={16} />}
+                            busy={updatingPlugins}
                             disabled={installed.length === 0 || transferring}
                             onClick={handleCheckVersions}
                         >
-                            {updatingPlugins
-                                ? t('plugin.check_plugin_update_stop')
-                                : t('plugin.check_plugin_update')}
+                            {updateLabel}
                         </Button>
                         <Button
                             variant="secondary"
                             size="md"
                             icon={<Activity size={16} />}
+                            busy={checking}
                             disabled={installed.length === 0 || transferring}
                             onClick={handleCheckSources}
                         >
-                            {checking ? t('plugin.check_source_stop') : checkLabel}
+                            {checkLabel}
                         </Button>
                         <Button
                             variant="primary"

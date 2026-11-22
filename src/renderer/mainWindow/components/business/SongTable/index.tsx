@@ -38,6 +38,7 @@ import { useColumnWidths } from '@renderer/common/hooks/useColumnWidths';
 import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import { shortPlatformName } from '@infra/pluginManager/common/pluginIdentity';
 import { isMobileApp } from '@common/runtimePlatform';
+import { AlbumLink, ArtistLinks } from './MediaLinks';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -510,7 +511,7 @@ export function SongTable({
                 cellClassName: 'song-table__cell--artist',
                 resizable: true,
                 textOf: (item) => item.artist ?? '',
-                render: (item) => item.artist,
+                render: (item) => <ArtistLinks item={item} />,
             });
         }
 
@@ -522,7 +523,7 @@ export function SongTable({
                 cellClassName: 'song-table__cell--album',
                 resizable: true,
                 textOf: (item) => item.album ?? '',
-                render: (item) => item.album ?? '',
+                render: (item) => <AlbumLink item={item} />,
             });
         }
 

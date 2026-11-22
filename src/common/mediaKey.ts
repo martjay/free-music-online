@@ -17,7 +17,8 @@ export function isSameMedia(
 
 /**
  * 歌单、排行榜和换源后的播放条目编号经常不同。
- * 编号相同，或歌名（去掉括号）一致且歌手有重叠，就视为同一首歌。
+ * 编号相同，或去掉标点后的歌名一致、括号里的版本说明也一致、歌手有重叠，才视为同一首。
+ * Explicit、Clean、Remix 这类括号内容不同，就不是同一条。
  */
 export function isSameSong(
     a: IMedia.IMediaBase | null | undefined,
@@ -25,10 +26,26 @@ export function isSameSong(
 ): boolean {
     if (!a || !b) return false;
     if (isSameMedia(a, b)) return true;
-    const left = compactTitle(String(a.title ?? ''));
-    const right = compactTitle(String(b.title ?? ''));
-    if (left.length < 2 || left !== right) return false;
+    const left = splitSongTitle(String(a.title ?? ''));
+    const right = splitSongTitle(String(b.title ?? ''));
+    if (left.base.length < 2 || left.base !== right.base || left.version !== right.version)
+        return false;
     return artistOverlaps(String(a.artist ?? ''), String(b.artist ?? ''));
+}
+
+function splitSongTitle(value: string): { base: string; version: string } {
+    const versions: string[] = [];
+    const withoutVersion = value.replace(
+        /（([^）]*)）|\(([^)]*)\)|【([^】]*)】|\[([^\]]*)\]/g,
+        (_match, roundFull, round, squareFull, square) => {
+            versions.push(compactTitle(roundFull ?? round ?? squareFull ?? square ?? ''));
+            return '';
+        },
+    );
+    return {
+        base: compactTitle(withoutVersion),
+        version: versions.filter(Boolean).join('|'),
+    };
 }
 
 function compactTitle(value: string): string {

@@ -42,9 +42,10 @@
 
     &__header-row {
         display: flex;
-        align-items: flex-end;
+        flex-wrap: wrap;
+        align-items: center;
         justify-content: space-between;
-        gap: var(--space-4);
+        gap: var(--space-3) var(--space-6);
     }
 
     &__hint {
@@ -57,7 +58,10 @@
     &__title-group {
         display: flex;
         align-items: baseline;
+        flex: 0 0 auto;
         gap: var(--space-3);
+        max-width: 100%;
+        white-space: nowrap;
     }
 
     &__title {
@@ -65,6 +69,7 @@
         font-weight: var(--font-weight-bold);
         color: var(--color-text-primary);
         line-height: var(--text-title-leading);
+        white-space: nowrap;
     }
 
     &__count {
@@ -76,9 +81,27 @@
 
     &__header-actions {
         display: flex;
+        flex: 1 1 auto;
         flex-wrap: wrap;
         justify-content: flex-end;
+        min-width: min(100%, 32rem);
+        margin-left: auto;
         gap: var(--space-3);
+
+        .btn {
+            white-space: nowrap;
+        }
+    }
+
+    &__check-spin {
+        width: 10px;
+        height: 10px;
+        margin-right: 4px;
+        border: 2px solid currentColor;
+        border-top-color: transparent;
+        border-radius: var(--radius-pill);
+        animation: btn-spin 0.6s linear infinite;
+        flex-shrink: 0;
     }
 
     // ── 滚动内容区 ──

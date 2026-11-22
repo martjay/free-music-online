@@ -44,6 +44,10 @@ declare namespace IMusic {
         duration?: number;
         /** 专辑名 */
         album?: string;
+        /** 当前平台上的作者 id，用来打开作者页 */
+        artistId?: string;
+        /** 当前平台上的专辑 id，用来打开专辑页 */
+        albumId?: string;
         /** 专辑封面图 */
         artwork?: string;
     }
@@ -111,6 +115,8 @@ declare namespace IAlbum {
         date?: string;
         artist?: string;
         description: string;
+        /** 当前平台上的作者 id */
+        artistId?: string;
         /** 专辑内有多少作品 */
         worksNum?: number;
         musicList?: IMusic.IMusicItem[];

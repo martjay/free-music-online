@@ -83,6 +83,7 @@ function AvailabilityBadge({ availability }: { availability?: IPluginAvailabilit
         case 'checking':
             return (
                 <Badge variant="outline" colorScheme="warn">
+                    <span className="p-plugin-manager__check-spin" aria-hidden="true" />
                     {t('plugin.source_checking')}
                 </Badge>
             );

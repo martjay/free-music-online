@@ -33,6 +33,7 @@ export function PlaybackSection() {
     const [defaultPlaybackPlugin, setDefaultPlaybackPlugin] = useConfigValue(
         'playMusic.defaultPlaybackPlugin',
     );
+    const [searchSourceMode, setSearchSourceMode] = useConfigValue('playMusic.searchSourceMode');
     const searchablePlugins = useSortedSearchablePlugins('music').filter((plugin) =>
         plugin.supportedMethod.includes('getMediaSource'),
     );
@@ -279,6 +280,25 @@ export function PlaybackSection() {
                             placeholder={t('toplist.official_no_plugin')}
                             onChange={setDefaultPlaybackPlugin}
                             options={defaultPlatformOptions}
+                        />
+                    }
+                />
+                <SettingRow
+                    label={t('settings.playback.search_source_label')}
+                    description={t('settings.playback.search_source_desc')}
+                    control={
+                        <Select
+                            value={searchSourceMode ?? 'lx'}
+                            onChange={(value) =>
+                                setSearchSourceMode(value === 'installed' ? 'installed' : 'lx')
+                            }
+                            options={[
+                                { value: 'lx', label: t('settings.playback.search_source_lx') },
+                                {
+                                    value: 'installed',
+                                    label: t('settings.playback.search_source_installed'),
+                                },
+                            ]}
                         />
                     }
                 />

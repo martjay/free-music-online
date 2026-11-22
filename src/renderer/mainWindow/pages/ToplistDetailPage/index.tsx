@@ -36,6 +36,7 @@ import { SongToolbar } from '../../components/ui/SongToolbar';
 import { ListFooter } from '../../components/ui/ListFooter';
 import { StatusPlaceholder } from '../../components/ui/StatusPlaceholder';
 import { Button } from '../../components/ui/Button';
+import { CollectButton } from '../../components/business/CollectButton';
 import { showContextMenu } from '../../components/ui/ContextMenu/contextMenuManager';
 import { showModal } from '../../components/ui/Modal/modalManager';
 import { useTopListDetail } from './useTopListDetail';
@@ -183,6 +184,18 @@ export default function ToplistDetailPage() {
                     >
                         {t('playlist.add_to_sheet_menu')}
                     </Button>
+                    {sheetItem ? (
+                        <CollectButton
+                            kind="chart"
+                            target={{
+                                platform: sheetItem.platform,
+                                id: String(sheetItem.id),
+                                title: sheetItem.title,
+                                artwork: sheetItem.artwork,
+                                raw: sheetItem,
+                            }}
+                        />
+                    ) : null}
                 </SongToolbar>
             </div>
 

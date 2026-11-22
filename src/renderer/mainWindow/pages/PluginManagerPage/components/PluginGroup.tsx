@@ -128,10 +128,11 @@ function PluginGroup({ group, meta, availability, onToggleEnabled }: PluginGroup
             setProgress(null);
         }
     }, [checking, group.plugins, t]);
-    const checkLabel =
-        checking && progress && progress.total > 0
-            ? t('plugin.check_plugin_platforms_progress', progress)
-            : t('plugin.check_plugin_platforms');
+    const checkLabel = checking
+        ? progress && progress.total > 0
+            ? t('plugin.check_source_stop_progress', progress)
+            : t('plugin.check_source_stop')
+        : t('plugin.check_plugin_platforms');
 
     return (
         <section
@@ -182,9 +183,10 @@ function PluginGroup({ group, meta, availability, onToggleEnabled }: PluginGroup
                         variant="secondary"
                         size="sm"
                         icon={<Activity size={14} />}
+                        busy={checking}
                         onClick={handleCheckAll}
                     >
-                        {checking ? t('plugin.check_source_stop') : checkLabel}
+                        {checkLabel}
                     </Button>
                     <button
                         type="button"

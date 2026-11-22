@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import {
     Clock,
     Flame,
+    Heart,
     Radio,
     Trophy,
     HardDrive,
@@ -23,6 +24,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router';
+import { useLibraryEntries } from '@infra/library/renderer';
 import { useMusicSheetList, useStarredSheets } from '@infra/musicSheet/renderer';
 import systemUtil from '@infra/systemUtil/renderer';
 import { showModal } from '../../ui/Modal/modalManager';
@@ -33,7 +35,6 @@ import type { RoutePath } from '../../../routes';
 import { pendingUpdateAtom } from '@renderer/mainWindow/common/updateNotice';
 import { checkAppUpdate } from '@renderer/bootstrap/postBootstrap';
 import LocalSheetNavItem from './LocalSheetNavItem';
-import StarredSheetNavItem from './StarredSheetNavItem';
 import './index.scss';
 
 // 底部工具按钮: icon + route + i18n key
@@ -49,6 +50,7 @@ export default function Sidebar() {
     const location = useLocation();
     const sheets = useMusicSheetList();
     const starredSheets = useStarredSheets();
+    const libraryEntries = useLibraryEntries();
     const pendingUpdate = useAtomValue(pendingUpdateAtom);
 
     useEffect(() => {
@@ -200,21 +202,16 @@ export default function Sidebar() {
                     )}
                 </div>
 
-                {/* ── 收藏的歌单 ── */}
                 <div className="l-sidebar__group">
-                    <div className="l-sidebar__group-title">{t('playlist.starred_sheets')}</div>
-                    {starredSheets.length > 0 ? (
-                        starredSheets.map((item) => (
-                            <StarredSheetNavItem
-                                key={`${item.platform}\0${item.id}`}
-                                item={item}
-                                pathname={location.pathname}
-                                navigate={navigate}
-                            />
-                        ))
-                    ) : (
-                        <div className="l-sidebar__placeholder">{t('playlist.no_starred')}</div>
-                    )}
+                    <div className="l-sidebar__group-title">{t('playlist.library')}</div>
+                    <NavItem
+                        route={RoutePaths.Library}
+                        icon={Heart}
+                        text={t('playlist.library_open')}
+                        count={starredSheets.length + libraryEntries.length}
+                        activeSegment={activeSegment}
+                        navigate={navigate}
+                    />
                 </div>
             </nav>
 
@@ -269,12 +266,14 @@ function NavItem({
     route,
     icon: Icon,
     text,
+    count,
     activeSegment,
     navigate,
 }: {
     route: RoutePath;
     icon: LucideIcon;
     text: string;
+    count?: number;
     activeSegment: string;
     navigate: (to: string) => void;
 }) {
@@ -286,6 +285,9 @@ function NavItem({
         >
             <Icon size={16} className="l-sidebar__nav-icon" />
             <span className="l-sidebar__nav-label">{text}</span>
+            {count != null && count > 0 ? (
+                <span className="l-sidebar__nav-count">{count}</span>
+            ) : null}
         </button>
     );
 }

@@ -206,6 +206,7 @@ export const methodNormalizers: Partial<
             return {
                 isEnd: result.isEnd ?? true,
                 data: resetMediaItems(result.data, platform),
+                profile: result.profile,
             };
         },
         defaultResult: () => ({ isEnd: true, data: [] }),

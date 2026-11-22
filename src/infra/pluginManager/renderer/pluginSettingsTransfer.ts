@@ -5,6 +5,9 @@
 
 import { LOCAL_PLUGIN_HASH } from '@common/constant';
 import fsUtil from '@infra/fsUtil/renderer';
+import { mergeLibraryEntries } from '@infra/library/renderer';
+import type { ILibraryEntry } from '@infra/library/types';
+import musicSheet from '@infra/musicSheet/renderer';
 import { pluginPlatformLabel, pluginScriptLabel } from '@infra/pluginManager/common/pluginIdentity';
 import { applyPluginPlaybackLatencies, getPluginPlaybackLatency } from '../common/playbackLatency';
 import pluginManager from './index';
@@ -29,12 +32,28 @@ export interface IPluginScriptPayload {
     code: string;
 }
 
+export interface IPluginStarredSheet {
+    platform: string;
+    id: string;
+    title?: string | null;
+    artwork?: string | null;
+    raw?: string;
+    tracks?: IMusic.IMusicItem[];
+}
+
+export interface IPluginLibraryPayload {
+    entries?: ILibraryEntry[];
+    sheets?: IPluginStarredSheet[];
+}
+
 export interface IPluginSettingsFile {
     kind: 'free-music-online-plugins';
     version: 1 | 2;
     exportedAt: string;
     platforms: IPluginPlatformSettings[];
     scripts?: IPluginScriptPayload[];
+    favorites?: IMusic.IMusicItem[];
+    library?: IPluginLibraryPayload;
 }
 
 export interface IPluginSettingsImportResult {
@@ -44,6 +63,8 @@ export interface IPluginSettingsImportResult {
     failed: number;
     error?: string;
     hasScripts: boolean;
+    favoritesAdded: number;
+    libraryAdded: number;
 }
 
 export async function buildPluginSettingsFile(): Promise<IPluginSettingsFile> {
@@ -97,19 +118,53 @@ export async function buildPluginSettingsFile(): Promise<IPluginSettingsFile> {
         }
     }
 
+    const favorites = await musicSheet.exportFavoriteMusic();
+    const starred = musicSheet.getAllStarredSheets();
+    const sheets = await Promise.all(
+        starred.map(async (sheet) => ({
+            platform: sheet.platform,
+            id: sheet.id,
+            title: sheet.title,
+            artwork: sheet.artwork,
+            raw: sheet.raw,
+            tracks: await musicSheet.getStarredSheetMusic(sheet.platform, sheet.id),
+        })),
+    );
+    const libraryEntries = await loadLibraryEntries();
+
     return {
         kind: 'free-music-online-plugins',
         version: 2,
         exportedAt: new Date().toISOString(),
         platforms,
         scripts,
+        favorites,
+        library: { entries: libraryEntries, sheets },
     };
 }
 
-export async function writePluginSettingsFile(path: string): Promise<number> {
+async function loadLibraryEntries(): Promise<ILibraryEntry[]> {
+    const bridge = (window as unknown as { library?: { load?: () => Promise<ILibraryEntry[]> } })
+        .library;
+    if (!bridge?.load) return [];
+    try {
+        const entries = await bridge.load();
+        return Array.isArray(entries) ? entries : [];
+    } catch {
+        return [];
+    }
+}
+
+export async function writePluginSettingsFile(
+    path: string,
+): Promise<{ plugins: number; favorites: number; library: number }> {
     const file = await buildPluginSettingsFile();
     await fsUtil.writeFile(path, JSON.stringify(file, null, 2), { encoding: 'utf-8' });
-    return file.scripts?.length || file.platforms.length;
+    return {
+        plugins: file.scripts?.length || file.platforms.length,
+        favorites: file.favorites?.length ?? 0,
+        library: (file.library?.entries?.length ?? 0) + (file.library?.sheets?.length ?? 0),
+    };
 }
 
 function stripBom(text: string): string {
@@ -256,6 +311,8 @@ export async function importPluginSettingsText(text: string): Promise<IPluginSet
         applyPluginPlaybackLatencies(latencies);
     }
 
+    const libraryResult = await importLibraryPayload(parsed);
+
     return {
         installed: installResult.installed,
         applied: updates.length,
@@ -263,7 +320,36 @@ export async function importPluginSettingsText(text: string): Promise<IPluginSet
         failed: installResult.failed,
         error: installResult.error,
         hasScripts: installResult.hasScripts,
+        favoritesAdded: libraryResult.favoritesAdded,
+        libraryAdded: libraryResult.libraryAdded,
     };
+}
+
+async function importLibraryPayload(
+    parsed: Partial<IPluginSettingsFile>,
+): Promise<{ favoritesAdded: number; libraryAdded: number }> {
+    const favorites = Array.isArray(parsed.favorites) ? parsed.favorites : [];
+    const favoritesAdded = musicSheet.importFavoriteMusic(
+        favorites.filter(
+            (item) => item && typeof item === 'object' && item.platform && item.id != null,
+        ),
+    );
+
+    const library = parsed.library;
+    const entries = Array.isArray(library?.entries) ? library.entries : [];
+    const sheets = Array.isArray(library?.sheets) ? library.sheets : [];
+    let libraryAdded = 0;
+    try {
+        libraryAdded += await mergeLibraryEntries(entries);
+    } catch {
+        /* 旧版本没有合并接口时跳过专辑、歌手和榜单 */
+    }
+    try {
+        libraryAdded += await musicSheet.importStarredSheets(sheets);
+    } catch {
+        /* 歌单收藏写入失败时保留已经导入的插件配置 */
+    }
+    return { favoritesAdded, libraryAdded };
 }
 
 export async function readPluginSettingsFile(path: string): Promise<IPluginSettingsImportResult> {

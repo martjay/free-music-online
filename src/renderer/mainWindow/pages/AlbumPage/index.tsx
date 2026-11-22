@@ -1,5 +1,5 @@
 import { useState, useMemo, useDeferredValue, useCallback, type MouseEvent } from 'react';
-import { useParams, useLocation } from 'react-router';
+import { useParams, useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { FolderPlus } from 'lucide-react';
 import { RequestStatus } from '@common/constant';
@@ -12,8 +12,11 @@ import { SongToolbar } from '../../components/ui/SongToolbar';
 import { ListFooter } from '../../components/ui/ListFooter';
 import { StatusPlaceholder } from '../../components/ui/StatusPlaceholder';
 import { Button } from '../../components/ui/Button';
+import { CollectButton } from '../../components/business/CollectButton';
 import { showContextMenu } from '../../components/ui/ContextMenu/contextMenuManager';
 import { showModal } from '../../components/ui/Modal/modalManager';
+import { artistRoute } from '../../routes';
+import { resolveArtistId } from '../../core/mediaLink';
 import { useAlbumDetail } from './useAlbumDetail';
 import './index.scss';
 
@@ -26,6 +29,7 @@ import './index.scss';
 export default function AlbumPage() {
     const { platform, id } = useParams<{ platform: string; id: string }>();
     const location = useLocation();
+    const navigate = useNavigate();
     const { t } = useTranslation();
 
     const originalItem = useMemo<IAlbum.IAlbumItem>(() => {
@@ -75,6 +79,21 @@ export default function AlbumPage() {
         [],
     );
 
+    const artistId = resolveArtistId(albumItem);
+    const handleOpenArtist = useCallback(() => {
+        if (!artistId) return;
+        navigate(artistRoute(albumItem.platform, artistId), {
+            state: {
+                artistItem: {
+                    id: artistId,
+                    platform: albumItem.platform,
+                    name: albumItem.artist ?? '',
+                    avatar: '',
+                },
+            },
+        });
+    }, [albumItem.artist, albumItem.platform, artistId, navigate]);
+
     const handleAddToSheet = useCallback(() => {
         if (musicList.length === 0) return;
         showModal('AddMusicToSheetModal', { musicItems: musicList });
@@ -107,7 +126,10 @@ export default function AlbumPage() {
     // IAlbumItem extends IMusicSheetItem，可直接传给 MusicSheetHeader
     return (
         <div className="p-album">
-            <MusicSheetHeader musicSheet={albumItem} />
+            <MusicSheetHeader
+                musicSheet={albumItem}
+                onArtistClick={artistId ? handleOpenArtist : undefined}
+            />
 
             <div className="p-album__toolbar">
                 <SongToolbar
@@ -125,6 +147,16 @@ export default function AlbumPage() {
                     >
                         {t('playlist.add_to_sheet_menu')}
                     </Button>
+                    <CollectButton
+                        kind="album"
+                        target={{
+                            platform: albumItem.platform,
+                            id: String(albumItem.id),
+                            title: albumItem.title,
+                            artwork: albumItem.artwork,
+                            raw: albumItem,
+                        }}
+                    />
                 </SongToolbar>
             </div>
 

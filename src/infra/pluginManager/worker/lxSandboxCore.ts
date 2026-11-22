@@ -310,6 +310,7 @@ interface ILxInitedPayload {
 type ILxSearchResult = {
     isEnd?: boolean;
     data: any[];
+    profile?: Partial<IArtist.IArtistItem>;
 };
 type ILxMediaSearcher = (query: string, page: number, platform: string) => Promise<ILxSearchResult>;
 type ILxLyricGetter = (musicInfo: Record<string, any>) => Promise<ILyric.ILyricSource | null>;
@@ -576,7 +577,7 @@ function normalizeArtistNames(value: unknown): string {
             .filter(Boolean)
             .join(' / ');
     }
-    return typeof value === 'string' && value ? value : '未知歌手';
+    return typeof value === 'string' ? cleanSearchText(value) : '';
 }
 
 function cleanSearchText(value: unknown): string {
@@ -585,6 +586,8 @@ function cleanSearchText(value: unknown): string {
         .replace(/<[^>]+>/g, '')
         .replace(/&nbsp;/g, ' ')
         .replace(/&amp;/g, '&')
+        .replace(/&apos;|&#39;/g, "'")
+        .replace(/&quot;/g, '"')
         .trim();
 }
 
@@ -718,6 +721,58 @@ async function fetchNeteaseSongDetails(songIds: unknown[]): Promise<Map<string, 
     }
 }
 
+function textId(value: unknown): string | undefined {
+    if (value == null) return undefined;
+    const text = String(value).trim();
+    if (!text || text === '0' || text === 'undefined') return undefined;
+    return text;
+}
+
+function firstId(...values: unknown[]): string | undefined {
+    for (const value of values) {
+        const id = textId(value);
+        if (id) return id;
+    }
+    return undefined;
+}
+
+/** QQ 歌曲接口只认歌手 mid。数字 id 会查出空列表，所以这里不拿它。 */
+function tencentSingerMid(source: unknown): string | undefined {
+    const list = Array.isArray(source) ? source : source ? [source] : [];
+    for (const item of list) {
+        if (!item || typeof item !== 'object') continue;
+        const record = item as Record<string, unknown>;
+        const mid = firstId(
+            record.mid,
+            record.singerMID,
+            record.singerMid,
+            record.singermid,
+            record.singer_mid,
+        );
+        if (mid && !/^\d+$/.test(mid)) return mid;
+    }
+    return undefined;
+}
+
+function nestedArtistId(source: unknown): string | undefined {
+    const list = Array.isArray(source) ? source : source ? [source] : [];
+    for (const item of list) {
+        if (!item || typeof item !== 'object') continue;
+        const record = item as Record<string, unknown>;
+        const id = firstId(
+            record.id,
+            record.mid,
+            record.singerid,
+            record.singer_id,
+            record.singerMID,
+            record.singerMid,
+            record.author_id,
+        );
+        if (id) return id;
+    }
+    return undefined;
+}
+
 function mapNeteaseSongInfo(
     song: any,
     platform: string,
@@ -727,8 +782,14 @@ function mapNeteaseSongInfo(
         id: String(song?.id),
         platform,
         title: cleanSearchText(song?.name),
-        artist: normalizeArtistNames(song?.artists ?? song?.ar),
+        artist: normalizeArtistNames(song?.artists ?? song?.ar) || '未知歌手',
+        artistId: firstId(
+            nestedArtistId(song?.artists),
+            nestedArtistId(song?.ar),
+            song?.artist?.id,
+        ),
         album: cleanSearchText(album?.name),
+        albumId: firstId(album?.id),
         artwork: album?.picUrl ?? album?.blurPicUrl,
         duration: normalizeDurationSeconds(song?.duration ?? song?.dt),
         raw: song,
@@ -739,7 +800,7 @@ function mapNeteaseSongInfo(
 
 function splitKugouFilename(value: unknown): { artist?: string; title?: string } {
     const text = cleanSearchText(value);
-    const match = text.match(/^(.+?)\s+-\s+(.+)$/);
+    const match = text.match(/^(.+?)\s+[-–—－]\s+(.+)$/);
     if (!match) return { title: text };
     return {
         artist: match[1],
@@ -754,8 +815,15 @@ function mapTencentSongInfo(item: any, platform: string): IMusic.IMusicItem {
         id: String(songMid ?? item.songid ?? item.id ?? ''),
         platform,
         title: cleanSearchText(item.songname ?? item.name ?? item.title),
-        artist: normalizeArtistNames(item.singer),
+        artist: normalizeArtistNames(item.singer) || '未知歌手',
+        artistId: firstId(
+            tencentSingerMid(item.singer),
+            item.singer_mid,
+            item.singerMID,
+            item.singermid,
+        ),
         album: cleanSearchText(item.albumname ?? item.album?.name ?? item.album?.title),
+        albumId: firstId(albumMid, item.albumid, item.album?.id),
         artwork: albumMid
             ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumMid}.jpg`
             : undefined,
@@ -768,14 +836,14 @@ function mapTencentSongInfo(item: any, platform: string): IMusic.IMusicItem {
     };
 }
 
-function mapKugouSongInfo(item: any, platform: string): IMusic.IMusicItem {
+function mapKugouSongInfo(item: any, platform: string, fallbackArtist = ''): IMusic.IMusicItem {
     const parsed = splitKugouFilename(item.filename);
     const title = cleanSearchText(
         item.songname ?? item.songname_original ?? item.audio_name ?? parsed.title,
     );
-    const artist = cleanSearchText(
-        item.singername ?? item.author_name ?? normalizeArtistNames(item.authors) ?? parsed.artist,
-    );
+    const namedArtist = cleanSearchText(item.singername ?? item.author_name);
+    const authorList = Array.isArray(item.authors) ? normalizeArtistNames(item.authors) : '';
+    const artist = namedArtist || authorList || parsed.artist || cleanSearchText(fallbackArtist);
     const artworkSource =
         item.trans_param?.union_cover ?? item.album_sizable_cover ?? item.imgurl ?? item.img;
     const artwork = artworkSource ? String(artworkSource).replace('{size}', '300') : undefined;
@@ -784,13 +852,85 @@ function mapKugouSongInfo(item: any, platform: string): IMusic.IMusicItem {
         id: String(item.hash ?? item.HASH ?? item.audio_id ?? item.album_audio_id),
         platform,
         title,
-        artist: artist || parsed.artist || '未知歌手',
-        album: cleanSearchText(item.album_name ?? item.albumname ?? item.remark),
+        artist: artist || '未知歌手',
+        artistId: firstId(
+            item.singerid,
+            item.singer_id,
+            nestedArtistId(item.authors),
+            item.author_id,
+        ),
+        album: cleanSearchText(item.album_name ?? item.albumname),
+        albumId: firstId(item.album_id, item.albumid),
         artwork,
         duration: normalizeDurationSeconds(item.duration ?? item.timelength),
         raw: item,
         hash: item.hash ?? item.HASH,
     };
+}
+
+/** 酷狗榜单歌曲只有 album_id，专辑名要再查一次。 */
+async function attachKugouAlbumNames(list: any[]): Promise<any[]> {
+    const pending = list.filter(
+        (item) => item?.hash && !cleanSearchText(item.album_name ?? item.albumname),
+    );
+    if (pending.length === 0) return list;
+
+    const albumByHash = new Map<string, { name: string; id?: string }>();
+    for (let offset = 0; offset < pending.length; offset += 100) {
+        const chunk = pending.slice(offset, offset + 100);
+        try {
+            const resp = await axios.post(
+                'http://gateway.kugou.com/v3/album_audio/audio',
+                {
+                    area_code: '1',
+                    show_privilege: 1,
+                    show_album_info: '1',
+                    appid: 1005,
+                    clientver: 11451,
+                    mid: '1',
+                    dfid: '-',
+                    clienttime: Date.now(),
+                    key: 'OIlwieks28dk2k092lksi2UIkp',
+                    fields: 'album_info,audio_info',
+                    data: chunk.map((item) => ({ hash: item.hash })),
+                },
+                {
+                    headers: {
+                        'User-Agent': 'Android712-AndroidPhone-11451-376-0-FeeCacheUpdate-wifi',
+                        'KG-THash': '13a3164',
+                        'KG-RC': '1',
+                        'KG-Fake': '0',
+                        'KG-RF': '00869891',
+                        'x-router': 'kmr.service.kugou.com',
+                    },
+                    timeout: 15000,
+                },
+            );
+            const groups = Array.isArray(resp.data?.data) ? resp.data.data : [];
+            for (const group of groups) {
+                const row = Array.isArray(group) ? group[0] : group;
+                const hash = String(row?.audio_info?.hash ?? '').toLowerCase();
+                const name = cleanSearchText(row?.album_info?.album_name);
+                if (!hash || !name) continue;
+                albumByHash.set(hash, {
+                    name,
+                    id: row?.album_info?.album_id ? String(row.album_info.album_id) : undefined,
+                });
+            }
+        } catch {
+            /* 这一页补不到专辑名时，榜单歌曲仍然显示 */
+        }
+    }
+    if (albumByHash.size === 0) return list;
+    return list.map((item) => {
+        const extra = albumByHash.get(String(item?.hash ?? '').toLowerCase());
+        if (!extra) return item;
+        return {
+            ...item,
+            album_name: extra.name,
+            album_id: item.album_id || extra.id,
+        };
+    });
 }
 
 function mapKuwoSongInfo(item: any, platform: string): IMusic.IMusicItem {
@@ -800,7 +940,9 @@ function mapKuwoSongInfo(item: any, platform: string): IMusic.IMusicItem {
         platform,
         title: cleanSearchText(item.SONGNAME ?? item.NAME ?? item.name),
         artist: cleanSearchText(item.ARTIST ?? item.FARTIST ?? item.artist),
+        artistId: firstId(item.ARTISTID, item.artistid, item.artistId),
         album: cleanSearchText(item.ALBUM ?? item.album),
+        albumId: firstId(item.ALBUMID, item.albumid, item.albumId),
         artwork: buildKuwoArtwork(item.web_albumpic_short ?? item.albumpic),
         duration: normalizeDurationSeconds(item.DURATION ?? item.duration),
         raw: item,
@@ -840,7 +982,7 @@ function mapNeteaseAlbumItem(item: any, platform: string): IAlbum.IAlbumItem {
             : item?.artist
               ? [item.artist]
               : undefined;
-    const artist = normalizeArtistNames(artistSource);
+    const artist = normalizeArtistNames(artistSource) || '未知歌手';
     const publishTime = Number(item?.publishTime ?? item?.publish_time ?? 0);
     const size = Number(item?.size ?? item?.songCount ?? 0);
 
@@ -852,6 +994,7 @@ function mapNeteaseAlbumItem(item: any, platform: string): IAlbum.IAlbumItem {
         description: cleanSearchText(item?.description ?? item?.briefDesc),
         worksNum: size > 0 ? size : undefined,
         artist,
+        artistId: firstId(nestedArtistId(artistSource), item?.artist?.id),
         date: publishTime ? new Date(publishTime).getFullYear().toString() : undefined,
         createAt: publishTime || undefined,
         raw: item,
@@ -1292,7 +1435,8 @@ async function getKugouTopListDetail(
     });
     const result = resp.data?.data ?? {};
     const list = Array.isArray(result.info) ? result.info : [];
-    const musicList = list.map((item: any) => mapKugouSongInfo(item, platform));
+    const enriched = await attachKugouAlbumNames(list);
+    const musicList = enriched.map((item: any) => mapKugouSongInfo(item, platform));
     const total = Number(result.total ?? 0);
     return {
         topListItem,
@@ -1651,11 +1795,30 @@ async function getNeteaseArtistWorks(
 
     const songs = Array.isArray(resp.data?.songs) ? resp.data.songs : [];
     const total = Number(resp.data?.total ?? 0);
+    let profile: Partial<IArtist.IArtistItem> | undefined;
+    if (currentPage === 1) {
+        try {
+            const info = await axios.get(`https://music.163.com/api/v1/artist/${artistId}`, {
+                headers: NETEASE_HEADERS,
+                timeout: 15000,
+                responseType: 'json',
+            });
+            const artist = info.data?.artist ?? {};
+            const avatar = artist.picUrl || artist.img1v1Url || '';
+            const description = cleanSearchText(artist.briefDesc);
+            if (avatar || description) {
+                profile = { name: cleanSearchText(artist.name), avatar, description };
+            }
+        } catch {
+            profile = undefined;
+        }
+    }
     return {
         isEnd:
             resp.data?.more === false ||
             songs.length < LX_SEARCH_PAGE_SIZE ||
             (total > 0 && currentPage * LX_SEARCH_PAGE_SIZE >= total),
+        profile,
         data: songs.map((item: any) => mapNeteaseSongInfo(item, platform)),
     };
 }
@@ -2307,7 +2470,7 @@ async function searchMiguMusic(
                 id,
                 platform,
                 title: cleanSearchText(item.name),
-                artist: normalizeArtistNames(item.singers),
+                artist: normalizeArtistNames(item.singers) || '未知歌手',
                 album: cleanSearchText(item.albums?.[0]?.name),
                 artwork: pickMiguArtwork(item.imgItems),
                 raw: item,
@@ -2653,8 +2816,846 @@ async function getMiguLyric(musicInfo: Record<string, any>): Promise<ILyric.ILyr
     return { rawLrc: rawLrc || '', translation, lrc: urls.lrcUrl };
 }
 
+function searchPageEnded(count: number, page: number, total: number): boolean {
+    return count < LX_SEARCH_PAGE_SIZE || (total > 0 && page * LX_SEARCH_PAGE_SIZE >= total);
+}
+
+function parseKuwoBody(data: unknown): any {
+    if (data && typeof data === 'object') return data;
+    if (typeof data !== 'string' || !data.trim()) return {};
+    try {
+        return JSON.parse(data);
+    } catch {
+        try {
+            return JSON.parse(data.replace(/'/g, '"').replace(/&nbsp;/g, ' '));
+        } catch {
+            return {};
+        }
+    }
+}
+
+async function postTencentMusicu(request: Record<string, unknown>): Promise<any> {
+    const resp = await axios.post(
+        'https://u.y.qq.com/cgi-bin/musicu.fcg',
+        {
+            comm: {
+                cv: 4747474,
+                ct: 24,
+                format: 'json',
+                inCharset: 'utf-8',
+                outCharset: 'utf-8',
+                uin: 0,
+            },
+            ...request,
+        },
+        {
+            headers: { Referer: 'https://y.qq.com/', 'User-Agent': BROWSER_USER_AGENT },
+            timeout: 15000,
+            responseType: 'json',
+        },
+    );
+    return resp.data;
+}
+
+function mapTencentAlbumItem(item: any, platform: string): IAlbum.IAlbumItem {
+    const albumMid = String(item.albumMID ?? item.albumMid ?? item.mid ?? '');
+    const publish = String(item.publicTime ?? item.public_time ?? item.publish_date ?? '');
+    return {
+        id: albumMid,
+        platform,
+        title: cleanSearchText(item.albumName ?? item.albumname ?? item.name),
+        artwork:
+            item.albumPic ??
+            (albumMid
+                ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumMid}.jpg`
+                : undefined),
+        description: '',
+        artist: cleanSearchText(item.singerName ?? item.singername),
+        artistId: firstId(
+            item.singer_mid,
+            item.singerMID,
+            item.singerMid,
+            item.singermid,
+            item.singerid,
+            nestedArtistId(item.singer),
+        ),
+        date: publish ? publish.slice(0, 4) : undefined,
+        worksNum: Number(item.song_count ?? item.songNum ?? item.totalNum) || undefined,
+        raw: item,
+    };
+}
+
+function mapTencentArtistItem(item: any, platform: string): IArtist.IArtistItem {
+    const singerMid = String(item.singerMID ?? item.singerMid ?? item.mid ?? '');
+    const usableMid = singerMid && !/^\d+$/.test(singerMid) ? singerMid : '';
+    return {
+        id: usableMid,
+        platform,
+        name: cleanSearchText(item.singerName ?? item.singername ?? item.name),
+        avatar:
+            item.singerPic ??
+            (usableMid
+                ? `https://y.gtimg.cn/music/photo_new/T001R300x300M000${usableMid}.jpg`
+                : ''),
+        description: '',
+    };
+}
+
+async function searchTencentAlbum(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'album'>> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('https://c.y.qq.com/soso/fcgi-bin/client_search_cp', {
+        params: { format: 'json', w: query, p: currentPage, n: LX_SEARCH_PAGE_SIZE, t: 8 },
+        headers: { Referer: 'https://y.qq.com/', 'User-Agent': BROWSER_USER_AGENT },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const album = resp.data?.data?.album ?? {};
+    const list = Array.isArray(album.list) ? album.list : [];
+    const total = Number(album.totalnum ?? album.total ?? 0);
+    return {
+        isEnd: searchPageEnded(list.length, currentPage, total),
+        data: list.map((item: any) => mapTencentAlbumItem(item, platform)),
+    };
+}
+
+async function searchTencentArtist(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'artist'>> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('https://c.y.qq.com/soso/fcgi-bin/client_search_cp', {
+        params: { format: 'json', w: query, p: currentPage, n: LX_SEARCH_PAGE_SIZE, t: 9 },
+        headers: { Referer: 'https://y.qq.com/', 'User-Agent': BROWSER_USER_AGENT },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const singer = resp.data?.data?.singer ?? {};
+    const list = Array.isArray(singer.list) ? singer.list : [];
+    const total = Number(singer.totalnum ?? singer.total ?? 0);
+    return {
+        isEnd: searchPageEnded(list.length, currentPage, total),
+        data: list.map((item: any) => mapTencentArtistItem(item, platform)),
+    };
+}
+
+async function getTencentAlbumInfo(
+    albumItem: IAlbum.IAlbumItem,
+    page: number,
+    platform: string,
+): Promise<IPlugin.IAlbumInfoResult | null> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('https://c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg', {
+        params: { albummid: albumItem.id, format: 'json' },
+        headers: { Referer: 'https://y.qq.com/', 'User-Agent': BROWSER_USER_AGENT },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const data = resp.data?.data ?? {};
+    const songs = Array.isArray(data.list) ? data.list : [];
+    const begin = (currentPage - 1) * LX_SEARCH_PAGE_SIZE;
+    const pageSongs = songs.slice(begin, begin + LX_SEARCH_PAGE_SIZE);
+    return {
+        albumItem: {
+            ...albumItem,
+            title: cleanSearchText(data.name) || albumItem.title,
+            artist: cleanSearchText(data.singername) || albumItem.artist,
+            artistId: firstId(
+                data.singermid,
+                data.singer_mid,
+                data.singerMID,
+                tencentSingerMid(data.singer),
+                albumItem.artistId && !/^\d+$/.test(String(albumItem.artistId))
+                    ? albumItem.artistId
+                    : undefined,
+            ),
+            description: cleanSearchText(data.desc),
+            artwork: albumItem.artwork,
+        },
+        musicList: pageSongs.map((item: any) => mapTencentSongInfo(item, platform)),
+        isEnd: begin + pageSongs.length >= songs.length,
+    };
+}
+
+async function resolveTencentSingerMid(
+    artistItem: IArtist.IArtistItem,
+    platform: string,
+): Promise<string> {
+    const id = String(artistItem.id ?? '');
+    if (id && !/^\d+$/.test(id)) return id;
+    if (!artistItem.name) return '';
+    const found = await searchTencentArtist(artistItem.name, 1, platform);
+    const exact = found.data.find((item) => item.name.trim() === artistItem.name.trim());
+    return exact?.id || found.data[0]?.id || '';
+}
+
+async function fetchTencentArtistProfile(
+    singerMid: string,
+): Promise<Partial<IArtist.IArtistItem> | undefined> {
+    try {
+        const body = await postTencentMusicu({
+            req: {
+                module: 'music.musichallSinger.SingerInfoInter',
+                method: 'GetSingerDetail',
+                param: {
+                    singer_mid: [singerMid],
+                    ex_singer: 1,
+                    wiki_singer: 1,
+                    group_singer: 0,
+                    pic: 1,
+                    photos: 0,
+                },
+            },
+        });
+        const info = body?.req?.data?.singer_list?.[0];
+        if (!info) return undefined;
+        const avatar =
+            info.pic?.pic || `https://y.gtimg.cn/music/photo_new/T001R300x300M000${singerMid}.jpg`;
+        const description = cleanSearchText(info.ex_info?.desc);
+        if (!avatar && !description) return undefined;
+        return {
+            name: cleanSearchText(info.basic_info?.name),
+            avatar,
+            description,
+        };
+    } catch {
+        return undefined;
+    }
+}
+
+async function getTencentArtistWorks(
+    artistItem: IArtist.IArtistItem,
+    page: number,
+    type: IArtist.ArtistMediaType,
+    platform: string,
+): Promise<ILxSearchResult> {
+    const singerMid = await resolveTencentSingerMid(artistItem, platform);
+    if (!singerMid) return { isEnd: true, data: [] };
+    const currentPage = Math.max(page, 1);
+    const begin = (currentPage - 1) * LX_SEARCH_PAGE_SIZE;
+    const profile = currentPage === 1 ? await fetchTencentArtistProfile(singerMid) : undefined;
+    if (type === 'album') {
+        const body = await postTencentMusicu({
+            req: {
+                module: 'music.musichallAlbum.AlbumListServer',
+                method: 'GetAlbumList',
+                param: {
+                    singerMid,
+                    order: 0,
+                    begin,
+                    num: LX_SEARCH_PAGE_SIZE,
+                    songNumTag: 0,
+                    singerID: 0,
+                },
+            },
+        });
+        const data = body?.req?.data ?? {};
+        const list = Array.isArray(data.albumList) ? data.albumList : [];
+        const total = Number(data.total ?? 0);
+        return {
+            isEnd: searchPageEnded(list.length, currentPage, total),
+            profile,
+            data: list.map((item: any) =>
+                mapTencentAlbumItem(
+                    {
+                        albumMID: item.albumMid,
+                        albumName: item.albumName,
+                        singerName: item.singerName,
+                        singerMID: singerMid,
+                        totalNum: item.totalNum,
+                    },
+                    platform,
+                ),
+            ),
+        };
+    }
+
+    const body = await postTencentMusicu({
+        req: {
+            module: 'musichall.song_list_server',
+            method: 'GetSingerSongList',
+            param: { singerMid, order: 1, begin, num: LX_SEARCH_PAGE_SIZE },
+        },
+    });
+    const data = body?.req?.data ?? {};
+    const list = Array.isArray(data.songList) ? data.songList : [];
+    const total = Number(data.totalNum ?? 0);
+    return {
+        isEnd: searchPageEnded(list.length, currentPage, total),
+        profile,
+        data: list.map((item: any) => {
+            const song = item.songInfo ?? item;
+            return mapTencentSongInfo(
+                {
+                    ...song,
+                    songname: song.title ?? song.songname ?? song.name,
+                    songmid: song.mid ?? song.songmid,
+                    songid: song.id,
+                    albumname: song.album?.name,
+                    albummid: song.album?.mid,
+                    media_mid: song.file?.media_mid,
+                },
+                platform,
+            );
+        }),
+    };
+}
+
+function mapKugouAlbumItem(item: any, platform: string): IAlbum.IAlbumItem {
+    const artwork = item.imgurl ? String(item.imgurl).replace('{size}', '300') : undefined;
+    const publish = String(item.publishtime ?? '');
+    return {
+        id: String(item.albumid ?? item.album_id ?? ''),
+        platform,
+        title: cleanSearchText(item.albumname ?? item.album_name),
+        artwork,
+        description: cleanSearchText(item.intro),
+        artist: cleanSearchText(item.singername ?? item.author_name),
+        artistId: firstId(item.singerid, item.singer_id, item.author_id),
+        date: publish ? publish.slice(0, 4) : undefined,
+        worksNum: Number(item.songcount ?? item.song_count) || undefined,
+        raw: item,
+    };
+}
+
+function mapKugouArtistItem(item: any, platform: string): IArtist.IArtistItem {
+    const avatar = item.imgurl ? String(item.imgurl).replace('{size}', '300') : '';
+    return {
+        id: String(item.singerid ?? item.singer_id ?? item.author_id ?? ''),
+        platform,
+        name: cleanSearchText(item.singername ?? item.author_name ?? item.name),
+        avatar,
+        description: '',
+    };
+}
+
+async function searchKugouAlbum(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'album'>> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('http://msearchretry.kugou.com/api/v3/search/album', {
+        params: { keyword: query, page: currentPage, pagesize: LX_SEARCH_PAGE_SIZE, version: 9108 },
+        headers: { Referer: 'https://www.kugou.com/', 'User-Agent': BROWSER_USER_AGENT },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const data = resp.data?.data ?? {};
+    const list = Array.isArray(data.info) ? data.info : [];
+    const total = Number(data.total ?? 0);
+    return {
+        isEnd: searchPageEnded(list.length, currentPage, total),
+        data: list.map((item: any) => mapKugouAlbumItem(item, platform)),
+    };
+}
+
+async function searchKugouArtist(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'artist'>> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('https://mobiles.kugou.com/api/v3/search/singer', {
+        params: {
+            format: 'json',
+            keyword: query,
+            page: currentPage,
+            pagesize: LX_SEARCH_PAGE_SIZE,
+        },
+        headers: { Referer: 'https://www.kugou.com/', 'User-Agent': BROWSER_USER_AGENT },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const data = resp.data?.data;
+    const list = Array.isArray(data) ? data : Array.isArray(data?.info) ? data.info : [];
+    const total = Number(data?.total ?? 0);
+    return {
+        isEnd:
+            total > 0
+                ? searchPageEnded(list.length, currentPage, total)
+                : list.length < LX_SEARCH_PAGE_SIZE,
+        data: list.map((item: any) => mapKugouArtistItem(item, platform)),
+    };
+}
+
+async function getKugouAlbumInfo(
+    albumItem: IAlbum.IAlbumItem,
+    page: number,
+    platform: string,
+): Promise<IPlugin.IAlbumInfoResult | null> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('http://mobiles.kugou.com/api/v3/album/song', {
+        params: {
+            version: 9108,
+            albumid: albumItem.id,
+            plat: 0,
+            pagesize: LX_SEARCH_PAGE_SIZE,
+            page: currentPage,
+            area_code: 0,
+        },
+        headers: { Referer: 'https://www.kugou.com/', 'User-Agent': BROWSER_USER_AGENT },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const data = resp.data?.data ?? {};
+    const list = Array.isArray(data.info) ? data.info : [];
+    const total = Number(data.total ?? 0);
+    return {
+        albumItem,
+        musicList: list.map((item: any) => mapKugouSongInfo(item, platform)),
+        isEnd: searchPageEnded(list.length, currentPage, total),
+    };
+}
+
+async function getKugouArtistWorks(
+    artistItem: IArtist.IArtistItem,
+    page: number,
+    type: IArtist.ArtistMediaType,
+    platform: string,
+): Promise<ILxSearchResult> {
+    const currentPage = Math.max(page, 1);
+    const path = type === 'album' ? 'album' : 'song';
+    const resp = await axios.get(`http://mobiles.kugou.com/api/v5/singer/${path}`, {
+        params: { singerid: artistItem.id, page: currentPage, pagesize: LX_SEARCH_PAGE_SIZE },
+        headers: { Referer: 'https://www.kugou.com/', 'User-Agent': BROWSER_USER_AGENT },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const data = resp.data?.data ?? {};
+    const list = Array.isArray(data.info) ? data.info : [];
+    const total = Number(data.total ?? 0);
+    let profile: Partial<IArtist.IArtistItem> | undefined;
+    if (currentPage === 1 && artistItem.id) {
+        try {
+            const info = await axios.get('http://mobiles.kugou.com/api/v5/singer/info', {
+                params: { singerid: artistItem.id },
+                headers: { Referer: 'https://www.kugou.com/', 'User-Agent': BROWSER_USER_AGENT },
+                timeout: 15000,
+                responseType: 'json',
+            });
+            const singer = info.data?.data ?? {};
+            const avatar = singer.imgurl ? String(singer.imgurl).replace('{size}', '480') : '';
+            const description = cleanSearchText(singer.intro);
+            if (avatar || description) {
+                profile = {
+                    name: cleanSearchText(singer.singername),
+                    avatar,
+                    description,
+                };
+            }
+        } catch {
+            profile = undefined;
+        }
+    }
+    return {
+        isEnd: searchPageEnded(list.length, currentPage, total),
+        profile,
+        data:
+            type === 'album'
+                ? list.map((item: any) => mapKugouAlbumItem(item, platform))
+                : list.map((item: any) => mapKugouSongInfo(item, platform, artistItem.name)),
+    };
+}
+
+function mapKuwoAlbumItem(item: any, platform: string, basePic = ''): IAlbum.IAlbumItem {
+    return {
+        id: String(item.albumid ?? item.ALBUMID ?? ''),
+        platform,
+        title: cleanSearchText(item.name ?? item.album ?? item.ALBUM),
+        artwork:
+            item.hts_img || item.pic || buildKuwoArtwork(item.img || `${basePic}${item.pic ?? ''}`),
+        description: cleanSearchText(item.info),
+        artist: cleanSearchText(item.artist ?? item.ARTIST),
+        artistId: firstId(item.artistid, item.ARTISTID, item.artistId),
+        date: String(item.pub ?? item.releaseDate ?? '').slice(0, 4) || undefined,
+        worksNum: Number(item.songnum ?? item.musicnum) || undefined,
+        raw: item,
+    };
+}
+
+function mapKuwoArtistItem(item: any, platform: string, basePic = ''): IArtist.IArtistItem {
+    const pic = item.artistpic ?? item.PICPATH ?? item.pic ?? '';
+    const avatar =
+        typeof pic === 'string' && /^https?:\/\//i.test(pic)
+            ? pic
+            : pic
+              ? `${basePic || 'https://img1.kuwo.cn/star/starheads/'}${pic}`
+              : '';
+    return {
+        id: String(item.ARTISTID ?? item.artistid ?? item.id ?? ''),
+        platform,
+        name: cleanSearchText(item.ARTIST ?? item.artist ?? item.name),
+        avatar,
+        description: '',
+    };
+}
+
+async function searchKuwoAlbum(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'album'>> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('https://search.kuwo.cn/r.s', {
+        params: {
+            client: 'kt',
+            all: query,
+            pn: currentPage - 1,
+            rn: LX_SEARCH_PAGE_SIZE,
+            ft: 'album',
+            encoding: 'utf8',
+            rformat: 'json',
+            mobi: 1,
+            vipver: 1,
+        },
+        headers: KUWO_HEADERS,
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const list = Array.isArray(resp.data?.albumlist) ? resp.data.albumlist : [];
+    const total = Number(resp.data?.TOTAL ?? resp.data?.total ?? 0);
+    const basePic = String(resp.data?.BASEPICPATH ?? '');
+    return {
+        isEnd:
+            total > 0
+                ? searchPageEnded(list.length, currentPage, total)
+                : list.length < LX_SEARCH_PAGE_SIZE,
+        data: list.map((item: any) => mapKuwoAlbumItem(item, platform, basePic)),
+    };
+}
+
+async function searchKuwoArtist(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'artist'>> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('https://search.kuwo.cn/r.s', {
+        params: {
+            client: 'kt',
+            all: query,
+            pn: currentPage - 1,
+            rn: LX_SEARCH_PAGE_SIZE,
+            ft: 'artist',
+            encoding: 'utf8',
+            rformat: 'json',
+            mobi: 1,
+            vipver: 1,
+        },
+        headers: KUWO_HEADERS,
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const list = Array.isArray(resp.data?.abslist) ? resp.data.abslist : [];
+    const total = Number(resp.data?.TOTAL ?? 0);
+    const basePic = String(resp.data?.BASEPICPATH ?? '');
+    return {
+        isEnd: searchPageEnded(list.length, currentPage, total),
+        data: list.map((item: any) => mapKuwoArtistItem(item, platform, basePic)),
+    };
+}
+
+async function getKuwoAlbumInfo(
+    albumItem: IAlbum.IAlbumItem,
+    page: number,
+    platform: string,
+): Promise<IPlugin.IAlbumInfoResult | null> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('https://search.kuwo.cn/r.s', {
+        params: {
+            pn: currentPage - 1,
+            rn: LX_SEARCH_PAGE_SIZE,
+            stype: 'albuminfo',
+            albumid: albumItem.id,
+            encoding: 'utf8',
+            rformat: 'json',
+            vipver: 'MUSIC_9.1.0',
+        },
+        headers: KUWO_HEADERS,
+        timeout: 15000,
+        responseType: 'text',
+    });
+    const body = parseKuwoBody(resp.data);
+    const list = Array.isArray(body.musiclist) ? body.musiclist : [];
+    const total = Number(body.songnum ?? 0);
+    return {
+        albumItem: {
+            ...albumItem,
+            title: cleanSearchText(body.name) || albumItem.title,
+            artist: cleanSearchText(body.artist) || albumItem.artist,
+            artistId: firstId(
+                body.artistid,
+                body.ARTISTID,
+                albumItem.artistId,
+                albumItem.raw?.artistid,
+            ),
+            artwork: body.hts_img || body.img || albumItem.artwork,
+            description: cleanSearchText(body.info),
+        },
+        musicList: list.map((item: any) =>
+            mapKuwoSongInfo(
+                {
+                    SONGNAME: item.name,
+                    ARTIST: item.artist,
+                    ARTISTID: item.artistid ?? item.ARTISTID ?? body.artistid ?? body.ARTISTID,
+                    ALBUM: body.name,
+                    ALBUMID: item.albumid ?? item.ALBUMID ?? body.albumid ?? albumItem.id,
+                    DURATION: item.duration,
+                    DC_TARGETID: item.id,
+                    MUSICRID: item.id ? `MUSIC_${item.id}` : undefined,
+                    web_albumpic_short: item.pic,
+                },
+                platform,
+            ),
+        ),
+        isEnd: searchPageEnded(list.length, currentPage, total),
+    };
+}
+
+async function getKuwoArtistWorks(
+    artistItem: IArtist.IArtistItem,
+    page: number,
+    type: IArtist.ArtistMediaType,
+    platform: string,
+): Promise<ILxSearchResult> {
+    const currentPage = Math.max(page, 1);
+    if (type === 'album') {
+        const resp = await axios.get('https://search.kuwo.cn/r.s', {
+            params: {
+                client: 'kt',
+                pn: currentPage - 1,
+                rn: LX_SEARCH_PAGE_SIZE,
+                ft: 'album',
+                artistid: artistItem.id,
+                encoding: 'utf8',
+                rformat: 'json',
+                mobi: 1,
+                vipver: 1,
+            },
+            headers: KUWO_HEADERS,
+            timeout: 15000,
+            responseType: 'json',
+        });
+        const list = Array.isArray(resp.data?.albumlist) ? resp.data.albumlist : [];
+        const total = Number(resp.data?.TOTAL ?? resp.data?.total ?? 0);
+        return {
+            isEnd:
+                total > 0
+                    ? searchPageEnded(list.length, currentPage, total)
+                    : list.length < LX_SEARCH_PAGE_SIZE,
+            data: list.map((item: any) =>
+                mapKuwoAlbumItem(item, platform, String(resp.data?.BASEPICPATH ?? '')),
+            ),
+        };
+    }
+    const songResp = await axios.get('https://search.kuwo.cn/r.s', {
+        params: {
+            stype: 'artist2music',
+            artistid: artistItem.id,
+            pn: currentPage - 1,
+            rn: LX_SEARCH_PAGE_SIZE,
+            encoding: 'utf8',
+            rformat: 'json',
+            vipver: 1,
+        },
+        headers: KUWO_HEADERS,
+        timeout: 15000,
+        responseType: 'text',
+    });
+    const body = parseKuwoBody(songResp.data);
+    const list = Array.isArray(body.musiclist) ? body.musiclist : [];
+    const total = Number(body.songnum ?? body.TOTAL ?? 0);
+    return {
+        isEnd:
+            total > 0
+                ? searchPageEnded(list.length, currentPage, total)
+                : list.length < LX_SEARCH_PAGE_SIZE,
+        data: list.map((item: any) =>
+            mapKuwoSongInfo(
+                {
+                    ...item,
+                    SONGNAME: item.name ?? item.SONGNAME,
+                    ARTIST: item.artist ?? item.ARTIST ?? artistItem.name,
+                    ARTISTID: item.artistid ?? item.ARTISTID ?? artistItem.id,
+                    ALBUM: item.album ?? item.ALBUM,
+                    ALBUMID: item.albumid ?? item.ALBUMID,
+                    DURATION: item.duration ?? item.DURATION,
+                    MUSICRID: item.musicrid ?? item.MUSICRID,
+                    DC_TARGETID: item.id ?? item.DC_TARGETID ?? item.musicrid,
+                    web_albumpic_short: item.web_albumpic_short ?? item.pic,
+                },
+                platform,
+            ),
+        ),
+    };
+}
+
+async function searchMiguCatalog(
+    query: string,
+    page: number,
+    kind: 'album' | 'singer',
+): Promise<{ list: any[]; total: number }> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('https://app.c.nf.migu.cn/MIGUM3.0/v1.0/content/search_all.do', {
+        params: {
+            text: query,
+            pageNo: currentPage,
+            pageSize: LX_SEARCH_PAGE_SIZE,
+            searchSwitch: JSON.stringify({
+                song: 0,
+                album: kind === 'album' ? 1 : 0,
+                singer: kind === 'singer' ? 1 : 0,
+                tagSong: 0,
+                mvSong: 0,
+                songlist: 0,
+                bestShow: 0,
+            }),
+        },
+        headers: { ...MIGU_HEADERS, channel: '0146921' },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const bucket = kind === 'album' ? resp.data?.albumResultData : resp.data?.singerResultData;
+    return {
+        list: Array.isArray(bucket?.result) ? bucket.result : [],
+        total: Number(bucket?.totalCount ?? 0),
+    };
+}
+
+async function searchMiguAlbum(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'album'>> {
+    const currentPage = Math.max(page, 1);
+    const { list, total } = await searchMiguCatalog(query, currentPage, 'album');
+    return {
+        isEnd: searchPageEnded(list.length, currentPage, total),
+        data: list.map(
+            (item: any): IAlbum.IAlbumItem => ({
+                id: String(item.id ?? ''),
+                platform,
+                title: cleanSearchText(item.name),
+                artwork: pickMiguArtwork(item.imgItems),
+                description: cleanSearchText(item.desc),
+                artist: cleanSearchText(item.singer),
+                artistId: firstId(item.singerId, item.singerid, nestedArtistId(item.singers)),
+                date: String(item.publishDate ?? '').slice(0, 4) || undefined,
+                raw: item,
+            }),
+        ),
+    };
+}
+
+async function searchMiguArtist(
+    query: string,
+    page: number,
+    platform: string,
+): Promise<IPlugin.ISearchResult<'artist'>> {
+    const currentPage = Math.max(page, 1);
+    const { list, total } = await searchMiguCatalog(query, currentPage, 'singer');
+    return {
+        isEnd: searchPageEnded(list.length, currentPage, total),
+        data: list.map(
+            (item: any): IArtist.IArtistItem => ({
+                id: String(item.id ?? ''),
+                platform,
+                name: cleanSearchText(item.name),
+                avatar: pickMiguArtwork(item.imgItems) ?? item.singerPic ?? '',
+                description: '',
+            }),
+        ),
+    };
+}
+
+async function getMiguAlbumInfo(
+    albumItem: IAlbum.IAlbumItem,
+    page: number,
+    platform: string,
+): Promise<IPlugin.IAlbumInfoResult | null> {
+    const currentPage = Math.max(page, 1);
+    const resp = await axios.get('https://app.c.nf.migu.cn/MIGUM3.0/resource/album/song/v2.0', {
+        params: { albumId: albumItem.id, pageNo: currentPage, pageSize: LX_SEARCH_PAGE_SIZE },
+        headers: { ...MIGU_HEADERS, channel: '0146921' },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const data = resp.data?.data ?? resp.data ?? {};
+    const list = Array.isArray(data.songList)
+        ? data.songList
+        : Array.isArray(data.list)
+          ? data.list
+          : [];
+    const total = Number(data.totalCount ?? data.total ?? 0);
+    return {
+        albumItem,
+        musicList: list.map((item: any) => mapMiguSongInfo(item, platform)),
+        isEnd: list.length === 0 || searchPageEnded(list.length, currentPage, total),
+    };
+}
+
+async function getMiguArtistWorks(
+    artistItem: IArtist.IArtistItem,
+    page: number,
+    type: IArtist.ArtistMediaType,
+    platform: string,
+): Promise<ILxSearchResult> {
+    const currentPage = Math.max(page, 1);
+    if (type === 'album') {
+        const { list, total } = await searchMiguCatalog(artistItem.name, currentPage, 'album');
+        const own = list.filter(
+            (item) => cleanSearchText(item.singer) === cleanSearchText(artistItem.name),
+        );
+        return {
+            isEnd: searchPageEnded(list.length, currentPage, total),
+            data: own.map(
+                (item: any): IAlbum.IAlbumItem => ({
+                    id: String(item.id ?? ''),
+                    platform,
+                    title: cleanSearchText(item.name),
+                    artwork: pickMiguArtwork(item.imgItems),
+                    description: '',
+                    artist: cleanSearchText(item.singer),
+                    raw: item,
+                }),
+            ),
+        };
+    }
+    const resp = await axios.get('https://app.c.nf.migu.cn/MIGUM2.0/v1.0/content/singer_songs.do', {
+        params: {
+            singerId: artistItem.id,
+            pageNo: currentPage,
+            pageSize: LX_SEARCH_PAGE_SIZE,
+            resourceType: 2,
+        },
+        headers: { ...MIGU_HEADERS, channel: '0146921' },
+        timeout: 15000,
+        responseType: 'json',
+    });
+    const data = resp.data ?? {};
+    const list = Array.isArray(data.songlist) ? data.songlist : [];
+    const total = Number(data.songNum ?? 0);
+    const singer = data.singer ?? {};
+    const avatar = pickMiguArtwork(singer.imgs) ?? '';
+    const description = cleanSearchText(singer.summary);
+    return {
+        isEnd: list.length === 0 || searchPageEnded(list.length, currentPage, total),
+        profile:
+            currentPage === 1 && (avatar || description)
+                ? { name: cleanSearchText(singer.singer), avatar, description }
+                : undefined,
+        data: list.map((item: any) => mapMiguSongInfo(item, platform)),
+    };
+}
+
 // lyric 搜索复用 music 搜索器：搜索结果项为 IMusicItem（含 raw 字段），
 // 关联歌词时由对应的 LX_LYRIC_GETTERS 取词。
+// 专辑和作者也由播放器自己请求各平台搜索接口，再按音源合并，不依赖脚本声明。
 const LX_MEDIA_SEARCHERS: Record<
     string,
     Partial<Record<IMedia.SupportMediaType, ILxMediaSearcher>>
@@ -2669,21 +3670,29 @@ const LX_MEDIA_SEARCHERS: Record<
     kw: {
         music: searchKuwoMusic,
         lyric: searchKuwoMusic,
+        album: searchKuwoAlbum,
+        artist: searchKuwoArtist,
         sheet: searchKuwoSheet,
     },
     tx: {
         music: searchTencentMusic,
         lyric: searchTencentMusic,
+        album: searchTencentAlbum,
+        artist: searchTencentArtist,
         sheet: searchTencentSheet,
     },
     kg: {
         music: searchKugouMusic,
         lyric: searchKugouMusic,
+        album: searchKugouAlbum,
+        artist: searchKugouArtist,
         sheet: searchKugouSheet,
     },
     mg: {
         music: searchMiguMusic,
         lyric: searchMiguMusic,
+        album: searchMiguAlbum,
+        artist: searchMiguArtist,
         sheet: searchMiguSheet,
     },
 };
@@ -2708,11 +3717,19 @@ const LX_MUSIC_SHEET_IMPORTERS: Record<string, ILxMusicSheetImporter> = {
 };
 
 const LX_ALBUM_INFO_GETTERS: Record<string, ILxAlbumInfoGetter> = {
+    tx: getTencentAlbumInfo,
+    kg: getKugouAlbumInfo,
     wy: getNeteaseAlbumInfo,
+    kw: getKuwoAlbumInfo,
+    mg: getMiguAlbumInfo,
 };
 
 const LX_ARTIST_WORKS_GETTERS: Record<string, ILxArtistWorksGetter> = {
+    tx: getTencentArtistWorks,
+    kg: getKugouArtistWorks,
     wy: getNeteaseArtistWorks,
+    kw: getKuwoArtistWorks,
+    mg: getMiguArtistWorks,
 };
 
 /** 与洛雪酷我榜单目录同一份。接口目录已停用，这边也用这份完整名单。 */
@@ -2796,16 +3813,16 @@ function mapKuwoSheetItem(item: any, platform: string): IMusic.IMusicSheetItem {
 
 function mapMiguSongInfo(item: any, platform: string): IMusic.IMusicItem {
     const id = String(item.copyrightId ?? item.contentId ?? item.songId ?? item.id ?? '');
-    const artist =
-        typeof item.singer === 'string'
-            ? cleanSearchText(item.singer)
-            : normalizeArtistNames(item.singers);
+    const namedSinger = typeof item.singer === 'string' ? cleanSearchText(item.singer) : '';
+    const artist = namedSinger || normalizeArtistNames(item.singers) || '未知歌手';
     return {
         id,
         platform,
         title: cleanSearchText(item.songName ?? item.name),
         artist,
+        artistId: firstId(item.singerId, item.singerid, nestedArtistId(item.singers)),
         album: cleanSearchText(item.album ?? item.albums?.[0]?.name),
+        albumId: firstId(item.albumId, item.albums?.[0]?.id),
         artwork: pickMiguArtwork(item.albumImgs ?? item.imgItems),
         raw: item,
         songId: item.songId ?? item.id,
@@ -3285,19 +4302,37 @@ const LX_MUSIC_SHEET_INFO_GETTERS: Record<string, ILxMusicSheetInfoGetter> = {
 const CATALOG_SOURCE_KEYS = ['kw', 'kg', 'tx', 'wy', 'mg'] as const;
 
 /**
- * 榜单和歌单不依赖用户脚本声明了哪些平台。
- * 五个平台各一个实例，只提供榜单、歌单标签和详情，不提供播放地址。
+ * 榜单、歌单和 LX 式搜索不依赖用户脚本声明了哪些平台。
+ * 五个平台各一个实例。播放地址仍由已启用的脚本提供。
  */
 export function createCatalogInstances(): IPlugin.IPluginInstance[] {
     return CATALOG_SOURCE_KEYS.map((sourceKey) => {
         const platform = `catalog:${sourceKey}`;
+        const sourceSearchers = LX_MEDIA_SEARCHERS[sourceKey] ?? {};
         const instance: IPlugin.IPluginInstance = {
             platform,
             platformLabel: sourceKey,
             sourceKey,
-            supportedSearchType: [],
+            supportedSearchType: Object.keys(sourceSearchers) as IMedia.SupportMediaType[],
             _path: '',
         };
+        if (instance.supportedSearchType?.length) {
+            instance.search = async (query, page, type) => {
+                const searcher = sourceSearchers[type];
+                if (!searcher) return { isEnd: true, data: [] } as ILxSearchResult;
+                return searcher(query, page, platform);
+            };
+        }
+        const albumInfoGetter = LX_ALBUM_INFO_GETTERS[sourceKey];
+        if (albumInfoGetter) {
+            instance.getAlbumInfo = async (albumItem, page) =>
+                albumInfoGetter(albumItem, page, platform);
+        }
+        const artistWorksGetter = LX_ARTIST_WORKS_GETTERS[sourceKey];
+        if (artistWorksGetter) {
+            instance.getArtistWorks = async (artistItem, page, type) =>
+                artistWorksGetter(artistItem, page, type, platform) as any;
+        }
         const topListsGetter = LX_TOP_LIST_GETTERS[sourceKey];
         if (topListsGetter) {
             instance.getTopLists = async () => topListsGetter(platform);

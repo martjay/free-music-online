@@ -292,6 +292,26 @@
     white-space: nowrap;
 }
 
+.song-table__name-link {
+    border: none;
+    background: none;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    text-decoration: none;
+    text-underline-offset: 2px;
+
+    &:hover {
+        color: var(--color-text-brand);
+        text-decoration: underline;
+    }
+}
+
+.song-table__name-sep {
+    color: var(--color-text-muted);
+}
+
 .song-table__mobile-title-artist {
     font-size: var(--text-caption-size);
     font-weight: var(--font-weight-normal);

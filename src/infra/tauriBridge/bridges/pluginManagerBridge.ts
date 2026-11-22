@@ -212,6 +212,12 @@ interface IPluginVersionReport {
     cancelled?: boolean;
 }
 
+interface IPluginVersionProgress {
+    done: number;
+    total: number;
+    phase: 'plugins' | 'catalog';
+}
+
 function scriptKey(name: string): string {
     return name.replace(/\s+/g, '').toLowerCase();
 }
@@ -298,6 +304,7 @@ class TauriPluginManagerService {
     /** 版本检查进行中时复用同一次结果 */
     private versionCheck: Promise<IPluginVersionReport> | null = null;
     private versionCheckAbort: AbortController | null = null;
+    private versionProgressListener: ((progress: IPluginVersionProgress) => void) | null = null;
 
     /** 榜单和歌单目录。不进入插件列表，也不受平台开关影响。 */
     private catalogHost: LxPluginHost | null = null;
@@ -853,13 +860,17 @@ class TauriPluginManagerService {
      * 检查已安装插件的版本。
      * 先按订阅链接更新，再和音源目录里同名脚本比较，目录版本更高就换上。
      */
-    public checkPluginVersions(): Promise<IPluginVersionReport> {
+    public checkPluginVersions(
+        onProgress?: (progress: IPluginVersionProgress) => void,
+    ): Promise<IPluginVersionReport> {
+        if (onProgress) this.versionProgressListener = onProgress;
         if (!this.versionCheck) {
             const abort = new AbortController();
             this.versionCheckAbort = abort;
             this.versionCheck = this.runVersionCheck(abort.signal).finally(() => {
                 this.versionCheck = null;
                 this.versionCheckAbort = null;
+                this.versionProgressListener = null;
             });
         }
         return this.versionCheck;
@@ -1215,6 +1226,10 @@ class TauriPluginManagerService {
         }
     }
 
+    private reportVersionProgress(progress: IPluginVersionProgress): void {
+        this.versionProgressListener?.(progress);
+    }
+
     private async runVersionCheck(signal: AbortSignal): Promise<IPluginVersionReport> {
         await this.pluginsReadyPromise;
         const updated: IPluginVersionChange[] = [];
@@ -1230,13 +1245,28 @@ class TauriPluginManagerService {
             (loaded) => loaded.delegate.srcUrl && !this.isBuiltinPlugin(loaded),
         );
         const seenSourceHashes = new Set<string>();
-        for (const loaded of subscribed) {
-            if (signal.aborted) return stopped();
-            if (seenSourceHashes.has(loaded.sourceHash)) continue;
+        const subscribedSources = subscribed.filter((loaded) => {
+            if (seenSourceHashes.has(loaded.sourceHash)) return false;
             seenSourceHashes.add(loaded.sourceHash);
+            return true;
+        });
+        let pluginDone = 0;
+        this.reportVersionProgress({
+            done: 0,
+            total: subscribedSources.length,
+            phase: 'plugins',
+        });
+        for (const loaded of subscribedSources) {
+            if (signal.aborted) return stopped();
             const name = loaded.delegate.scriptName?.trim() || loaded.delegate.platform;
             const from = loaded.delegate.version ?? '';
             const result = await this.updatePlugin(loaded.hash);
+            pluginDone += 1;
+            this.reportVersionProgress({
+                done: pluginDone,
+                total: subscribedSources.length,
+                phase: 'plugins',
+            });
             if (result.success) {
                 const next = [...this.plugins.values()].find(
                     (item) => (item.delegate.scriptName?.trim() || item.delegate.platform) === name,
@@ -1251,6 +1281,7 @@ class TauriPluginManagerService {
         }
 
         if (signal.aborted) return stopped();
+        this.reportVersionProgress({ done: 0, total: 0, phase: 'catalog' });
         const catalog = await this.loadSourceCatalog(signal);
         const installed = new Map<string, { name: string; version: string; hash: string }>();
         for (const loaded of this.plugins.values()) {
@@ -1265,9 +1296,17 @@ class TauriPluginManagerService {
         }
 
         const newest = new Map<string, { url: string; version: string }>();
+        let catalogDone = 0;
+        this.reportVersionProgress({ done: 0, total: catalog.length, phase: 'catalog' });
         await mapLimit(catalog, 4, async (url) => {
             if (signal.aborted) return;
             const head = await this.downloadScriptHead(url, signal);
+            catalogDone += 1;
+            this.reportVersionProgress({
+                done: catalogDone,
+                total: catalog.length,
+                phase: 'catalog',
+            });
             if (!head?.name || !head.version) return;
             const key = scriptKey(head.name);
             if (!installed.has(key)) return;
@@ -1483,7 +1522,8 @@ export function registerTauriPluginManagerBridge(): void {
         uninstallPlugin: (hash: string) => service.uninstallPlugin(hash),
         updatePlugin: (hash: string) => service.updatePlugin(hash),
         updateAllPlugins: () => service.updateAllPlugins(),
-        checkPluginVersions: () => service.checkPluginVersions(),
+        checkPluginVersions: (onProgress?: (progress: IPluginVersionProgress) => void) =>
+            service.checkPluginVersions(onProgress),
         cancelPluginVersionCheck: () => service.cancelPluginVersionCheck(),
         getAllPlugins: () => service.getAllPlugins(),
         setPluginMeta: (hash: string, meta: Partial<IPlugin.IPluginMeta>) =>

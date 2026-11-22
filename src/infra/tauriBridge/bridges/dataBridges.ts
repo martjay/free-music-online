@@ -17,6 +17,8 @@ import { backupStore } from './data/backupStore';
 import { downloadStore } from './data/downloadStore';
 import { localMusicStore } from './data/localMusicStore';
 import { mediaMetaStore } from './data/mediaMetaStore';
+import { LIBRARY_BRIDGE_KEY } from '@infra/library/types';
+import { libraryStore } from './data/libraryStore';
 import { musicSheetStore } from './data/musicSheetStore';
 
 export function registerDataBridges(): void {
@@ -59,6 +61,12 @@ export function registerDataBridges(): void {
         flushPersisted: () => musicSheetStore.flush(),
 
         onMusicSheetEvent: (cb: (event: any) => void) => musicSheetStore.onMusicSheetEvent(cb),
+    };
+
+    (window as any)[LIBRARY_BRIDGE_KEY] = {
+        load: () => libraryStore.load(),
+        toggle: (entry: any) => libraryStore.toggle(entry),
+        merge: (entries: any) => libraryStore.merge(entries),
     };
 
     // 2. Media Meta Bridge

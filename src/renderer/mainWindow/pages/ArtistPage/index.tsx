@@ -1,7 +1,8 @@
-import { useState, useMemo, useCallback, type MouseEvent } from 'react';
+import { useState, useMemo, useCallback, useEffect, type MouseEvent } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { RequestStatus } from '@common/constant';
+import pluginManager from '@infra/pluginManager/renderer';
 import trackPlayer from '@renderer/mainWindow/core/trackPlayer';
 import { SongTable, type RowInteractionDetail } from '../../components/business/SongTable';
 import { FavoriteButton } from '../../components/business/FavoriteButton';
@@ -13,6 +14,7 @@ import { ListFooter } from '../../components/ui/ListFooter';
 import { StatusPlaceholder } from '../../components/ui/StatusPlaceholder';
 import { showContextMenu } from '../../components/ui/ContextMenu/contextMenuManager';
 import { albumRoute } from '../../routes';
+import { CollectButton } from '../../components/business/CollectButton';
 import { ArtistHeader } from './ArtistHeader';
 import { useArtistWorks } from './useArtistWorks';
 import './index.scss';
@@ -48,12 +50,57 @@ export default function ArtistPage() {
         };
     }, [platform, id, location.state]);
 
+    const [profile, setProfile] = useState<IArtist.IArtistItem | null>(null);
+    useEffect(() => {
+        setProfile(null);
+        if (originalItem.avatar || !originalItem.name || !originalItem.platform) return;
+        let cancelled = false;
+        void pluginManager
+            .callPluginMethod({
+                platform: originalItem.platform,
+                method: 'search',
+                args: [originalItem.name, 1, 'artist'],
+            })
+            .then((result) => {
+                if (cancelled) return;
+                const list = (result?.data ?? []) as IArtist.IArtistItem[];
+                const sameId = list.find((item) => String(item.id) === String(originalItem.id));
+                const sameName = list.find(
+                    (item) =>
+                        item.name.trim().toLowerCase() === originalItem.name.trim().toLowerCase(),
+                );
+                const match = sameId ?? sameName;
+                if (match?.avatar || match?.description) setProfile(match);
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, [originalItem.avatar, originalItem.id, originalItem.name, originalItem.platform]);
+
     // ── Tab 切换 ──
     const [activeTab, setActiveTab] = useState<IArtist.ArtistMediaType>('music');
 
     // ── 两个 Tab 的 hook 都提到 Page 层，切换时不丢失数据 ──
     const musicWorks = useArtistWorks(originalItem, 'music');
     const albumWorks = useArtistWorks(originalItem, 'album');
+
+    const artist = useMemo<IArtist.IArtistItem>(
+        () => ({
+            ...originalItem,
+            ...profile,
+            id: originalItem.id,
+            platform: originalItem.platform,
+            name: originalItem.name || musicWorks.profile?.name || profile?.name || '',
+            avatar: originalItem.avatar || musicWorks.profile?.avatar || profile?.avatar || '',
+            description:
+                originalItem.description ||
+                musicWorks.profile?.description ||
+                profile?.description ||
+                '',
+        }),
+        [originalItem, profile, musicWorks.profile],
+    );
 
     const activeWorks = activeTab === 'music' ? musicWorks : albumWorks;
 
@@ -100,11 +147,29 @@ export default function ArtistPage() {
 
     return (
         <div className="p-artist">
-            <ArtistHeader artist={originalItem} />
+            <ArtistHeader artist={artist} />
 
             <div className="p-artist__tabs">
                 <TabBar items={tabItems} activeKey={activeTab} onChange={handleTabChange} />
             </div>
+
+            <SongToolbar
+                hidePlayAll={activeTab !== 'music'}
+                onPlayAll={handlePlayAll}
+                disabled={activeTab === 'music' && musicWorks.data.length === 0}
+            >
+                <CollectButton
+                    kind="artist"
+                    starLabel={t('playlist.star_artist')}
+                    target={{
+                        platform: artist.platform,
+                        id: String(artist.id),
+                        title: artist.name,
+                        artwork: artist.avatar,
+                        raw: artist,
+                    }}
+                />
+            </SongToolbar>
 
             {/* ── 音乐 Tab ── */}
             {activeTab === 'music' && (
@@ -119,10 +184,6 @@ export default function ArtistPage() {
                         />
                     ) : (
                         <>
-                            <SongToolbar
-                                onPlayAll={handlePlayAll}
-                                disabled={musicWorks.data.length === 0}
-                            />
                             <SongTable
                                 data={musicWorks.data as IMusic.IMusicItem[]}
                                 requestStatus={

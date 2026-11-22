@@ -20,6 +20,7 @@ import pluginManager from '@infra/pluginManager/renderer';
 import shortCut from '@infra/shortCut/renderer';
 import appSync from '@infra/appSync/renderer/main';
 import musicSheet from '@infra/musicSheet/renderer';
+import { setup as setupLibrary } from '@infra/library/renderer';
 import mediaMeta from '@infra/mediaMeta/renderer';
 import downloadManager from '@infra/downloadManager/renderer';
 import localMusic from '@infra/localMusic/renderer';
@@ -72,6 +73,7 @@ export async function bootstrapMainWindowServices(): Promise<void> {
         requestForwarder.setup(),
         pluginManager.setup(),
         musicSheet.setup(),
+        setupLibrary(),
         mediaMeta.setup(),
         downloadManager.setup(),
         localMusic.setup(),

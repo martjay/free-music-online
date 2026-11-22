@@ -10,8 +10,10 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: ButtonVariant;
     /** 按钮尺寸 */
     size?: ButtonSize;
-    /** 是否处于加载状态 */
+    /** 是否处于加载状态。会禁用按钮。 */
     loading?: boolean;
+    /** 进行中但仍可点击，用来显示转圈，例如「停止检测」。 */
+    busy?: boolean;
     /** 危险按钮（红色色调，可与任意 variant 组合） */
     danger?: boolean;
     /** 前置图标 */
@@ -32,6 +34,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             variant = 'primary',
             size = 'md',
             loading = false,
+            busy = false,
             disabled = false,
             danger = false,
             icon,
@@ -59,11 +62,11 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
                 className={classNames}
                 disabled={isDisabled}
                 aria-disabled={isDisabled}
-                aria-busy={loading}
+                aria-busy={loading || busy}
                 {...rest}
             >
-                {loading && <span className="btn__spinner" aria-hidden="true" />}
-                {!loading && icon && <span className="btn__icon">{icon}</span>}
+                {(loading || busy) && <span className="btn__spinner" aria-hidden="true" />}
+                {!loading && !busy && icon && <span className="btn__icon">{icon}</span>}
                 {children && <span className="btn__label">{children}</span>}
             </button>
         );

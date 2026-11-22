@@ -26,6 +26,8 @@ interface _IAppConfig {
 
     /** 歌单内搜索区分大小写 */
     'playMusic.caseSensitiveInSearch': boolean;
+    /** 搜索平台：lx 为固定五个平台，installed 只列出已启用插件 */
+    'playMusic.searchSourceMode': 'lx' | 'installed';
     /** 默认播放音质 */
     'playMusic.defaultQuality': IMusic.IQualityKey;
     /** 官方榜用来搜索播放的插件 hash */

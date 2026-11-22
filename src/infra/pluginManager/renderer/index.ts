@@ -18,6 +18,7 @@ import type {
 import { QUALITY_KEYS } from '@common/constant';
 import { tauriInvoke } from '@infra/tauriBridge/ipc';
 import { CONTEXT_BRIDGE_KEY } from '../common/constant';
+import { catalogSourceOf } from '@common/musicCatalog';
 import { findPluginForPlatform } from '../common/pluginIdentity';
 import { sortByPluginOrder } from '../common/sortByOrder';
 import {
@@ -36,7 +37,7 @@ interface IMod {
     uninstallPlugin(hash: string): Promise<{ success: boolean; message?: string }>;
     updatePlugin(hash: string): Promise<{ success: boolean; message?: string }>;
     updateAllPlugins(): Promise<{ updated: number; failed: number }>;
-    checkPluginVersions(): Promise<{
+    checkPluginVersions(onProgress?: (progress: IPluginVersionProgress) => void): Promise<{
         updated: Array<{ name: string; from: string; to: string }>;
         failed: number;
         catalog: boolean;
@@ -151,14 +152,22 @@ async function updateAllPlugins(): Promise<{ updated: number; failed: number }> 
     return mod.updateAllPlugins();
 }
 
+export interface IPluginVersionProgress {
+    done: number;
+    total: number;
+    phase: 'plugins' | 'catalog';
+}
+
 /** 按订阅链接和音源目录检查插件版本，有更高版本就替换 */
-async function checkPluginVersions(): Promise<{
+async function checkPluginVersions(
+    onProgress?: (progress: IPluginVersionProgress) => void,
+): Promise<{
     updated: Array<{ name: string; from: string; to: string }>;
     failed: number;
     catalog: boolean;
     cancelled?: boolean;
 }> {
-    return mod.checkPluginVersions();
+    return mod.checkPluginVersions(onProgress);
 }
 
 function cancelPluginVersionCheck(): void {
@@ -220,9 +229,21 @@ function getPluginByHash(hash: string): IPlugin.IPluginDelegate | undefined {
     return store.get(pluginsAtom).find((p) => p.hash === hash);
 }
 
-/** 通过 platform 获取单个插件 */
+/** 通过 platform 获取单个插件。catalog:wy 这类目录平台只在唯一启用脚本时对上。 */
 function getPluginByPlatform(platform: string): IPlugin.IPluginDelegate | undefined {
-    return findPluginForPlatform(store.get(pluginsAtom), platform);
+    const plugins = store.get(pluginsAtom);
+    const direct = findPluginForPlatform(plugins, platform);
+    if (direct) return direct;
+    const source = catalogSourceOf(platform);
+    if (!source) return undefined;
+    const meta = store.get(pluginMetaAtom);
+    const matched = plugins.filter(
+        (plugin) =>
+            plugin.sourceKey === source &&
+            meta[plugin.hash]?.enabled !== false &&
+            plugin.supportedMethod.includes('getMediaSource'),
+    );
+    return matched.length === 1 ? matched[0] : undefined;
 }
 
 /**

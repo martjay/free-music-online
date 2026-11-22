@@ -6,21 +6,23 @@
  * 布局：
  *   标题  "xxx的搜索结果"（xxx 以品牌色显示）
  *   TabBar  音乐 | 专辑 | 作者 | 歌单
- *   音源    先选脚本，再选平台
+ *   音源    全部 / 酷我 / 酷狗 / QQ / 网易云 / 咪咕（四个模式共用）
+ *           默认按 LX Music 固定列出；设置里可改成只显示已启用插件
  *   Body    根据 type 渲染对应 ResultComponent
  *
  * 状态全部由 jotai store 管理，方便未来前进/后退恢复。
  */
 
-import { useEffect, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { Play } from 'lucide-react';
 import { useAtomValue, useSetAtom } from 'jotai/react';
+import { MUSIC_CATALOG_SOURCES, catalogSourceLabel } from '@common/musicCatalog';
+import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import { useSortedSearchablePlugins } from '@infra/pluginManager/renderer/hooks';
 import trackPlayer from '@renderer/mainWindow/core/trackPlayer';
 import { PluginFeatureUnavailable } from '../../components/business/PluginFeatureUnavailable';
-import { PluginSourceNav } from '../../components/business/PluginSourceNav';
 import { Button } from '../../components/ui/Button';
 import { TabBar } from '../../components/ui/TabBar';
 import { MusicResult } from './components/MusicResult';
@@ -35,8 +37,11 @@ import {
     searchQueryAtom,
     searchResultsAtom,
     activeMediaTypeAtom,
-    activePluginPerTypeAtom,
+    activeSearchSourceAtom,
+    forgetSearchScroll,
+    rememberSearchScroll,
     resetSearchResults,
+    restoreSearchScroll,
     store,
 } from './store';
 import { useSearch } from './useSearch';
@@ -60,41 +65,51 @@ export default function SearchPage() {
 
     const results = useAtomValue(searchResultsAtom);
     const activeType = useAtomValue(activeMediaTypeAtom);
-    const pluginPerType = useAtomValue(activePluginPerTypeAtom);
+    const selectedSource = useAtomValue(activeSearchSourceAtom);
     const setActiveType = useSetAtom(activeMediaTypeAtom);
-    const setPluginPerType = useSetAtom(activePluginPerTypeAtom);
+    const setSelectedSource = useSetAtom(activeSearchSourceAtom);
 
     const { search } = useSearch();
-    const prevQueryRef = useRef('');
+    const [searchSourceMode] = useConfigValue('playMusic.searchSourceMode');
 
-    // ── query 变化 → 重置状态 & 触发首次搜索 ──
+    // ── 只有关键词变了才清空结果。标签和平台都留着，从歌单返回也不会被重置。 ──
     useEffect(() => {
-        if (!query || query === prevQueryRef.current) return;
-        prevQueryRef.current = query;
+        if (!query || store.get(searchQueryAtom) === query) return;
 
-        // 重置结果
         resetSearchResults();
+        forgetSearchScroll(query);
         store.set(searchQueryAtom, query);
+    }, [query]);
 
-        // 重置 activeType 到 music — 使用 React setter 确保同一渲染周期可见
-        setActiveType('music');
-        // 不重置 pluginPerType — 保留用户之前选择的插件偏好
-    }, [query, setActiveType]);
+    useLayoutEffect(() => {
+        if (!query || store.get(searchQueryAtom) !== query) return;
+        restoreSearchScroll(query);
+    }, [query, activeType]);
 
-    // ── 当前 type 下可用的插件列表 ──
+    // ── 默认五个平台都在。设置改成「已启用插件」后，才按脚本过滤。 ──
     const availablePlugins = useSortedSearchablePlugins(activeType);
+    const platforms = useMemo(() => {
+        const sources =
+            searchSourceMode === 'installed'
+                ? MUSIC_CATALOG_SOURCES.filter((source) =>
+                      availablePlugins.some((plugin) => plugin.sourceKey === source),
+                  )
+                : MUSIC_CATALOG_SOURCES;
+        return sources.map((source) => ({
+            key: source,
+            label: catalogSourceLabel(source),
+        }));
+    }, [availablePlugins, searchSourceMode]);
 
-    // ── 当前激活的插件 hash ──
     const activePluginHash = useMemo(() => {
-        const stored = pluginPerType[activeType];
-        if (stored === ALL_SOURCE && availablePlugins.length > 1) {
-            return ALL_SOURCE;
-        }
-        if (stored && availablePlugins.some((p) => p.hash === stored)) {
-            return stored;
-        }
-        return availablePlugins[0]?.hash ?? '';
-    }, [pluginPerType, activeType, availablePlugins]);
+        const available =
+            selectedSource === ALL_SOURCE
+                ? platforms.length > 1
+                : platforms.some((platform) => platform.key === selectedSource);
+        if (available) return selectedSource;
+        if (platforms.length > 1) return ALL_SOURCE;
+        return platforms[0]?.key ?? '';
+    }, [selectedSource, platforms]);
 
     // ── 自动触发搜索（当 query/type/plugin 变化时） ──
     // 有意不依赖 results：通过 store.get 读取最新快照避免无限循环。
@@ -127,12 +142,9 @@ export default function SearchPage() {
     // ── 切换插件 ──
     const handlePluginChange = useCallback(
         (hash: string) => {
-            setPluginPerType((prev) => ({
-                ...prev,
-                [activeType]: hash,
-            }));
+            setSelectedSource(hash);
         },
-        [activeType, setPluginPerType],
+        [setSelectedSource],
     );
 
     // ── 渲染 ──
@@ -156,9 +168,21 @@ export default function SearchPage() {
             })),
         [t],
     );
+    const sourceItems = useMemo(
+        () =>
+            platforms.length > 1
+                ? [{ key: ALL_SOURCE, label: t('search.all_sources') }, ...platforms]
+                : platforms,
+        [platforms, t],
+    );
 
     return (
-        <div className="p-search">
+        <div
+            className="p-search"
+            onPointerDown={() => {
+                if (query) rememberSearchScroll(query);
+            }}
+        >
             {/* 标题 */}
             <div className="p-search__header">
                 <div className="p-search__title-row">
@@ -182,16 +206,12 @@ export default function SearchPage() {
                     {/* Tab Bar */}
                     <TabBar items={tabItems} activeKey={activeType} onChange={handleTabChange} />
 
-                    {activePluginHash && (
-                        <PluginSourceNav
-                            plugins={availablePlugins}
-                            activeHash={activePluginHash}
+                    {sourceItems.length > 0 && (
+                        <TabBar
+                            mode="scroll"
+                            items={sourceItems}
+                            activeKey={activePluginHash}
                             onChange={handlePluginChange}
-                            allItem={
-                                availablePlugins.length > 1
-                                    ? { key: ALL_SOURCE, label: t('search.all_sources') }
-                                    : undefined
-                            }
                         />
                     )}
                 </div>

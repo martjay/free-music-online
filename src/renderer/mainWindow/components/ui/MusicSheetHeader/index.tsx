@@ -17,6 +17,8 @@ export interface MusicSheetHeaderProps {
     placeholderIcon?: ReactNode;
     /** 封面右侧、标题下方的自定义操作区（如按钮组） */
     actions?: ReactNode;
+    /** 作者名可点时打开当前平台的作者页 */
+    onArtistClick?: () => void;
     /** 隐藏封面右下角来源徽章（如本地歌单不需要显示） */
     hideSourceBadge?: boolean;
     /** 额外 className */
@@ -45,6 +47,7 @@ export function MusicSheetHeader({
     musicSheet,
     placeholderIcon,
     actions,
+    onArtistClick,
     hideSourceBadge,
     className,
 }: MusicSheetHeaderProps) {
@@ -82,7 +85,20 @@ export function MusicSheetHeader({
     const metaItems: ReactNode[] = [];
 
     if (artist) {
-        metaItems.push(<span key="artist">{artist}</span>);
+        metaItems.push(
+            onArtistClick ? (
+                <button
+                    key="artist"
+                    type="button"
+                    className="music-sheet-header__meta-link"
+                    onClick={onArtistClick}
+                >
+                    {artist}
+                </button>
+            ) : (
+                <span key="artist">{artist}</span>
+            ),
+        );
     }
     if (worksNum != null) {
         metaItems.push(<span key="count">{t('media.works_count', { count: worksNum })}</span>);

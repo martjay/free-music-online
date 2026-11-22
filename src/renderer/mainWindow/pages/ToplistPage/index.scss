@@ -50,12 +50,7 @@
     // ── 卡片 ──
 
     &__card {
-        // 重置 button 默认样式
-        border: none;
-        background: none;
-        text-align: left;
-        cursor: pointer;
-
+        position: relative;
         display: flex;
         align-items: center;
         min-width: 0;
@@ -76,6 +71,39 @@
 
         &:active {
             opacity: var(--opacity-pressed);
+        }
+    }
+
+    &__card-open {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
+        padding: 0;
+        border: none;
+        background: none;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    &__star {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        margin-left: var(--space-2);
+        border: none;
+        border-radius: var(--radius-pill);
+        background: transparent;
+        color: var(--color-text-muted);
+        cursor: pointer;
+
+        &:hover,
+        &.is-on {
+            color: var(--color-favorite);
         }
 
         &:focus-visible {

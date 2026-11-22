@@ -117,6 +117,22 @@
         color: var(--color-border-default);
     }
 
+    &__meta-link {
+        border: none;
+        background: none;
+        padding: 0;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+        text-decoration: none;
+        text-underline-offset: 2px;
+
+        &:hover {
+            color: var(--color-text-brand);
+            text-decoration: underline;
+        }
+    }
+
     // ── 操作区 ──
     &__actions {
         margin-top: var(--space-4);

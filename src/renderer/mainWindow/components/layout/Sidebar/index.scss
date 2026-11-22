@@ -120,6 +120,12 @@
         }
     }
 
+    &__nav-count {
+        margin-left: auto;
+        font-size: var(--text-caption-size);
+        color: var(--color-text-muted);
+    }
+
     &__nav-item {
         display: flex;
         align-items: center;

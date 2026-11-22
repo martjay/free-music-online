@@ -13,6 +13,7 @@ const defaultAppConfig: IAppConfig = {
     'playMusic.defaultPlaybackPlugin': '',
     'playMusic.clickMusicList': 'replace',
     'playMusic.caseSensitiveInSearch': false,
+    'playMusic.searchSourceMode': 'lx',
     'playMusic.playError': 'retry_with_source',
     'playMusic.whenDeviceRemoved': 'play',
     'playMusic.rejectShortPreview': true,
