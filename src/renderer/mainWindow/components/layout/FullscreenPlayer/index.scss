@@ -3,24 +3,6 @@
 // ============================================================================
 
 .l-fullscreen-player {
-    // 全局语义颜色覆盖，确保全屏播放器在任何主题下都使用深色调
-    --color-bg-fullscreen: rgb(9, 9, 11);
-    --color-bg-overlay: rgba(0, 0, 0, 0.6);
-    --color-bg-placeholder: rgb(39, 39, 42);
-
-    --color-fill-neutral: rgba(255, 255, 255, 0.1);
-    --color-fill-neutral-hover: rgba(255, 255, 255, 0.16);
-    --color-fill-neutral-active: rgba(255, 255, 255, 0.2);
-    --color-fill-subtle-hover: rgba(255, 255, 255, 0.1);
-
-    --color-text-primary: rgb(255, 255, 255);
-    --color-text-secondary: rgb(161, 161, 170);
-    --color-text-muted: rgba(255, 255, 255, 0.6);
-    --color-text-placeholder: rgba(255, 255, 255, 0.5);
-    --color-text-disabled: rgba(255, 255, 255, 0.3);
-
-    --color-border-default: rgba(255, 255, 255, 0.08);
-
     position: fixed;
     inset: 0;
     z-index: var(--z-fullscreen);
@@ -52,9 +34,9 @@
         inset: 0;
         background: linear-gradient(
             to bottom,
-            rgba(0, 0, 0, 0.2),
-            rgba(0, 0, 0, 0.4) 50%,
-            rgba(0, 0, 0, 0.8)
+            color-mix(in srgb, var(--color-bg-fullscreen) 28%, transparent),
+            color-mix(in srgb, var(--color-bg-fullscreen) 48%, transparent) 50%,
+            color-mix(in srgb, var(--color-bg-fullscreen) 82%, transparent)
         );
     }
 

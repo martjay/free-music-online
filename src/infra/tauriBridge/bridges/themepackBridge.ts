@@ -248,20 +248,43 @@ function whenParentReady(
     }
 }
 
+let themeStyleObserver: MutationObserver | null = null;
+let pinningThemeStyle = false;
+
+/** 主题样式必须压在应用默认变量之后，否则 :root 会被 global.scss 盖回深色。 */
+function pinThemeStyle(styleNode: HTMLStyleElement): void {
+    const head = document.head;
+    if (!head || pinningThemeStyle || head.lastElementChild === styleNode) return;
+    pinningThemeStyle = true;
+    head.appendChild(styleNode);
+    pinningThemeStyle = false;
+}
+
+function watchThemeStyleOrder(styleNode: HTMLStyleElement): void {
+    pinThemeStyle(styleNode);
+    if (themeStyleObserver || typeof MutationObserver === 'undefined') return;
+    themeStyleObserver = new MutationObserver(() => {
+        if (styleNode.isConnected) pinThemeStyle(styleNode);
+    });
+    themeStyleObserver.observe(document.head, { childList: true });
+}
+
 function injectCss(css: string): void {
     let styleNode = document.getElementById(THEMEPACK_STYLE_NODE_ID) as HTMLStyleElement | null;
     if (!styleNode) {
         styleNode = document.createElement('style');
         styleNode.id = THEMEPACK_STYLE_NODE_ID;
-        whenParentReady(
-            () => document.head,
-            (head) => head.appendChild(styleNode!),
-        );
     }
     styleNode.textContent = css;
+    whenParentReady(
+        () => document.head,
+        () => watchThemeStyleOrder(styleNode!),
+    );
 }
 
 function removeCss(): void {
+    themeStyleObserver?.disconnect();
+    themeStyleObserver = null;
     document.getElementById(THEMEPACK_STYLE_NODE_ID)?.remove();
 }
 
@@ -706,9 +729,9 @@ async function initCurrentTheme(): Promise<IThemePack | null> {
         return null;
     }
 
-    if (themePack.hash !== cache.hash) {
-        // 主题包内容已变化 → 重新加载 CSS 与缓存
-        const css = await buildInjectedCss(themePack);
+    const css = await buildInjectedCss(themePack);
+    if (themePack.hash !== cache.hash || css !== cache.css) {
+        // 主题包或样式有变化时重新注入，避免沿用过期缓存把新主题盖掉
         injectCss(css);
         writeCache(themePack, css);
 

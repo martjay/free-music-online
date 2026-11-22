@@ -2,9 +2,11 @@
  * 柔雾白昼 (Soft Daylight)
  */
 :root {
-    --color-bg-base: rgb(248, 244, 237);
-    --color-bg-sidebar: rgba(255, 250, 245, 0.72);
-    --color-bg-player: rgba(255, 252, 248, 0.92);
+    color-scheme: light;
+
+    --color-bg-base: rgb(255, 250, 245);
+    --color-bg-sidebar: rgb(255, 247, 240);
+    --color-bg-player: rgb(255, 252, 248);
     --color-bg-surface: rgba(123, 95, 74, 0.06);
     --color-bg-surface-raised: rgba(255, 255, 255, 0.74);
     --color-bg-drawer: rgba(252, 247, 241, 0.96);

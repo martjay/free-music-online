@@ -271,6 +271,48 @@ class MusicSheetStore {
 
     // ─── 数据转换 ───
 
+    private artworkOf(item: {
+        artwork?: string | null;
+        raw?: unknown;
+        platform?: string;
+    }): string | null {
+        if (typeof item.artwork === 'string' && item.artwork) return item.artwork;
+        const raw =
+            typeof item.raw === 'string'
+                ? (() => {
+                      try {
+                          return JSON.parse(item.raw);
+                      } catch {
+                          return null;
+                      }
+                  })()
+                : item.raw;
+        return this.artworkFromPayload(raw);
+    }
+
+    /** 旧记录只把封面留在原始字段里，读出来时补成可用地址。 */
+    private artworkFromPayload(raw: any): string | null {
+        if (!raw || typeof raw !== 'object') return null;
+        if (typeof raw.artwork === 'string' && raw.artwork) return raw.artwork;
+        const nested = raw.raw && typeof raw.raw === 'object' ? raw.raw : raw;
+        const kuwo = nested.web_albumpic_short ?? nested.albumpic ?? nested.hts_pic ?? nested.pic;
+        if (typeof kuwo === 'string' && kuwo) {
+            return /^https?:\/\//i.test(kuwo)
+                ? kuwo
+                : `https://img4.kuwo.cn/star/albumcover/${kuwo}`;
+        }
+        const albumMid = nested.albummid ?? nested.album?.mid;
+        if (typeof albumMid === 'string' && albumMid && !/^\d+$/.test(albumMid)) {
+            return `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumMid}.jpg`;
+        }
+        const kugou =
+            nested.trans_param?.union_cover ?? nested.album_sizable_cover ?? nested.imgurl;
+        if (typeof kugou === 'string' && kugou) return kugou.replace('{size}', '480');
+        const netease = nested.album?.picUrl ?? nested.al?.picUrl ?? nested.picUrl;
+        if (typeof netease === 'string' && netease) return netease;
+        return null;
+    }
+
     private toStoredItem(data: IMusicSheetData, item: IMusic.IMusicItem | IMusicItemSlim): void {
         const key = compositeKey(item.platform, String(item.id));
         const existing = data.items[key];
@@ -291,7 +333,7 @@ class MusicSheetStore {
             album: item.album ?? '',
             duration: item.duration ?? null,
             // COALESCE(excluded.artwork, artwork)：新值为空时保留旧值
-            artwork: item.artwork ?? existing?.artwork ?? null,
+            artwork: this.artworkOf(item) ?? existing?.artwork ?? null,
             raw,
         };
     }
@@ -304,7 +346,7 @@ class MusicSheetStore {
             artist: item.artist,
             album: item.album,
             duration: item.duration,
-            artwork: item.artwork,
+            artwork: this.artworkOf(item),
             [INTERNAL_SLIM_KEY]: true,
         } as IMusicItemSlim;
     }
@@ -529,7 +571,12 @@ class MusicSheetStore {
         const item = data.items[compositeKey(platform, String(id))];
         if (!item?.raw) return null;
         try {
-            return JSON.parse(item.raw);
+            const parsed = JSON.parse(item.raw);
+            if (!parsed.artwork) {
+                const artwork = this.artworkOf(item);
+                if (artwork) parsed.artwork = artwork;
+            }
+            return parsed;
         } catch {
             return null;
         }
@@ -542,7 +589,12 @@ class MusicSheetStore {
             const item = data.items[compositeKey(key.platform, String(key.id))];
             if (item?.raw) {
                 try {
-                    results.push(JSON.parse(item.raw));
+                    const parsed = JSON.parse(item.raw);
+                    if (!parsed.artwork) {
+                        const artwork = this.artworkOf(item);
+                        if (artwork) parsed.artwork = artwork;
+                    }
+                    results.push(parsed);
                 } catch {
                     /* 跳过损坏数据 */
                 }

@@ -11,7 +11,7 @@ use tauri::{LogicalSize, PhysicalPosition, Window};
 #[cfg(desktop)]
 const MENU_WIDTH: f64 = 180.0;
 #[cfg(desktop)]
-const MENU_HEIGHT: f64 = 196.0;
+const MENU_HEIGHT: f64 = 228.0;
 #[cfg(desktop)]
 static SHOWN_AT_MS: AtomicU64 = AtomicU64::new(0);
 

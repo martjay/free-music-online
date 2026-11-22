@@ -27,7 +27,7 @@
     &__spinner {
         width: 36px;
         height: 36px;
-        color: rgba(255, 255, 255, 0.15);
+        color: var(--color-text-disabled);
         margin-bottom: 16px;
         animation: status-placeholder-spin 1s linear infinite;
     }
@@ -36,7 +36,7 @@
     &__icon {
         width: 48px;
         height: 48px;
-        color: rgba(255, 255, 255, 0.15);
+        color: var(--color-text-disabled);
         margin-bottom: 20px;
         flex-shrink: 0;
     }
@@ -44,21 +44,21 @@
     // ── 标题 ──
     &__title {
         font-size: 15px;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--color-text-secondary);
         font-weight: var(--font-weight-medium);
     }
 
     // Pending 态标题 — 更浅色
     &--pending &__title {
         font-size: var(--text-label-size);
-        color: rgba(255, 255, 255, 0.25);
+        color: var(--color-text-muted);
         font-weight: normal;
     }
 
     // ── 描述 ──
     &__desc {
         font-size: var(--text-label-size);
-        color: rgba(255, 255, 255, 0.25);
+        color: var(--color-text-muted);
         margin-top: 6px;
         max-width: 300px;
         text-align: center;
@@ -76,9 +76,9 @@
         padding: 6px 16px;
         border-radius: var(--radius-control);
         font-size: var(--text-label-size);
-        color: rgba(255, 255, 255, 0.6);
-        background-color: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        color: var(--color-text-secondary);
+        background-color: var(--color-fill-subtle);
+        border: 1px solid var(--color-border-default);
         cursor: pointer;
         white-space: nowrap;
 
@@ -90,8 +90,8 @@
 
         &:hover {
             color: var(--color-text-primary);
-            background-color: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.1);
+            background-color: var(--color-fill-subtle-hover);
+            border-color: var(--color-border-strong);
         }
 
         &:active {

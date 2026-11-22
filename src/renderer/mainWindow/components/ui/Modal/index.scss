@@ -103,7 +103,7 @@
     padding: 0;
     border: none;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--color-fill-subtle);
     color: var(--color-text-muted);
     cursor: pointer;
     transition:
@@ -111,7 +111,7 @@
         color 0.15s ease;
 
     &:hover {
-        background: rgba(255, 255, 255, 0.12);
+        background: var(--color-fill-neutral);
         color: var(--color-text-primary);
     }
 }

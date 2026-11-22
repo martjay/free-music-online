@@ -2,10 +2,12 @@
  * 浅色主题 (Light)
  */
 :root {
+    color-scheme: light;
+
     /* ── Background ── */
-    --color-bg-base: rgb(248, 249, 250);
-    --color-bg-sidebar: rgba(241, 243, 245, 0.65);
-    --color-bg-player: rgba(255, 255, 255, 0.92);
+    --color-bg-base: rgb(255, 255, 255);
+    --color-bg-sidebar: rgb(247, 248, 249);
+    --color-bg-player: rgb(255, 255, 255);
     --color-bg-surface: rgba(0, 0, 0, 0.03);
     --color-bg-surface-raised: rgba(0, 0, 0, 0.06);
     --color-bg-drawer: rgba(248, 249, 250, 0.97);

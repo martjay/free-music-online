@@ -687,6 +687,11 @@ function buildKuwoArtwork(path: unknown): string | undefined {
     return `https://img4.kuwo.cn/star/albumcover/${path}`;
 }
 
+function withAlbumArtwork(song: IMusic.IMusicItem, albumArtwork?: string): IMusic.IMusicItem {
+    if (song.artwork || !albumArtwork) return song;
+    return { ...song, artwork: albumArtwork };
+}
+
 function pickMiguArtwork(items: unknown): string | undefined {
     if (!Array.isArray(items)) return undefined;
     const preferred =
@@ -1746,7 +1751,12 @@ async function getNeteaseAlbumInfo(
         },
         musicList: songs
             .filter((item: any) => item?.id)
-            .map((item: any) => mapNeteaseSongInfo(item, platform) as IMusic.IMusicItem),
+            .map((item: any) =>
+                withAlbumArtwork(
+                    mapNeteaseSongInfo(item, platform) as IMusic.IMusicItem,
+                    album?.picUrl ?? album?.blurPicUrl ?? albumItem.artwork,
+                ),
+            ),
         isEnd: true,
     };
 }
@@ -2976,7 +2986,15 @@ async function getTencentAlbumInfo(
             description: cleanSearchText(data.desc),
             artwork: albumItem.artwork,
         },
-        musicList: pageSongs.map((item: any) => mapTencentSongInfo(item, platform)),
+        musicList: pageSongs.map((item: any) =>
+            withAlbumArtwork(
+                mapTencentSongInfo(item, platform),
+                albumItem.artwork ||
+                    (albumItem.id
+                        ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumItem.id}.jpg`
+                        : undefined),
+            ),
+        ),
         isEnd: begin + pageSongs.length >= songs.length,
     };
 }
@@ -3207,7 +3225,9 @@ async function getKugouAlbumInfo(
     const total = Number(data.total ?? 0);
     return {
         albumItem,
-        musicList: list.map((item: any) => mapKugouSongInfo(item, platform)),
+        musicList: list.map((item: any) =>
+            withAlbumArtwork(mapKugouSongInfo(item, platform), albumItem.artwork),
+        ),
         isEnd: searchPageEnded(list.length, currentPage, total),
     };
 }
@@ -3383,6 +3403,7 @@ async function getKuwoAlbumInfo(
     const body = parseKuwoBody(resp.data);
     const list = Array.isArray(body.musiclist) ? body.musiclist : [];
     const total = Number(body.songnum ?? 0);
+    const albumArt = body.hts_img || body.img || albumItem.artwork;
     return {
         albumItem: {
             ...albumItem,
@@ -3398,19 +3419,23 @@ async function getKuwoAlbumInfo(
             description: cleanSearchText(body.info),
         },
         musicList: list.map((item: any) =>
-            mapKuwoSongInfo(
-                {
-                    SONGNAME: item.name,
-                    ARTIST: item.artist,
-                    ARTISTID: item.artistid ?? item.ARTISTID ?? body.artistid ?? body.ARTISTID,
-                    ALBUM: body.name,
-                    ALBUMID: item.albumid ?? item.ALBUMID ?? body.albumid ?? albumItem.id,
-                    DURATION: item.duration,
-                    DC_TARGETID: item.id,
-                    MUSICRID: item.id ? `MUSIC_${item.id}` : undefined,
-                    web_albumpic_short: item.pic,
-                },
-                platform,
+            withAlbumArtwork(
+                mapKuwoSongInfo(
+                    {
+                        SONGNAME: item.name,
+                        ARTIST: item.artist,
+                        ARTISTID: item.artistid ?? item.ARTISTID ?? body.artistid ?? body.ARTISTID,
+                        ALBUM: body.name,
+                        ALBUMID: item.albumid ?? item.ALBUMID ?? body.albumid ?? albumItem.id,
+                        DURATION: item.duration,
+                        DC_TARGETID: item.id,
+                        MUSICRID: item.id ? `MUSIC_${item.id}` : undefined,
+                        web_albumpic_short:
+                            item.web_albumpic_short ?? item.pic ?? item.albumpic ?? item.hts_pic,
+                    },
+                    platform,
+                ),
+                albumArt,
             ),
         ),
         isEnd: searchPageEnded(list.length, currentPage, total),
@@ -3594,7 +3619,9 @@ async function getMiguAlbumInfo(
     const total = Number(data.totalCount ?? data.total ?? 0);
     return {
         albumItem,
-        musicList: list.map((item: any) => mapMiguSongInfo(item, platform)),
+        musicList: list.map((item: any) =>
+            withAlbumArtwork(mapMiguSongInfo(item, platform), albumItem.artwork),
+        ),
         isEnd: list.length === 0 || searchPageEnded(list.length, currentPage, total),
     };
 }

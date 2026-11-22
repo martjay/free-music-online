@@ -1,7 +1,9 @@
 :root {
-    --color-bg-base: rgb(244, 246, 250);
-    --color-bg-sidebar: rgba(250, 251, 255, 0.7);
-    --color-bg-player: rgba(255, 255, 255, 0.88);
+    color-scheme: light;
+
+    --color-bg-base: rgb(255, 255, 255);
+    --color-bg-sidebar: rgb(246, 247, 251);
+    --color-bg-player: rgb(255, 255, 255);
     --color-bg-surface: rgba(34, 42, 56, 0.05);
     --color-bg-surface-raised: rgba(255, 255, 255, 0.82);
     --color-bg-drawer: rgba(248, 250, 255, 0.96);

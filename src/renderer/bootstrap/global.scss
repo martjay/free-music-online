@@ -411,6 +411,8 @@ $scale-icon-2xl: 48px;
 
 // 3.3 根元素与 body
 html {
+    color-scheme: dark;
+    background-color: var(--color-bg-base);
     // 使用 token 中的基准字号（rem 基于此）
     font-size: 16px;
     // 防止移动设备横屏时字号自动调整

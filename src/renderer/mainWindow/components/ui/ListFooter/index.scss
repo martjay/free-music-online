@@ -20,7 +20,7 @@
     &--loading {
         gap: 10px;
         padding: 32px 0;
-        color: rgba(255, 255, 255, 0.25);
+        color: var(--color-text-muted);
     }
 
     // ── error ──
@@ -49,24 +49,24 @@
 
     // loading 态文字颜色继承父级
     &--loading &__text {
-        color: rgba(255, 255, 255, 0.25);
+        color: var(--color-text-muted);
     }
 
     // error 态文字
     &--error &__text {
-        color: rgba(255, 255, 255, 0.3);
+        color: var(--color-text-secondary);
     }
 
     // done 态文字
     &--done &__text {
         font-size: var(--text-caption-size);
-        color: rgba(255, 255, 255, 0.15);
+        color: var(--color-text-disabled);
         flex-shrink: 0;
     }
 
     // ── 分隔点 ──
     &__dot {
-        color: rgba(255, 255, 255, 0.1);
+        color: var(--color-text-disabled);
     }
 
     // ── 重试按钮 ──
@@ -98,7 +98,7 @@
     &__line {
         flex: 1;
         height: 1px;
-        background-color: rgba(255, 255, 255, 0.04);
+        background-color: var(--color-border-subtle);
     }
 }
 

@@ -56,6 +56,8 @@ export interface IAudioController extends EventEmitter<IAudioControllerEvents> {
     readonly playerState: PlayerState;
     readonly hasSource: boolean;
     readonly hasUsableSource: boolean;
+    /** 用户已经要求暂停，或元素本身已停下。用来避免状态滞后时把暂停又当成播放。 */
+    readonly isHeldPaused: boolean;
     /** 元素时钟。进度事件晚到时，用它判断是不是已经在出声。 */
     readonly currentTime: number;
     /** 已经开始出声，或已经缓冲到可以出声。这时不要再当成失败换源。 */
@@ -71,6 +73,11 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
     private _sourceId = 0; // fetch 竞态守卫
     private _currentBlobUrl: string | null = null; // 追踪 blob URL 防止内存泄漏
     private pendingHlsPlay = false;
+    /** 暂停之后，迟到的 play() 不能再把声音拉起来。 */
+    private holdPause = false;
+    private playGeneration = 0;
+    /** pause() 拆掉输出前记下的进度，下次 play() 再放回去。 */
+    private parkedTime: number | null = null;
     /** 用户选择的音量和倍速。换音源时播放器可能把它们复位，不能写回设置。 */
     private intendedVolume = 1;
     private intendedSpeed = 1;
@@ -86,6 +93,10 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
     /** 地址还在，但上次加载已经失败。这种地址再点播放不会出声。 */
     get hasUsableSource(): boolean {
         return this.hasSource && this.audio.error == null;
+    }
+
+    get isHeldPaused(): boolean {
+        return this.holdPause || !this.hasSource || this.audio.paused;
     }
 
     get currentTime(): number {
@@ -126,8 +137,13 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
             album: musicItem.album ?? undefined,
             artwork: musicItem.artwork ? [{ src: musicItem.artwork }] : undefined,
         });
-        this.setPlayerState(PlayerState.None);
+        this.parkedTime = null;
+        this.holdPause = true;
+        this.playGeneration += 1;
         this.pendingHlsPlay = false;
+        this.audio.pause();
+        this.audio.muted = true;
+        this.setPlayerState(PlayerState.None);
         this.destroyHls();
         this.revokeBlobUrl();
         this._sourceId++;
@@ -221,18 +237,59 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
     }
 
     play(): void {
+        this.holdPause = false;
+        const generation = ++this.playGeneration;
+        const parked = this.parkedTime;
+        this.parkedTime = null;
+        this.audio.muted = false;
         if (this.hls) {
             this.pendingHlsPlay = true;
+            this.hls.startLoad(parked ?? -1);
         }
-        if (this.hasSource) {
-            this.audio.play().catch(() => {});
+        if (!this.hasSource) return;
+        if (parked != null) {
+            const restore = () => {
+                if (generation !== this.playGeneration || this.holdPause) return;
+                try {
+                    this.audio.currentTime = parked;
+                } catch {
+                    /* 元数据还没到时，等下一次 loadedmetadata */
+                }
+            };
+            if (this.audio.readyState >= HTMLMediaElement.HAVE_METADATA) restore();
+            else this.audio.addEventListener('loadedmetadata', restore, { once: true });
         }
+        this.audio
+            .play()
+            .then(() => {
+                if (generation !== this.playGeneration || this.holdPause) {
+                    this.audio.pause();
+                    this.audio.muted = true;
+                }
+            })
+            .catch(() => {});
     }
 
     pause(): void {
+        this.holdPause = true;
+        this.playGeneration += 1;
         this.pendingHlsPlay = false;
-        if (this.hasSource) {
-            this.audio.pause();
+        const time = this.audio.currentTime;
+        if (Number.isFinite(time) && time > 0.05) this.parkedTime = time;
+        this.audio.pause();
+        this.audio.muted = true;
+        if (this.hls) {
+            this.hls.stopLoad();
+        } else if (this.hasSource) {
+            // WebView2 里 pause() 之后旧的输出有时还在响。重新装载会把那一路拆掉。
+            try {
+                this.audio.load();
+            } catch {
+                /* 个别环境不允许重复 load */
+            }
+        }
+        if (this.hasSource || this.hls) {
+            this.setPlayerState(PlayerState.Paused);
         }
     }
 
@@ -324,6 +381,11 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
         };
 
         this.audio.onplaying = () => {
+            if (this.holdPause) {
+                this.audio.pause();
+                this.audio.muted = true;
+                return;
+            }
             this.pendingHlsPlay = false;
             this.setPlayerState(PlayerState.Playing);
             setMediaSessionPlaybackState('playing');
@@ -335,6 +397,7 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
         };
 
         this.audio.onerror = (event) => {
+            if (this.holdPause) return;
             const code = this.audio.error?.code ?? 0;
             // 换地址时旧请求会被中止，这个错误不属于当前这首歌。
             if (!this.hasSource || code === MediaError.MEDIA_ERR_ABORTED) return;
@@ -374,6 +437,7 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
     }
 
     private setPlayerState(state: PlayerState): void {
+        if (this.holdPause && state === PlayerState.Playing) return;
         if (this._playerState !== state) {
             this._playerState = state;
             this.emit('stateChange', state);
@@ -392,7 +456,7 @@ class WebAudioController extends EventEmitter<IAudioControllerEvents> implements
         }
 
         this.hls.on(Hls.Events.ERROR, (_event: any, data: any) => {
-            if (data.fatal) {
+            if (data.fatal && !this.holdPause) {
                 this.emit('error', ErrorReason.EmptyResource, data);
             }
         });

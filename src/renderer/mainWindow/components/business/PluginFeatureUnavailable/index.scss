@@ -27,8 +27,8 @@
         width: 64px;
         height: 64px;
         border-radius: 16px;
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: var(--color-fill-subtle);
+        border: 1px solid var(--color-border-subtle);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -39,13 +39,13 @@
     &__icon {
         width: 28px;
         height: 28px;
-        color: rgba(255, 255, 255, 0.2);
+        color: var(--color-text-disabled);
     }
 
     // ── 主文案 ──
     &__title {
         font-size: 15px;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--color-text-secondary);
         font-weight: var(--font-weight-medium);
         margin-bottom: 6px;
     }
@@ -53,7 +53,7 @@
     // ── 副文案 ──
     &__desc {
         font-size: var(--text-label-size);
-        color: rgba(255, 255, 255, 0.25);
+        color: var(--color-text-muted);
         max-width: 320px;
         text-align: center;
         line-height: var(--text-label-leading);

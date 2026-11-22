@@ -30,14 +30,20 @@ export default function App() {
     const desktopLyric = useLyricFlag('lyric.enableDesktopLyric');
     const lyricLocked = useLyricFlag('lyric.lockLyric');
     const [playing, setPlaying] = useState(false);
+    const [title, setTitle] = useState('');
 
     useEffect(() => {
         let disposed = false;
-        const unlistenState = tauriListen<PlayerState>('tray-player-state', (state) => {
-            if (!disposed) {
+        const unlistenState = tauriListen<{ state?: PlayerState; title?: string } | PlayerState>(
+            'tray-player-state',
+            (payload) => {
+                if (disposed) return;
+                const state = typeof payload === 'string' ? payload : payload?.state;
+                const nextTitle = typeof payload === 'string' ? '' : (payload?.title ?? '');
                 setPlaying(state === PlayerState.Playing || state === PlayerState.Buffering);
-            }
-        });
+                setTitle(nextTitle);
+            },
+        );
         const onKey = (event: KeyboardEvent) => {
             if (event.key === 'Escape') void tauriInvoke('tray_menu_click', { action: 'dismiss' });
         };
@@ -55,6 +61,11 @@ export default function App() {
 
     return (
         <div className="tray-menu">
+            <div className="tray-menu__now" title={title || t('playback.not_playing')}>
+                <span className={title ? 'is-scroll' : ''}>
+                    {title || t('playback.not_playing')}
+                </span>
+            </div>
             <div className="tray-menu__transport">
                 <button
                     type="button"

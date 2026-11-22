@@ -155,7 +155,7 @@
         color 0.15s ease;
 
     &:hover {
-        background: rgba(255, 255, 255, 0.08);
+        background: var(--color-fill-subtle-hover);
         color: var(--color-text-primary);
     }
 }

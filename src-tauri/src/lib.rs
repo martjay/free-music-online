@@ -102,6 +102,7 @@ pub fn run() {
             fs_file_sizes,
             taskbar_toolbar_install,
             taskbar_toolbar_set_playing,
+            taskbar_set_caption,
             fs_is_folder,
             fs_remove,
             fs_mkdir,

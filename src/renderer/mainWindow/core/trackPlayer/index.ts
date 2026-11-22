@@ -69,6 +69,15 @@ import {
  * 注意：这些 subscriptions 故意不清理——主窗口生命周期 === 应用生命周期，
  * store.sub 返回的 unsub 函数不需要调用。
  */
+function publishTrayPlayer(): void {
+    const music = store.get(currentMusicAtom);
+    const title = music?.title ? [music.title, music.artist].filter(Boolean).join(' · ') : '';
+    void tauriEmit('tray-player-state', {
+        state: store.get(playerStateAtom),
+        title,
+    });
+}
+
 function setupAppSyncBridge(): void {
     // 计算当前歌曲是否已收藏
     const getIsFavorite = () => {
@@ -105,7 +114,10 @@ function setupAppSyncBridge(): void {
     store.sub(playerStateAtom, () => {
         const playerState = store.get(playerStateAtom);
         appSync.syncAppState({ playerState });
-        void tauriEmit('tray-player-state', playerState);
+        publishTrayPlayer();
+    });
+    store.sub(currentMusicAtom, () => {
+        publishTrayPlayer();
     });
     store.sub(repeatModeAtom, () => {
         appSync.syncAppState({ repeatMode: store.get(repeatModeAtom) });
@@ -404,7 +416,9 @@ class TrackPlayer {
         try {
             const fullItem = await musicSheet.getRawMusicItem(savedMusic.platform, savedMusic.id);
             const musicItem = fullItem ?? (savedMusic as IMusic.IMusicItem);
+            if (!musicItem.artwork && savedMusic.artwork) musicItem.artwork = savedMusic.artwork;
             if (!this.isCurrentMusic(savedMusic) || attempt !== this.playbackAttempt) return;
+            if (musicItem.artwork) this.setCurrentMusic(musicItem, false);
             this.lyricManager.fetchLyric(musicItem);
 
             const quality = this.configuredQuality();
@@ -730,10 +744,10 @@ class TrackPlayer {
     }
 
     togglePlayPause(): void {
-        if (this.audioController.playerState === PlayerState.Playing) {
-            this.pause();
-        } else {
+        if (this.audioController.isHeldPaused) {
             this.resume();
+        } else {
+            this.pause();
         }
     }
 
@@ -903,13 +917,31 @@ class TrackPlayer {
         });
     }
 
+    private ignoreExternalPlayUntil = 0;
+
+    /**
+     * 托盘、任务栏按钮和系统媒体键会成对到达。
+     * 只要其中一次是暂停，短时间内跟来的播放一律丢掉，避免刚停下又被拉开第二路。
+     */
+    private externalPlayPause(action: 'play' | 'pause' | 'toggle'): void {
+        const pausing =
+            action === 'pause' || (action === 'toggle' && !this.audioController.isHeldPaused);
+        if (pausing) {
+            this.ignoreExternalPlayUntil = Date.now() + 600;
+            this.pause();
+            return;
+        }
+        if (Date.now() < this.ignoreExternalPlayUntil) return;
+        this.resume();
+    }
+
     private bindOpenApi(): void {
         void tauriListen<string>('open-api', (action) => {
             if (action === 'next') void this.skipToNext();
             else if (action === 'previous') void this.skipToPrev();
-            else if (action === 'pause') this.pause();
-            else if (action === 'play') this.resume();
-            else this.togglePlayPause();
+            else if (action === 'pause') this.externalPlayPause('pause');
+            else if (action === 'play') this.externalPlayPause('play');
+            else this.externalPlayPause('toggle');
         });
     }
 
@@ -1008,11 +1040,38 @@ class TrackPlayer {
         void tauriListen<string>('taskbar-media', (command) => {
             if (command === 'previous') void this.skipToPrev();
             else if (command === 'next') void this.skipToNext();
-            else if (command === 'play-pause') this.togglePlayPause();
+            else if (command === 'play-pause') this.externalPlayPause('toggle');
         });
         void tauriListen('tray-menu-open', () => {
-            void tauriEmit('tray-player-state', store.get(playerStateAtom));
+            publishTrayPlayer();
         });
+        this.startTaskbarCaption();
+    }
+
+    private captionOffset = 0;
+
+    /** 任务栏悬停时显示的是窗口标题。歌名较长时逐字滚动。 */
+    private startTaskbarCaption(): void {
+        const tick = () => {
+            const music = store.get(currentMusicAtom);
+            const base = music?.title
+                ? [music.title, music.artist].filter(Boolean).join(' · ')
+                : 'Free Music Online';
+            let title = base;
+            if ([...base].length > 18) {
+                const loop = `${base}    `;
+                const chars = [...loop];
+                const width = 18;
+                const start = this.captionOffset % chars.length;
+                title = [...chars, ...chars].slice(start, start + width).join('');
+                this.captionOffset += 1;
+            } else {
+                this.captionOffset = 0;
+            }
+            void tauriInvoke('taskbar_set_caption', { title });
+        };
+        tick();
+        window.setInterval(tick, 400);
     }
 
     private bindAppSyncCommands(): void {
@@ -1044,8 +1103,8 @@ class TrackPlayer {
         bindMediaSessionHandlers({
             nexttrack: () => this.skipToNext(),
             previoustrack: () => this.skipToPrev(),
-            play: () => this.resume(),
-            pause: () => this.pause(),
+            play: () => this.externalPlayPause('play'),
+            pause: () => this.externalPlayPause('pause'),
         });
     }
 
@@ -1709,8 +1768,19 @@ class TrackPlayer {
      * @param fetchLyric 默认 true；元数据更新时传 false 避免重复加载
      */
     private setCurrentMusic(musicItem: IMusic.IMusicItem, fetchLyric = true): void {
-        store.set(currentMusicAtom, musicItemToSlim(musicItem));
-        syncKV.set('player.currentMusic', musicItem);
+        const previous = store.get(currentMusicAtom);
+        const artwork =
+            musicItem.artwork ||
+            (previous && isSameMedia(previous, musicItem) ? previous.artwork : null) ||
+            null;
+        const next = artwork ? { ...musicItem, artwork } : musicItem;
+        const slim = musicItemToSlim(next);
+        store.set(currentMusicAtom, slim);
+        try {
+            syncKV.set('player.currentMusic', slim as IMusic.IMusicItem);
+        } catch {
+            /* 封面地址跟着精简记录走，完整原始数据仍在曲库里 */
+        }
         if (isRadioBrowserMedia(musicItem)) {
             this.lyricManager.reset();
         } else if (fetchLyric) {

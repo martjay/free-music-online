@@ -7,9 +7,9 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(windows)]
 use std::time::Duration;
 
-use tauri::{AppHandle, WebviewWindow};
+use tauri::{AppHandle, Manager, WebviewWindow};
 #[cfg(windows)]
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 #[cfg(windows)]
 use windows::core::{w, BOOL};
 #[cfg(windows)]
@@ -66,6 +66,19 @@ pub fn taskbar_toolbar_install(_window: WebviewWindow) {}
 #[cfg(not(windows))]
 #[tauri::command]
 pub fn taskbar_toolbar_set_playing(_app: AppHandle, _playing: bool) {}
+
+#[tauri::command]
+pub fn taskbar_set_caption(app: AppHandle, title: String) {
+    let title: String = title.chars().take(120).collect();
+    if title.is_empty() {
+        return;
+    }
+    for label in ["main", "minimode"] {
+        if let Some(window) = app.get_webview_window(label) {
+            let _ = window.set_title(&title);
+        }
+    }
+}
 
 /// 给主窗口和小播放器都装上任务栏按钮。
 #[cfg(windows)]
