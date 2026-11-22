@@ -164,6 +164,7 @@ export default function PlayerBar() {
                                                 musicItem={currentMusic}
                                                 size="sm"
                                                 selectQuality
+                                                menuWhenDownloaded
                                             />
                                         )}
                                         {downloaded && (

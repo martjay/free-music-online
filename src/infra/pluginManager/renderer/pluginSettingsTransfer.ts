@@ -18,6 +18,7 @@ export interface IPluginPlatformSettings {
     platformLabel: string;
     sourceKey?: string;
     enabled: boolean;
+    playbackEnabled?: boolean;
     order?: number;
     latencyMs: number | null;
     userVariables?: Record<string, string>;
@@ -80,6 +81,7 @@ export async function buildPluginSettingsFile(): Promise<IPluginSettingsFile> {
             platform: plugin.platform,
             platformLabel: pluginPlatformLabel(plugin),
             enabled: itemMeta.enabled !== false,
+            playbackEnabled: itemMeta.playbackEnabled !== false,
             latencyMs: getPluginPlaybackLatency(plugin.hash),
         };
         if (plugin.sourceKey) settings.sourceKey = plugin.sourceKey;
@@ -290,6 +292,8 @@ export async function importPluginSettingsText(text: string): Promise<IPluginSet
         }
         const meta: Partial<IPlugin.IPluginMeta> = {};
         if (typeof entry.enabled === 'boolean') meta.enabled = entry.enabled;
+        if (typeof entry.playbackEnabled === 'boolean')
+            meta.playbackEnabled = entry.playbackEnabled;
         if (typeof entry.order === 'number' && Number.isFinite(entry.order))
             meta.order = entry.order;
         if (entry.userVariables && typeof entry.userVariables === 'object') {

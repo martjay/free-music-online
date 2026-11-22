@@ -34,6 +34,7 @@ import MutationQueue from '@common/mutationQueue';
 import {
     CONTEXT_BRIDGE_KEY,
     DEFAULT_FAVORITE_SHEET_ID,
+    DOWNLOADED_SHEET_ID,
     RADIO_FAVORITE_SHEET_ID,
     type IMusicSheetEvent,
 } from './common/constant';
@@ -561,6 +562,11 @@ class MusicSheetRenderer {
         store.set(musicListAtom, detail?.musicList ?? []);
         store.set(isLoadingSheetAtom, false);
         return detail;
+    }
+
+    async listDownloadedMusic(): Promise<IMusicItemSlim[]> {
+        const detail = await mod.getSheetDetail(DOWNLOADED_SHEET_ID);
+        return detail?.musicList ?? [];
     }
 
     getCurrentMusicList(): IMusicItemSlim[] {

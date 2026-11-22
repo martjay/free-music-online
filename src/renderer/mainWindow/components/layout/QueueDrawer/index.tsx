@@ -150,6 +150,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
                     musicItem={item}
                     size="sm"
                     selectQuality
+                    menuWhenDownloaded
                     className="l-queue-drawer__item-download"
                 />
             )}

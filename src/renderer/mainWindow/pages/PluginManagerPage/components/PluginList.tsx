@@ -112,6 +112,12 @@ export default function PluginList() {
         pluginManager.setPluginMeta(hash, { enabled });
     }, []);
 
+    const handleTogglePlayback = useCallback((hashes: string[], playbackEnabled: boolean) => {
+        pluginManager.batchSetPluginMeta(
+            hashes.map((hash) => ({ hash, meta: { playbackEnabled } })),
+        );
+    }, []);
+
     if (sortedPlugins.length === 0) {
         return (
             <StatusPlaceholder
@@ -140,6 +146,7 @@ export default function PluginList() {
                                 meta={meta}
                                 availability={availability}
                                 onToggleEnabled={handleToggleEnabled}
+                                onTogglePlayback={handleTogglePlayback}
                             />
                         ) : (
                             <PluginItem
@@ -152,6 +159,12 @@ export default function PluginList() {
                                 }
                                 groupPlatforms={group.platforms}
                                 onToggleEnabled={handleToggleEnabled}
+                                playbackEnabled={
+                                    meta[group.plugins[0].hash]?.playbackEnabled !== false
+                                }
+                                onTogglePlayback={(enabled) =>
+                                    handleTogglePlayback([group.plugins[0].hash], enabled)
+                                }
                             />
                         ),
                     )}

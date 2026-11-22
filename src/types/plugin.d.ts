@@ -167,6 +167,8 @@ declare namespace IPlugin {
         order?: number;
         userVariables?: Record<string, string>;
         enabled?: boolean;
+        /** 关掉后不作为播放候选。不改各平台自己的 enabled。 */
+        playbackEnabled?: boolean;
         /** 音源重定向：目标插件的 platform 名，null/undefined 表示不重定向 */
         sourceRedirectPlatform?: string | null;
         /** 订阅地址：安装时粘贴的 https 链接，或脚本头里的更新地址 */

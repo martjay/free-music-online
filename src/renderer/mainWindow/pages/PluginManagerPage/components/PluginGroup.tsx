@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Activity, ChevronDown, GripVertical } from 'lucide-react';
+import { Toggle } from '@renderer/mainWindow/components/ui/Toggle';
 import { useTranslation } from 'react-i18next';
 import pluginManager, { type IPluginAvailabilityResult } from '@infra/pluginManager/renderer';
 import type { IPluginMetaAll } from '@appTypes/infra/pluginManager';
@@ -61,10 +62,17 @@ interface PluginGroupProps {
     meta: IPluginMetaAll;
     availability: Record<string, IPluginAvailabilityResult | undefined>;
     onToggleEnabled: (hash: string, enabled: boolean) => void;
+    onTogglePlayback: (hashes: string[], playbackEnabled: boolean) => void;
 }
 
 /** 同一脚本的多个平台。拖动标题时整组移动，组内顺序保持不变。 */
-function PluginGroup({ group, meta, availability, onToggleEnabled }: PluginGroupProps) {
+function PluginGroup({
+    group,
+    meta,
+    availability,
+    onToggleEnabled,
+    onTogglePlayback,
+}: PluginGroupProps) {
     const { t } = useTranslation();
     const {
         attributes,
@@ -98,6 +106,9 @@ function PluginGroup({ group, meta, availability, onToggleEnabled }: PluginGroup
     const activeCount = group.plugins.filter(
         (plugin) => meta[plugin.hash]?.enabled !== false,
     ).length;
+    const playbackEnabled = group.plugins.every(
+        (plugin) => meta[plugin.hash]?.playbackEnabled !== false,
+    );
     const [collapsed, setCollapsed] = useState(() => !readExpandedGroups().has(group.id));
     const [checking, setChecking] = useState(false);
     const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -179,6 +190,17 @@ function PluginGroup({ group, meta, availability, onToggleEnabled }: PluginGroup
                     </p>
                 </div>
                 <div className="p-plugin-manager__group-actions">
+                    <Toggle
+                        checked={playbackEnabled}
+                        onChange={(checked) =>
+                            onTogglePlayback(
+                                group.plugins.map((plugin) => plugin.hash),
+                                checked,
+                            )
+                        }
+                        aria-label={t('plugin.playback_toggle')}
+                        title={t('plugin.playback_toggle_hint')}
+                    />
                     <Button
                         variant="secondary"
                         size="sm"

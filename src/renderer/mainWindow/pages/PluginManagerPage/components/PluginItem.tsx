@@ -47,6 +47,9 @@ export interface PluginItemCardProps {
     /** 同一脚本下的全部平台名。多于一个时，卸载会一并移除。 */
     groupPlatforms: string[];
     onToggleEnabled: (hash: string, enabled: boolean) => void;
+    /** 单独显示的插件才有总开关。分组里的平台行不放，避免改到平台开关。 */
+    playbackEnabled?: boolean;
+    onTogglePlayback?: (playbackEnabled: boolean) => void;
     /** 分组卡片里由组标题拖拽，行内不再放手柄 */
     embedded?: boolean;
     dragRef?: (element: HTMLElement | null) => void;
@@ -108,6 +111,8 @@ export const PluginItemCard = memo(function PluginItemCard({
     sourceRedirectPlatform,
     groupPlatforms,
     onToggleEnabled,
+    playbackEnabled = true,
+    onTogglePlayback,
     embedded = false,
     dragRef,
     dragAttributes,
@@ -200,6 +205,14 @@ export const PluginItemCard = memo(function PluginItemCard({
                 </div>
 
                 <div className="p-plugin-manager__item-right">
+                    {!embedded && onTogglePlayback && (
+                        <Toggle
+                            checked={playbackEnabled}
+                            onChange={onTogglePlayback}
+                            aria-label={t('plugin.playback_toggle')}
+                            title={t('plugin.playback_toggle_hint')}
+                        />
+                    )}
                     <Toggle
                         checked={enabled}
                         onChange={(checked) => onToggleEnabled(plugin.hash, checked)}
@@ -434,6 +447,8 @@ export default memo(SortablePluginItem, (prev, next) => {
     return (
         prev.plugin === next.plugin &&
         prev.enabled === next.enabled &&
+        prev.playbackEnabled === next.playbackEnabled &&
+        prev.onTogglePlayback === next.onTogglePlayback &&
         prev.availability === next.availability &&
         prev.sourceRedirectPlatform === next.sourceRedirectPlatform &&
         prev.groupPlatforms === next.groupPlatforms &&

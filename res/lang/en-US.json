@@ -299,6 +299,8 @@
         "expand_sources": "Expand sources",
         "lx_source_hint": "Plugin addresses are LX Music sources.",
         "toggle_hint": "When off, this platform is left out of search, automatic source switching, and bulk checks. Tracks that already belong to it can still play and download.",
+        "playback_toggle": "Use as a playback source",
+        "playback_toggle_hint": "When off, this plugin is left out of playback candidates. The switches inside it stay as they are.",
         "check_platform": "Check this platform",
         "source_check_progress": "Checking {{done}}/{{total}}",
         "confirm_uninstall_script": "Uninstall \"{{script}}\"? These platforms will be removed together: {{platforms}}",

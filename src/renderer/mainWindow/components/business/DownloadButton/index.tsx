@@ -44,6 +44,8 @@ export interface DownloadButtonProps extends Omit<
     size?: DownloadButtonSize;
     /** 点击先弹出音质菜单，选中后再下载 */
     selectQuality?: boolean;
+    /** 已经下载后仍弹出音质菜单，用来再下一档音质 */
+    menuWhenDownloaded?: boolean;
 }
 
 /**
@@ -68,7 +70,8 @@ export interface DownloadButtonProps extends Omit<
 export function DownloadButton({
     musicItem,
     size = 'lg',
-    selectQuality = false,
+    selectQuality = true,
+    menuWhenDownloaded = false,
     className,
     ...rest
 }: DownloadButtonProps) {
@@ -82,7 +85,8 @@ export function DownloadButton({
     const isDownloading =
         taskStatus === 'pending' || taskStatus === 'downloading' || taskStatus === 'paused';
     const isCompleted = !isError && !isDownloading && (isLocal || downloaded !== null);
-    const canChooseQuality = selectQuality && !isLocal && !isDownloading;
+    const canChooseQuality =
+        selectQuality && !isLocal && !isDownloading && (!isCompleted || menuWhenDownloaded);
     const isInactive = !canChooseQuality && (isCompleted || isDownloading);
     const lockRef = useRef(false);
     const buttonRef = useRef<HTMLButtonElement>(null);

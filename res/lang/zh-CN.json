@@ -366,6 +366,8 @@
         "expand_sources": "展开音源",
         "lx_source_hint": "插件地址就是 LX Music 的源。",
         "toggle_hint": "关闭后，该平台不参与搜索、自动换源和批量检测。已经属于该平台的歌曲仍可播放和下载。",
+        "playback_toggle": "作为播放候选",
+        "playback_toggle_hint": "关闭后，这个插件不再作为播放候选。里面各平台的开关保持原样。",
         "check_platform": "检测此平台",
         "source_check_progress": "检测中 {{done}}/{{total}}",
         "confirm_uninstall_script": "确认卸载「{{script}}」吗？将同时移除：{{platforms}}",

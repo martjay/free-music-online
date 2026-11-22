@@ -7,7 +7,7 @@
 import type { IMusicItemSlim } from '@appTypes/infra/musicSheet';
 import type { IAppState } from '@appTypes/infra/appSync';
 import { PlayerState, RepeatMode, QUALITY_KEYS } from '@common/constant';
-import { compositeKey, isSameMedia } from '@common/mediaKey';
+import { compositeKey, isSameMedia, isSameSong } from '@common/mediaKey';
 import musicItemToSlim from '@common/musicItemToSlim';
 import delay from '@common/delay';
 import throttle from '@common/throttle';
@@ -1387,8 +1387,7 @@ class TrackPlayer {
      */
     private rankedPlaybackPlugins(musicItem: IMusic.IMusicItem): IPlugin.IPluginDelegate[] {
         const originalHash = this.sourceIdentity(musicItem).hash;
-        return pluginManager
-            .getSortedSupportedPlugin('getMediaSource')
+        return this.playbackCandidatePlugins()
             .filter((plugin) => this.canTryPlugin(plugin.hash))
             .sort(
                 (left, right) =>
@@ -1405,6 +1404,14 @@ class TrackPlayer {
                         getPluginPlaybackLatency(right.hash),
                     ),
             );
+    }
+
+    /** 插件总开关关掉后，不进入播放候选。各平台自己的开关不动。 */
+    private playbackCandidatePlugins(): IPlugin.IPluginDelegate[] {
+        const meta = pluginManager.getPluginMeta();
+        return pluginManager
+            .getSortedSupportedPlugin('getMediaSource')
+            .filter((plugin) => meta[plugin.hash]?.playbackEnabled !== false);
     }
 
     private canTryPlugin(hash: string): boolean {
@@ -1432,9 +1439,9 @@ class TrackPlayer {
 
     private fallbackPlugins(musicItem: IMusic.IMusicItem): IPlugin.IPluginDelegate[] {
         const originalHash = this.sourceIdentity(musicItem).hash;
-        const plugins = pluginManager
-            .getSortedSupportedPlugin('getMediaSource')
-            .filter((plugin) => plugin.hash !== originalHash && this.canTryPlugin(plugin.hash));
+        const plugins = this.playbackCandidatePlugins().filter(
+            (plugin) => plugin.hash !== originalHash && this.canTryPlugin(plugin.hash),
+        );
         const configured = appConfig.getConfigByKey('playMusic.defaultPlaybackPlugin') ?? '';
         return [...plugins].sort((left, right) => {
             const preferred =
@@ -1490,6 +1497,7 @@ class TrackPlayer {
         if (!hash) return null;
         const plugin = pluginManager.getPluginByHash(hash);
         if (!plugin?.supportedMethod.includes('getMediaSource')) return null;
+        if (pluginManager.getPluginMeta()[plugin.hash]?.playbackEnabled === false) return null;
         return plugin;
     }
 
@@ -1802,10 +1810,31 @@ class TrackPlayer {
      * @returns 成功时返回 IMediaSourceResult；文件不存在或未下载时返回 null
      */
     private async tryLocalSource(
-        musicItem: { platform: string; id: string },
+        musicItem: IMedia.IMediaBase,
         targetQuality?: IMusic.IQualityKey,
     ): Promise<IPlugin.IMediaSourceResult | null> {
-        const downloaded = downloadManager.isDownloaded(musicItem);
+        const direct = await this.localFileFor(
+            musicItem.platform,
+            String(musicItem.id),
+            targetQuality,
+        );
+        if (direct) return direct;
+
+        // 排行榜、歌单和搜索的编号经常和下载时不是同一条，歌名和歌手对得上就播本地文件。
+        const downloadedSongs = await musicSheet.listDownloadedMusic();
+        const same = downloadedSongs.find(
+            (song) => !isSameMedia(song, musicItem) && isSameSong(song, musicItem),
+        );
+        if (!same) return null;
+        return this.localFileFor(same.platform, String(same.id), targetQuality);
+    }
+
+    private async localFileFor(
+        platform: string,
+        id: string,
+        targetQuality?: IMusic.IQualityKey,
+    ): Promise<IPlugin.IMediaSourceResult | null> {
+        const downloaded = downloadManager.isDownloaded({ platform, id });
         if (!downloaded) return null;
 
         // 指定了目标音质时，仅在音质匹配时使用本地文件
@@ -1815,9 +1844,7 @@ class TrackPlayer {
         const exists = await fsUtil.isFile(downloaded.path);
         if (!exists) {
             // 文件已被外部删除，清理下载记录（不删文件，因为已不存在）
-            downloadManager
-                .removeDownload(musicItem.platform, String(musicItem.id), false)
-                .catch(() => {});
+            downloadManager.removeDownload(platform, id, false).catch(() => {});
             return null;
         }
 
