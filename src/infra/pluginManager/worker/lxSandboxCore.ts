@@ -3011,6 +3011,11 @@ async function resolveTencentSingerMid(
     return exact?.id || found.data[0]?.id || '';
 }
 
+function tencentSingerPhoto(singerMid: string): string {
+    if (!singerMid || /^\d+$/.test(singerMid)) return '';
+    return `https://y.gtimg.cn/music/photo_new/T001R500x500M000${singerMid}.jpg`;
+}
+
 async function fetchTencentArtistProfile(
     singerMid: string,
 ): Promise<Partial<IArtist.IArtistItem> | undefined> {
@@ -3031,8 +3036,8 @@ async function fetchTencentArtistProfile(
         });
         const info = body?.req?.data?.singer_list?.[0];
         if (!info) return undefined;
-        const avatar =
-            info.pic?.pic || `https://y.gtimg.cn/music/photo_new/T001R300x300M000${singerMid}.jpg`;
+        const pic = typeof info.pic === 'string' ? info.pic : info.pic?.pic;
+        const avatar = pic || tencentSingerPhoto(singerMid);
         const description = cleanSearchText(info.ex_info?.desc);
         if (!avatar && !description) return undefined;
         return {
@@ -3055,7 +3060,16 @@ async function getTencentArtistWorks(
     if (!singerMid) return { isEnd: true, data: [] };
     const currentPage = Math.max(page, 1);
     const begin = (currentPage - 1) * LX_SEARCH_PAGE_SIZE;
-    const profile = currentPage === 1 ? await fetchTencentArtistProfile(singerMid) : undefined;
+    const fetched = currentPage === 1 ? await fetchTencentArtistProfile(singerMid) : undefined;
+    // 详情接口经常直接失败，有歌手编号时仍用固定照片地址。
+    const profile =
+        currentPage === 1
+            ? {
+                  name: fetched?.name,
+                  description: fetched?.description,
+                  avatar: fetched?.avatar || tencentSingerPhoto(singerMid),
+              }
+            : undefined;
     if (type === 'album') {
         const body = await postTencentMusicu({
             req: {

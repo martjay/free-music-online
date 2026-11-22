@@ -1,3 +1,4 @@
+#![cfg_attr(target_os = "android", allow(dead_code, unused_imports))]
 //! 网易云账号：登录窗口与带 Cookie 的请求
 //!
 //! 登录窗口与主窗口共用同一个 WebView2 profile，Cookie 由 WebView2 加密持久化。
@@ -75,13 +76,22 @@ fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
 
 /// 读取 music.163.com 的 Cookie。
 /// WebView2 的 Cookie 读取在同步上下文会死锁，必须放到独立线程（见 wry#583）。
+/// 安卓 WebView 的 Cookie 接口会直接把进程打崩，这里不调用它。
 async fn read_cookies(app: &AppHandle) -> Result<Vec<Cookie<'static>>, String> {
-    let window = main_window(app)?;
-    let url = Url::parse(NETEASE_ORIGIN).map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || window.cookies_for_url(url))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())
+    #[cfg(target_os = "android")]
+    {
+        let _ = app;
+        return Ok(Vec::new());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let window = main_window(app)?;
+        let url = Url::parse(NETEASE_ORIGIN).map_err(|e| e.to_string())?;
+        tauri::async_runtime::spawn_blocking(move || window.cookies_for_url(url))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())
+    }
 }
 
 fn cookie_value<'a>(cookies: &'a [Cookie<'static>], name: &str) -> Option<&'a str> {
@@ -110,43 +120,50 @@ fn login_window_size(app: &AppHandle) -> (f64, f64) {
 }
 #[tauri::command]
 pub async fn netease_login_open(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window(LOGIN_WINDOW_LABEL) {
-        let _ = window.show();
-        let _ = window.set_focus();
-        return Ok(());
+    #[cfg(target_os = "android")]
+    {
+        let _ = app;
+        Err("netease login is unavailable on android".to_string())
     }
+    #[cfg(not(target_os = "android"))]
+    {
+        if let Some(window) = app.get_webview_window(LOGIN_WINDOW_LABEL) {
+            let _ = window.show();
+            let _ = window.set_focus();
+            return Ok(());
+        }
 
-    let url = Url::parse(LOGIN_URL).map_err(|e| e.to_string())?;
-    let (width, height) = login_window_size(&app);
+        let url = Url::parse(LOGIN_URL).map_err(|e| e.to_string())?;
+        let (width, height) = login_window_size(&app);
 
-    let builder = WebviewWindowBuilder::new(&app, LOGIN_WINDOW_LABEL, WebviewUrl::External(url))
-        .title("网易云音乐账号登录")
-        .inner_size(width, height)
-        .min_inner_size(480.0, 420.0)
-        .resizable(true);
-    #[cfg(desktop)]
-    let builder = builder.center().focused(true);
-    builder
-        .on_navigation(|url| {
-            if is_login_allowed(url) {
-                return true;
-            }
-            open_external_safely(url);
-            false
-        })
-        // 第三方登录（QQ/微信）依赖 window.open 弹窗：白名单内放行，其余交给系统浏览器
-        .on_new_window(|url, _features| {
-            if is_login_allowed(&url) {
-                NewWindowResponse::Allow
-            } else {
-                open_external_safely(&url);
-                NewWindowResponse::Deny
-            }
-        })
-        .build()
-        .map_err(|e| e.to_string())?;
+        WebviewWindowBuilder::new(&app, LOGIN_WINDOW_LABEL, WebviewUrl::External(url))
+            .title("网易云音乐账号登录")
+            .inner_size(width, height)
+            .min_inner_size(480.0, 420.0)
+            .resizable(true)
+            .center()
+            .focused(true)
+            .on_navigation(|url| {
+                if is_login_allowed(url) {
+                    return true;
+                }
+                open_external_safely(url);
+                false
+            })
+            // 第三方登录（QQ/微信）依赖 window.open 弹窗：白名单内放行，其余交给系统浏览器
+            .on_new_window(|url, _features| {
+                if is_login_allowed(&url) {
+                    NewWindowResponse::Allow
+                } else {
+                    open_external_safely(&url);
+                    NewWindowResponse::Deny
+                }
+            })
+            .build()
+            .map_err(|e| e.to_string())?;
 
-    Ok(())
+        Ok(())
+    }
 }
 
 /// 等待登录：检测到 MUSIC_U 返回 true，用户关闭登录窗口返回 false。

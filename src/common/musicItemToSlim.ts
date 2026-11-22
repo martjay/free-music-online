@@ -1,4 +1,5 @@
 import type { IMusicItemSlim } from '@appTypes/infra/musicSheet';
+import { resolveAlbumId, resolveArtistId } from '@common/mediaIdentity';
 import { INTERNAL_SLIM_KEY } from './constant';
 
 /**
@@ -15,6 +16,8 @@ export default function musicItemToSlim(item: IMusic.IMusicItem | IMusicItemSlim
         album: item.album ?? '',
         duration: item.duration ?? null,
         artwork: item.artwork ?? null,
+        artistId: resolveArtistId(item),
+        albumId: resolveAlbumId(item),
         [INTERNAL_SLIM_KEY]: true,
     };
 }

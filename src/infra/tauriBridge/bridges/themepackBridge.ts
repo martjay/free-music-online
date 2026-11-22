@@ -577,7 +577,10 @@ function injectCachedCssSync(): void {
     const cached = readCache();
     if (cached?.css) {
         injectCss(cached.css);
+        return;
     }
+    // 切回默认主题时缓存已清空。辅助窗口必须卸掉上一份样式，否则会留着上一个主题的颜色。
+    removeCss();
 }
 
 // ─── zip 解压（.mftheme / 远程主题包） ───

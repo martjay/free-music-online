@@ -13,6 +13,7 @@
 import { nanoid } from 'nanoid';
 import { CONTEXT_BRIDGE_KEY as APP_CONFIG_KEY } from '@infra/appConfig/common/constant';
 import { INTERNAL_SLIM_KEY } from '@common/constant';
+import { resolveAlbumId, resolveArtistId } from '@common/mediaIdentity';
 import { compositeKey } from '@common/mediaKey';
 import { RADIO_BROWSER_PLATFORM } from '@common/radioBrowser';
 import {
@@ -339,6 +340,20 @@ class MusicSheetStore {
     }
 
     private toSlim(item: IStoredMusicItem): IMusicItemSlim {
+        let stored: {
+            artistId?: string;
+            albumId?: string;
+            platform?: string;
+            raw?: unknown;
+        } | null = null;
+        if (item.raw) {
+            try {
+                const parsed = JSON.parse(item.raw);
+                if (parsed && typeof parsed === 'object') stored = parsed;
+            } catch {
+                stored = null;
+            }
+        }
         return {
             platform: item.platform,
             id: item.id,
@@ -347,6 +362,8 @@ class MusicSheetStore {
             album: item.album,
             duration: item.duration,
             artwork: this.artworkOf(item),
+            artistId: resolveArtistId(stored ? { ...stored, platform: item.platform } : undefined),
+            albumId: resolveAlbumId(stored ?? undefined),
             [INTERNAL_SLIM_KEY]: true,
         } as IMusicItemSlim;
     }

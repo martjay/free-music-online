@@ -19,6 +19,13 @@ import { ArtistHeader } from './ArtistHeader';
 import { useArtistWorks } from './useArtistWorks';
 import './index.scss';
 
+/** QQ 歌手详情经常拿不到图，编号本身对应一张固定照片。 */
+function tencentArtistPhoto(platform: string, id: string): string {
+    if (platform !== 'tx' && !platform.endsWith(':tx')) return '';
+    if (!id || /^\d+$/.test(id)) return '';
+    return `https://y.gtimg.cn/music/photo_new/T001R500x500M000${id}.jpg`;
+}
+
 /**
  * ArtistPage — 作者详情页
  *
@@ -92,7 +99,11 @@ export default function ArtistPage() {
             id: originalItem.id,
             platform: originalItem.platform,
             name: originalItem.name || musicWorks.profile?.name || profile?.name || '',
-            avatar: originalItem.avatar || musicWorks.profile?.avatar || profile?.avatar || '',
+            avatar:
+                originalItem.avatar ||
+                musicWorks.profile?.avatar ||
+                profile?.avatar ||
+                tencentArtistPhoto(originalItem.platform, originalItem.id),
             description:
                 originalItem.description ||
                 musicWorks.profile?.description ||

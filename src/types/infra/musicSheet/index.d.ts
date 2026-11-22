@@ -6,7 +6,7 @@ export type MusicSheetType = 'user' | 'system';
  *
  * 对应 `IMusic.IMusicItem` 的本地持久化精简版：
  * - IMusicItem：插件返回的完整歌曲数据（含 url / rawLrc / 任意扩展字段）
- * - IMusicItemSlim：仅保留列表展示所需的 7 个固定字段
+ * - IMusicItemSlim：列表展示字段，另外带上歌手和专辑编号，方便从歌单打开页面
  *
  * 完整原始数据通过 `music_items.raw` 列以 JSON 存储，按需读取。
  */
@@ -18,6 +18,10 @@ export interface IMusicItemSlim {
     album: string;
     duration: number | null;
     artwork: string | null;
+    /** 当前平台上的歌手编号。收藏列表靠它打开歌手页。 */
+    artistId?: string;
+    /** 当前平台上的专辑编号。收藏列表靠它打开专辑页。 */
+    albumId?: string;
     /** 内部标记：该对象为精简版，不含完整 raw 数据 */
     readonly $slim?: true;
 }

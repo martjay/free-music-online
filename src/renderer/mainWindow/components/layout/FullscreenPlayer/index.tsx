@@ -20,6 +20,7 @@ import { syncKV } from '@renderer/common/kvStore';
 import defaultCover from '@assets/imgs/album-cover.jpg';
 import { albumRoute, artistRoute } from '../../../routes';
 import {
+    musicForMediaLink,
     resolveCatalogAlbum,
     resolveCatalogArtist,
     splitArtistNames,
@@ -200,44 +201,44 @@ const FullscreenPlayer = memo(function FullscreenPlayer() {
                                                         className="l-fullscreen-player__song-link"
                                                         onClick={() => {
                                                             const music = currentMusic;
-                                                            void resolveCatalogArtist({
-                                                                platform: music.platform,
-                                                                artist: name,
-                                                                artistId:
-                                                                    names.length === 1
-                                                                        ? music.artistId
-                                                                        : undefined,
-                                                                raw:
-                                                                    names.length === 1
-                                                                        ? music.raw
-                                                                        : undefined,
-                                                            }).then((artist) => {
-                                                                if (!artist?.id) {
-                                                                    showToast(
-                                                                        t(
-                                                                            'media.artist_link_missing',
+                                                            void musicForMediaLink(music)
+                                                                .then((linked) =>
+                                                                    resolveCatalogArtist({
+                                                                        platform: linked.platform,
+                                                                        artist: name,
+                                                                        artistId: linked.artistId,
+                                                                        raw: linked.raw,
+                                                                        artistIndex: index,
+                                                                        artistCount: names.length,
+                                                                    }),
+                                                                )
+                                                                .then((artist) => {
+                                                                    if (!artist?.id) {
+                                                                        showToast(
+                                                                            t(
+                                                                                'media.artist_link_missing',
+                                                                            ),
+                                                                        );
+                                                                        return;
+                                                                    }
+                                                                    closeFullscreenPlayer();
+                                                                    navigate(
+                                                                        artistRoute(
+                                                                            music.platform,
+                                                                            artist.id,
                                                                         ),
-                                                                    );
-                                                                    return;
-                                                                }
-                                                                closeFullscreenPlayer();
-                                                                navigate(
-                                                                    artistRoute(
-                                                                        music.platform,
-                                                                        artist.id,
-                                                                    ),
-                                                                    {
-                                                                        state: {
-                                                                            artistItem: {
-                                                                                ...artist,
-                                                                                name:
-                                                                                    artist.name ||
-                                                                                    name,
+                                                                        {
+                                                                            state: {
+                                                                                artistItem: {
+                                                                                    ...artist,
+                                                                                    name:
+                                                                                        artist.name ||
+                                                                                        name,
+                                                                                },
                                                                             },
                                                                         },
-                                                                    },
-                                                                );
-                                                            });
+                                                                    );
+                                                                });
                                                         }}
                                                     >
                                                         {name}
@@ -261,31 +262,38 @@ const FullscreenPlayer = memo(function FullscreenPlayer() {
                                                     onClick={() => {
                                                         const music = currentMusic;
                                                         if (!music.album) return;
-                                                        void resolveCatalogAlbum({
-                                                            platform: music.platform,
-                                                            artist: music.artist,
-                                                            album: music.album,
-                                                            artwork: music.artwork,
-                                                            albumId: music.albumId,
-                                                            raw: music.raw,
-                                                        }).then((album) => {
-                                                            if (!album?.id) {
-                                                                showToast(
-                                                                    t('media.album_link_missing'),
+                                                        void musicForMediaLink(music)
+                                                            .then((linked) =>
+                                                                resolveCatalogAlbum({
+                                                                    platform: linked.platform,
+                                                                    artist: linked.artist,
+                                                                    album:
+                                                                        linked.album || music.album,
+                                                                    artwork: linked.artwork,
+                                                                    albumId: linked.albumId,
+                                                                    raw: linked.raw,
+                                                                }),
+                                                            )
+                                                            .then((album) => {
+                                                                if (!album?.id) {
+                                                                    showToast(
+                                                                        t(
+                                                                            'media.album_link_missing',
+                                                                        ),
+                                                                    );
+                                                                    return;
+                                                                }
+                                                                closeFullscreenPlayer();
+                                                                navigate(
+                                                                    albumRoute(
+                                                                        music.platform,
+                                                                        album.id,
+                                                                    ),
+                                                                    {
+                                                                        state: { albumItem: album },
+                                                                    },
                                                                 );
-                                                                return;
-                                                            }
-                                                            closeFullscreenPlayer();
-                                                            navigate(
-                                                                albumRoute(
-                                                                    music.platform,
-                                                                    album.id,
-                                                                ),
-                                                                {
-                                                                    state: { albumItem: album },
-                                                                },
-                                                            );
-                                                        });
+                                                            });
                                                     }}
                                                 >
                                                     {currentMusic.album}
