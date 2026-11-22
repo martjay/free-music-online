@@ -2,7 +2,7 @@
 // App — 迷你模式根组件
 // ============================================================================
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     SkipBack,
@@ -29,6 +29,45 @@ import { useConfigValue } from '@renderer/common/hooks/useConfigValue';
 import albumImg from '@assets/imgs/album-cover.jpg';
 import './index.scss';
 
+function sameLabel(left: string, right: string): boolean {
+    const fold = (value: string) =>
+        value
+            .toLowerCase()
+            .replace(/[（(][^）)]*[）)]/g, '')
+            .replace(/\s+/g, '');
+    const a = left.trim();
+    const b = right.trim();
+    if (!a || !b) return false;
+    return a.toLowerCase() === b.toLowerCase() || fold(a) === fold(b);
+}
+
+function OverflowText({ text, className }: { text: string; className: string }) {
+    const boxRef = useRef<HTMLDivElement>(null);
+    const textRef = useRef<HTMLSpanElement>(null);
+    const [overflow, setOverflow] = useState(false);
+
+    useEffect(() => {
+        const box = boxRef.current;
+        const node = textRef.current;
+        if (!box || !node) return;
+        const update = () => {
+            setOverflow(node.scrollWidth > box.clientWidth + 1);
+        };
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(box);
+        return () => observer.disconnect();
+    }, [text]);
+
+    return (
+        <div ref={boxRef} className={`${className}${overflow ? ' is-scroll' : ''}`} title={text}>
+            <span className="l-minimode__scroll">
+                <span ref={textRef}>{text}</span>
+            </span>
+        </div>
+    );
+}
+
 /**
  * MiniMode App — 迷你模式窗口根组件
  * @layer layout
@@ -47,17 +86,34 @@ export default function App() {
     const [enableDesktopLyric] = useConfigValue('lyric.enableDesktopLyric');
     const [qualityOpen, setQualityOpen] = useState(false);
     const [pinned, setPinned] = useState(true);
+    const [seekRatio, setSeekRatio] = useState<number | null>(null);
+    const seekTrackRef = useRef<HTMLDivElement>(null);
+    const seekingRef = useRef(false);
 
     const isPlaying = playerState === PlayerState.Playing;
     const isLive = isRadioBrowserMedia(musicItem);
+    const album = musicItem?.album?.trim() ?? '';
+    const subtitle = [
+        musicItem?.artist?.trim(),
+        album &&
+        !sameLabel(album, musicItem?.title ?? '') &&
+        !sameLabel(album, musicItem?.artist ?? '')
+            ? album
+            : '',
+        isLive ? t('radio.live') : '',
+    ]
+        .filter(Boolean)
+        .join(' · ');
     const currentRepeatMode = repeatMode ?? RepeatMode.Queue;
     const { Icon: RepeatIcon, next: nextRepeatMode } = REPEAT_MODE_MAP[currentRepeatMode];
 
     // 进度百分比
     const progressPercent =
-        progress && progress.duration > 0 && isFinite(progress.duration)
-            ? (progress.currentTime / progress.duration) * 100
-            : 0;
+        seekRatio !== null
+            ? seekRatio * 100
+            : progress && progress.duration > 0 && isFinite(progress.duration)
+              ? (progress.currentTime / progress.duration) * 100
+              : 0;
 
     // 订阅应用状态
     useEffect(() => {
@@ -125,9 +181,42 @@ export default function App() {
         appSyncAuxiliary.sendCommand('download-music', quality);
     }, []);
 
+    const ratioFromPointer = (event: React.PointerEvent) => {
+        const rect = seekTrackRef.current?.getBoundingClientRect();
+        if (!rect || rect.width <= 0) return 0;
+        return Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    };
+
+    const handleSeekDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        event.stopPropagation();
+        event.preventDefault();
+        seekingRef.current = true;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setSeekRatio(ratioFromPointer(event));
+    };
+
+    const handleSeekMove = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (!seekingRef.current) return;
+        setSeekRatio(ratioFromPointer(event));
+    };
+
+    const handleSeekUp = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (!seekingRef.current) return;
+        seekingRef.current = false;
+        const ratio = ratioFromPointer(event);
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        const duration = progress?.duration ?? 0;
+        if (duration > 0 && Number.isFinite(duration)) {
+            appSyncAuxiliary.sendCommand('seek', ratio * duration);
+        }
+        window.setTimeout(() => setSeekRatio(null), 200);
+    };
+
     const handleDragStart = useCallback((event: React.PointerEvent) => {
         const target = event.target as HTMLElement | null;
-        if (target?.closest('button')) return;
+        if (target?.closest('button, [data-seek]')) return;
         setQualityOpen(false);
         tauriInvoke('plugin:window|start_dragging').catch(() => {});
     }, []);
@@ -169,19 +258,34 @@ export default function App() {
             </button>
 
             <div className="l-minimode__main">
-                <div className="l-minimode__title">
-                    {musicItem?.title || (!musicItem ? t('playback.not_playing') : '')}
-                </div>
-                <div className="l-minimode__subtitle">
-                    {[musicItem?.artist, musicItem?.album, isLive ? t('radio.live') : null]
-                        .filter(Boolean)
-                        .join(' · ')}
-                </div>
+                <OverflowText
+                    className="l-minimode__title"
+                    text={musicItem?.title || (!musicItem ? t('playback.not_playing') : '')}
+                />
+                <OverflowText className="l-minimode__subtitle" text={subtitle} />
                 {!isLive && (
-                    <div className="l-minimode__progress">
+                    <div
+                        ref={seekTrackRef}
+                        className={`l-minimode__progress${seekRatio !== null ? ' is-seeking' : ''}`}
+                        data-seek
+                        role="slider"
+                        aria-label={t('playback.seek')}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(progressPercent)}
+                        title={t('playback.seek')}
+                        onPointerDown={handleSeekDown}
+                        onPointerMove={handleSeekMove}
+                        onPointerUp={handleSeekUp}
+                        onPointerCancel={handleSeekUp}
+                    >
                         <div
                             className="l-minimode__progress-fill"
                             style={{ width: `${progressPercent}%` }}
+                        />
+                        <span
+                            className="l-minimode__progress-thumb"
+                            style={{ left: `${progressPercent}%` }}
                         />
                     </div>
                 )}
@@ -254,18 +358,18 @@ export default function App() {
                             </button>
                         </>
                     )}
+                    <button
+                        type="button"
+                        className="l-minimode__tool"
+                        title={t('playback.expand_main_window')}
+                        onClick={handleShowMainWindow}
+                    >
+                        <Maximize2 size={15} />
+                    </button>
                 </div>
             </div>
 
             <div className="l-minimode__side">
-                <button
-                    type="button"
-                    className="l-minimode__expand"
-                    title={t('playback.expand_main_window')}
-                    onClick={handleShowMainWindow}
-                >
-                    <Maximize2 size={14} />
-                </button>
                 <div className="l-minimode__playback">
                     <button
                         type="button"

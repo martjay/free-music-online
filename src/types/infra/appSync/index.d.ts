@@ -58,6 +58,8 @@ export interface ICommand {
 
     // ─── Window and navigation actions ───
     'set-repeat-mode': RepeatMode;
+    /** 跳到当前歌曲的秒数 */
+    seek: number;
     /** 用主窗口的下载器下载当前歌曲 */
     'download-music': IMusic.IQualityKey;
     navigate: string;

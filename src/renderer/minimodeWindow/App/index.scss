@@ -1,11 +1,14 @@
 // 迷你播放器：不透明卡片，圆角以外才透出桌面。
+// html 的全局底色会在圆角外画出一块更深的方底，这里必须盖掉。
 
+html,
 body[data-window='minimode'],
 body[data-window='minimode'] #root {
     width: 100%;
     height: 100%;
     min-height: 0;
-    background: transparent;
+    background: transparent !important;
+    background-color: transparent !important;
     overflow: hidden;
 }
 
@@ -21,7 +24,7 @@ body[data-window='minimode'] #root {
     align-items: center;
     gap: var(--space-4);
     position: relative;
-    padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
+    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
     overflow: hidden;
     box-sizing: border-box;
     background-color: var(--color-bg-modal);
@@ -36,8 +39,8 @@ body[data-window='minimode'] #root {
 
     &__artwork {
         position: relative;
-        width: 68px;
-        height: 68px;
+        width: 64px;
+        height: 64px;
         flex-shrink: 0;
         padding: 0;
         border: none;
@@ -78,34 +81,70 @@ body[data-window='minimode'] #root {
         display: flex;
         flex-direction: column;
         justify-content: center;
-        gap: var(--space-1-5);
+        gap: var(--space-1);
+    }
+
+    &__title,
+    &__subtitle {
+        overflow: hidden;
+        white-space: nowrap;
+        line-height: 1.3;
     }
 
     &__title {
         font-size: var(--text-body-size);
         font-weight: var(--font-weight-semibold);
         color: var(--color-text-primary);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        line-height: 1.3;
     }
 
     &__subtitle {
         font-size: var(--text-caption-size);
         color: var(--color-text-secondary);
-        white-space: nowrap;
+    }
+
+    &__scroll {
+        display: inline-block;
+        max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
-        line-height: 1.3;
+        vertical-align: top;
+
+        > span {
+            display: inline-block;
+            white-space: nowrap;
+        }
+    }
+
+    &__title.is-scroll &__scroll,
+    &__subtitle.is-scroll &__scroll {
+        max-width: none;
+        overflow: visible;
+        text-overflow: clip;
+        padding-left: 100%;
+        animation: minimode-marquee 9s linear infinite;
     }
 
     &__progress {
+        position: relative;
         height: 4px;
-        margin-top: var(--space-1);
         border-radius: var(--radius-pill);
         background-color: var(--color-fill-neutral);
-        overflow: hidden;
+        cursor: pointer;
+        touch-action: none;
+
+        &::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: -6px;
+            bottom: -6px;
+        }
+    }
+
+    &__progress-fill,
+    &__progress-thumb {
+        pointer-events: none;
     }
 
     &__progress-fill {
@@ -114,15 +153,29 @@ body[data-window='minimode'] #root {
         background-color: var(--color-fill-brand);
     }
 
+    &__progress-thumb {
+        position: absolute;
+        top: 50%;
+        width: 10px;
+        height: 10px;
+        border-radius: var(--radius-pill);
+        background-color: var(--color-fill-brand);
+        transform: translate(-50%, -50%);
+        opacity: 0;
+    }
+
+    &__progress:hover &__progress-thumb,
+    &__progress.is-seeking &__progress-thumb {
+        opacity: 1;
+    }
+
     &__tools {
         display: flex;
         align-items: center;
         gap: var(--space-1);
-        margin-top: var(--space-1);
     }
 
     &__tool,
-    &__expand,
     &__ctrl-btn {
         border: none;
         background: transparent;
@@ -140,8 +193,7 @@ body[data-window='minimode'] #root {
         }
     }
 
-    &__tool,
-    &__expand {
+    &__tool {
         width: 28px;
         height: 28px;
     }
@@ -164,18 +216,9 @@ body[data-window='minimode'] #root {
     }
 
     &__side {
-        position: relative;
         display: flex;
         align-items: center;
-        align-self: stretch;
         flex-shrink: 0;
-        padding-top: var(--space-6);
-    }
-
-    &__expand {
-        position: absolute;
-        top: 0;
-        right: 0;
     }
 
     &__playback {
@@ -240,5 +283,15 @@ body[data-window='minimode'] #root {
 @keyframes minimode-spin {
     to {
         transform: rotate(360deg);
+    }
+}
+
+@keyframes minimode-marquee {
+    from {
+        transform: translateX(0);
+    }
+
+    to {
+        transform: translateX(-100%);
     }
 }

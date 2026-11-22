@@ -1085,6 +1085,10 @@ class TrackPlayer {
             this.setVolume(Math.max(0, store.get(volumeAtom) - 0.05)),
         );
         appSync.onCommand('set-repeat-mode', (mode) => this.setRepeatMode(mode));
+        appSync.onCommand('seek', (seconds) => {
+            if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return;
+            this.seekTo(Math.max(0, seconds));
+        });
         appSync.onCommand('like/dislike', () => {
             const music = store.get(currentMusicAtom);
             if (!music) return;

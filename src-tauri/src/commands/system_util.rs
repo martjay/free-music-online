@@ -5,7 +5,10 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewWindow, Window};
 
 const MINIMODE_WIDTH: f64 = 408.0;
-const MINIMODE_HEIGHT: f64 = 148.0;
+const MINIMODE_HEIGHT: f64 = 112.0;
+const MINIMODE_MIN_HEIGHT: f64 = 100.0;
+/// 上一版默认高度。记住了这个高度的窗口改用新的默认值。
+const MINIMODE_LEGACY_HEIGHT: f64 = 148.0;
 const MAIN_MIN_WIDTH: f64 = 900.0;
 const MAIN_MIN_HEIGHT: f64 = 600.0;
 
@@ -358,13 +361,16 @@ pub fn restore_saved_placements(app: &AppHandle) {
 
 fn restore_mini_placement(window: &WebviewWindow) {
     let config = super::app_config::read_config_value();
-    let (width, height) = saved_logical_size(
+    let (width, mut height) = saved_logical_size(
         config.get("private.minimodeWindowSize"),
         MINIMODE_WIDTH,
         MINIMODE_HEIGHT,
         320.0,
-        120.0,
+        MINIMODE_MIN_HEIGHT,
     );
+    if (height - MINIMODE_LEGACY_HEIGHT).abs() < 1.0 {
+        height = MINIMODE_HEIGHT;
+    }
     suppress_placement_events();
     let _ = window.set_size(LogicalSize::new(width, height));
     let Some(pos) = config.get("private.minimodeWindowPosition") else {

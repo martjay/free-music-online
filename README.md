@@ -4,7 +4,7 @@
 
 # Free Music Online
 
-一款给 Windows 用的桌面音乐播放器。支持洛雪音源插件、桌面歌词、迷你播放器，以及悬停任务栏图标时直接切歌。
+一款音乐播放器。Windows 上支持洛雪音源插件、桌面歌词、迷你播放器，以及悬停任务栏图标时直接切歌。Android 提供侧载安装包。
 
 [English](./README_EN.md) | 简体中文
 
@@ -24,11 +24,10 @@ Free Music Online 在 [AnhePlayer](https://github.com/raclen/AnhePlayer) 上继�
 
 安装包在 [GitHub Releases](https://github.com/martjay/free-music-online/releases)。
 
-当前支持 **Windows 10 / 11**：
+- Windows 10 / 11：`FreeMusicOnline_<版本>_x64-setup.exe`
+- Android：`FreeMusicOnline_<版本>.apk`，侧载安装
 
-- `FreeMusicOnline_<版本>_x64-setup.exe`
-
-软件内的「检查更新」读取本仓库 `main` 分支的 [`release/version.json`](./release/version.json)。发现新版本后，一键安装会下载对应 Release 里的这个 exe。
+软件内的「检查更新」读取本仓库 `main` 分支的 [`release/version.json`](./release/version.json)。发现新版本后，Windows 一键安装会下载对应 Release 里的 exe。Android 没有应用内更新。
 
 ## 功能
 
@@ -38,7 +37,7 @@ Free Music Online 在 [AnhePlayer](https://github.com/raclen/AnhePlayer) 上继�
 | 任务栏 | 悬停任务栏图标，可直接上一首、播放暂停、下一首 |
 | 窗口 | 记住主窗口和小播放器上次的位置与大小 |
 | 续播 | 记住播放列表、当前歌曲、音量和播放模式 |
-| 音源 | 洛雪插件解析；试听过短时，播放和下载前自动换到能听全的平台 |
+| 音源 | 洛雪插件解析；已经下载的歌优先播放；试听过短时，播放和下载前自动换到能听全的平台 |
 | 歌词 | 歌词搜索、翻译、偏移、桌面歌词 |
 | 下载 | 下载目录、音质、并发和文件名；已完成列表显示时长和文件大小 |
 | 本地 | 扫描本地文件夹，按单曲、歌手、专辑、文件夹管理 |
@@ -52,6 +51,8 @@ Free Music Online 在 [AnhePlayer](https://github.com/raclen/AnhePlayer) 上继�
 默认不带音源插件。在插件管理里安装洛雪 `.js` 文件，或添加以 `.js` 结尾的 http(s) 链接。
 
 插件提供的平台会显示成短名，例如「QQ音乐」「酷我音乐」。内部仍用完整来源区分不同脚本，避免两家同名音源串在一起。
+
+每个插件有一个播放开关。关掉后，这个插件不再作为播放候选，里面各平台自己的开关保持原样。
 
 ## 主题包
 

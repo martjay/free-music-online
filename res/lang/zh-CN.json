@@ -200,6 +200,7 @@
         "queue_empty_desc": "播放一些音乐吧",
         "queue_list_label": "播放队列列表",
         "not_playing": "未在播放",
+        "seek": "调整进度",
         "desktop_lyric": "桌面歌词",
         "previous": "上一首",
         "next": "下一首",

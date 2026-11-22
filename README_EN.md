@@ -4,7 +4,7 @@
 
 # Free Music Online
 
-A Windows desktop music player with LX source plugins, desktop lyrics, a mini player, and taskbar playback controls.
+A music player. On Windows it supports LX source plugins, desktop lyrics, a mini player, and taskbar playback controls. Android is available as a sideload package.
 
 English | [简体中文](./README.md)
 
@@ -24,11 +24,10 @@ Installers, update checks, and issues live in [martjay/free-music-online](https:
 
 Installers are on [GitHub Releases](https://github.com/martjay/free-music-online/releases).
 
-**Windows 10 / 11**:
+- Windows 10 / 11: `FreeMusicOnline_<version>_x64-setup.exe`
+- Android: `FreeMusicOnline_<version>.apk`, installed by sideloading
 
-- `FreeMusicOnline_<version>_x64-setup.exe`
-
-In-app update checks read [`release/version.json`](./release/version.json) on the `main` branch. One-click install downloads that version's setup exe from the matching Release.
+In-app update checks read [`release/version.json`](./release/version.json) on the `main` branch. On Windows, one-click install downloads that version's setup exe from the matching Release. Android has no in-app update.
 
 ## Features
 
@@ -38,7 +37,7 @@ In-app update checks read [`release/version.json`](./release/version.json) on th
 | Taskbar | Previous, play/pause, and next from the taskbar thumbnail |
 | Windows | Remembers the last position and size of the main and mini players |
 | Resume | Remembers the queue, current song, volume, and repeat mode |
-| Sources | LX plugins. Short previews can switch to a full source before play or download |
+| Sources | LX plugins. Downloaded songs play first. Short previews can switch to a full source before play or download |
 | Lyrics | Search, translation, offset, and desktop lyrics |
 | Downloads | Folder, quality, concurrency, filenames, duration, and file size |
 | Library | Local folders by song, artist, album, and folder |
@@ -52,6 +51,8 @@ In-app update checks read [`release/version.json`](./release/version.json) on th
 No source plugin is bundled. Install an LX `.js` file, or add an http(s) link ending in `.js`, from Plugin Manager.
 
 Platforms are shown by their short name, such as QQ Music. The full source id still separates plugins that share a name.
+
+Each plugin has a playback switch. Turning it off leaves that plugin out of playback candidates. The switches inside it stay as they are.
 
 ## Theme packs
 
